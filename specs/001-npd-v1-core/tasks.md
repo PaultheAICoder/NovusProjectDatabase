@@ -88,7 +88,7 @@
 - [x] T040 [US1] Create Alembic migration 005_create_projects.py
 - [x] T041 [US1] Create Alembic migration 006_create_project_contacts.py
 - [x] T042 [US1] Create Alembic migration 007_create_project_tags.py
-- [ ] T043 [US1] Create seed script for structured tags in backend/app/scripts/seed_tags.py
+- [x] T043 [US1] Create seed script for structured tags in backend/app/scripts/seed_tags.py
 
 ### Backend Schemas for User Story 1
 
@@ -100,28 +100,28 @@
 ### Backend API for User Story 1
 
 - [x] T048 [US1] Implement Organization CRUD endpoints in backend/app/api/organizations.py
-- [ ] T049 [US1] Implement Contact CRUD endpoints in backend/app/api/contacts.py
-- [ ] T050 [US1] Implement Tag list and create endpoints in backend/app/api/tags.py
-- [ ] T051 [US1] Implement Project CRUD endpoints (list, create, get, update, delete) in backend/app/api/projects.py
-- [ ] T052 [US1] Add project status transition validation in backend/app/api/projects.py
-- [ ] T053 [US1] Register all routers in main.py
+- [x] T049 [US1] Implement Contact CRUD endpoints in backend/app/api/contacts.py
+- [x] T050 [US1] Implement Tag list and create endpoints in backend/app/api/tags.py
+- [x] T051 [US1] Implement Project CRUD endpoints (list, create, get, update, delete) in backend/app/api/projects.py
+- [x] T052 [US1] Add project status transition validation in backend/app/api/projects.py
+- [x] T053 [US1] Register all routers in main.py
 
 ### Frontend for User Story 1
 
-- [ ] T054 [P] [US1] Create Organization TypeScript types in frontend/src/types/organization.ts
-- [ ] T055 [P] [US1] Create Contact TypeScript types in frontend/src/types/contact.ts
-- [ ] T056 [P] [US1] Create Tag TypeScript types in frontend/src/types/tag.ts
-- [ ] T057 [P] [US1] Create Project TypeScript types in frontend/src/types/project.ts
-- [ ] T058 [US1] Create useProjects hook with TanStack Query in frontend/src/hooks/useProjects.ts
-- [ ] T059 [P] [US1] Create useOrganizations hook in frontend/src/hooks/useOrganizations.ts
-- [ ] T060 [P] [US1] Create useContacts hook in frontend/src/hooks/useContacts.ts
-- [ ] T061 [P] [US1] Create useTags hook in frontend/src/hooks/useTags.ts
-- [ ] T062 [US1] Create ProjectForm component with React Hook Form + Zod in frontend/src/components/forms/ProjectForm.tsx
-- [ ] T063 [US1] Create Projects list page with TanStack Table in frontend/src/pages/Projects.tsx
-- [ ] T064 [US1] Create ProjectDetail page in frontend/src/pages/ProjectDetail.tsx
-- [ ] T065 [US1] Create ProjectForm page (new/edit) in frontend/src/pages/ProjectForm.tsx
-- [ ] T066 [US1] Create Dashboard page with project overview in frontend/src/pages/Dashboard.tsx
-- [ ] T067 [US1] Add routes for project pages in frontend/src/App.tsx
+- [x] T054 [P] [US1] Create Organization TypeScript types in frontend/src/types/organization.ts
+- [x] T055 [P] [US1] Create Contact TypeScript types in frontend/src/types/contact.ts
+- [x] T056 [P] [US1] Create Tag TypeScript types in frontend/src/types/tag.ts
+- [x] T057 [P] [US1] Create Project TypeScript types in frontend/src/types/project.ts
+- [x] T058 [US1] Create useProjects hook with TanStack Query in frontend/src/hooks/useProjects.ts
+- [x] T059 [P] [US1] Create useOrganizations hook in frontend/src/hooks/useOrganizations.ts
+- [x] T060 [P] [US1] Create useContacts hook in frontend/src/hooks/useContacts.ts
+- [x] T061 [P] [US1] Create useTags hook in frontend/src/hooks/useTags.ts
+- [x] T062 [US1] Create ProjectForm component with React Hook Form + Zod in frontend/src/components/forms/ProjectForm.tsx
+- [x] T063 [US1] Create Projects list page with TanStack Table in frontend/src/pages/ProjectsPage.tsx
+- [x] T064 [US1] Create ProjectDetail page in frontend/src/pages/ProjectDetailPage.tsx
+- [x] T065 [US1] Create ProjectForm page (new/edit) in frontend/src/pages/ProjectFormPage.tsx
+- [x] T066 [US1] Create Dashboard page with project overview in frontend/src/pages/DashboardPage.tsx
+- [x] T067 [US1] Add routes for project pages in frontend/src/App.tsx
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - users can create, view, edit, and archive projects
 

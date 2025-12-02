@@ -7,6 +7,12 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { Header, Sidebar } from "@/components/layout";
+import {
+  DashboardPage,
+  ProjectsPage,
+  ProjectDetailPage,
+  ProjectFormPage,
+} from "@/pages";
 
 /**
  * Protected route wrapper.
@@ -40,18 +46,6 @@ function MainLayout({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <main className="flex-1 p-6">{children}</main>
       </div>
-    </div>
-  );
-}
-
-/**
- * Placeholder pages - will be replaced with actual implementations.
- */
-function Dashboard() {
-  return (
-    <div>
-      <h2 className="text-2xl font-bold">Dashboard</h2>
-      <p className="mt-2 text-muted-foreground">Welcome to Novus Project Database</p>
     </div>
   );
 }
@@ -100,7 +94,7 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <Dashboard />
+              <DashboardPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -110,7 +104,37 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <PlaceholderPage title="Projects" />
+              <ProjectsPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/new"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <ProjectFormPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <ProjectDetailPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id/edit"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <ProjectFormPage />
             </MainLayout>
           </ProtectedRoute>
         }
