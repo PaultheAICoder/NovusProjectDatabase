@@ -17,10 +17,15 @@ down_revision: Union[str, None] = "003"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Define enum as module-level to avoid auto-creation
+tagtype_enum = postgresql.ENUM(
+    "technology", "domain", "test_type", "freeform", name="tagtype", create_type=False
+)
+
 
 def upgrade() -> None:
-    # Create enum type
-    op.execute("CREATE TYPE tagtype AS ENUM ('technology', 'domain', 'test_type', 'freeform')")
+    # Create enum type first
+    tagtype_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "tags",
@@ -31,11 +36,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("name", sa.String(100), nullable=False),
-        sa.Column(
-            "type",
-            sa.Enum("technology", "domain", "test_type", "freeform", name="tagtype", create_type=False),
-            nullable=False,
-        ),
+        sa.Column("type", tagtype_enum, nullable=False),
         sa.Column(
             "created_by",
             postgresql.UUID(as_uuid=True),
@@ -63,4 +64,4 @@ def downgrade() -> None:
     op.drop_index("ix_tags_type", table_name="tags")
     op.drop_index("ix_tags_name", table_name="tags")
     op.drop_table("tags")
-    op.execute("DROP TYPE tagtype")
+    tagtype_enum.drop(op.get_bind(), checkfirst=True)

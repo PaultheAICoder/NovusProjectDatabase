@@ -17,12 +17,17 @@ down_revision: Union[str, None] = "004"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Define enum as module-level to avoid auto-creation
+projectstatus_enum = postgresql.ENUM(
+    "approved", "active", "on_hold", "completed", "cancelled",
+    name="projectstatus",
+    create_type=False,
+)
+
 
 def upgrade() -> None:
-    # Create enum type
-    op.execute(
-        "CREATE TYPE projectstatus AS ENUM ('approved', 'active', 'on_hold', 'completed', 'cancelled')"
-    )
+    # Create enum type first
+    projectstatus_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "projects",
@@ -38,11 +43,7 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(
-                "approved", "active", "on_hold", "completed", "cancelled",
-                name="projectstatus",
-                create_type=False,
-            ),
+            projectstatus_enum,
             nullable=False,
             server_default="approved",
         ),
@@ -110,4 +111,4 @@ def downgrade() -> None:
     op.drop_index("ix_projects_organization_id", table_name="projects")
     op.drop_index("ix_projects_name", table_name="projects")
     op.drop_table("projects")
-    op.execute("DROP TYPE projectstatus")
+    projectstatus_enum.drop(op.get_bind(), checkfirst=True)

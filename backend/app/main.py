@@ -16,8 +16,14 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
-    # Startup
-    if settings.azure_ad_client_id and settings.azure_ad_tenant_id:
+    # Startup - only load Azure AD config if valid credentials are provided
+    has_valid_azure_config = (
+        settings.azure_ad_client_id
+        and settings.azure_ad_tenant_id
+        and not settings.azure_ad_client_id.startswith("your-")
+        and not settings.azure_ad_tenant_id.startswith("your-")
+    )
+    if has_valid_azure_config:
         await azure_scheme.openid_config.load_config()
     yield
     # Shutdown

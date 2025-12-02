@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -28,17 +26,8 @@ services:
       - "6703:11434"
     volumes:
       - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    # Remove GPU reservation if no NVIDIA GPU available
-    # Comment out the deploy section above and uncomment below for CPU-only
-    # environment:
-    #   - OLLAMA_HOST=0.0.0.0
+    environment:
+      - OLLAMA_HOST=0.0.0.0
 
   backend:
     build:
@@ -55,6 +44,7 @@ services:
       - "6701:6701"
     volumes:
       - ./backend/app:/app/app:ro
+      - ./backend/alembic:/app/alembic:ro
       - uploads_data:/app/uploads
     depends_on:
       db:

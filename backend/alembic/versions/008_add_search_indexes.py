@@ -39,8 +39,7 @@ def upgrade() -> None:
         ALTER TABLE organizations
         ADD COLUMN IF NOT EXISTS search_vector tsvector
         GENERATED ALWAYS AS (
-            setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
-            setweight(to_tsvector('english', coalesce(notes, '')), 'B')
+            setweight(to_tsvector('english', coalesce(name, '')), 'A')
         ) STORED
     """)
 
@@ -56,7 +55,7 @@ def upgrade() -> None:
         GENERATED ALWAYS AS (
             setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
             setweight(to_tsvector('english', coalesce(email, '')), 'B') ||
-            setweight(to_tsvector('english', coalesce(role, '')), 'C')
+            setweight(to_tsvector('english', coalesce(role_title, '')), 'C')
         ) STORED
     """)
 

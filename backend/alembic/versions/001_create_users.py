@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "001"
@@ -16,28 +17,26 @@ down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Define enum as module-level to avoid auto-creation
+userrole_enum = postgresql.ENUM("user", "admin", name="userrole", create_type=False)
+
 
 def upgrade() -> None:
-    # Create enum type
-    op.execute("CREATE TYPE userrole AS ENUM ('user', 'admin')")
+    # Create enum type first
+    userrole_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "users",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
         sa.Column("azure_id", sa.String(255), nullable=False),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("display_name", sa.String(255), nullable=False),
-        sa.Column(
-            "role",
-            sa.Enum("user", "admin", name="userrole", create_type=False),
-            nullable=False,
-            server_default="user",
-        ),
+        sa.Column("role", userrole_enum, nullable=False, server_default="user"),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column(
             "created_at",
@@ -58,4 +57,4 @@ def downgrade() -> None:
     op.drop_index("ix_users_email", table_name="users")
     op.drop_index("ix_users_azure_id", table_name="users")
     op.drop_table("users")
-    op.execute("DROP TYPE userrole")
+    userrole_enum.drop(op.get_bind(), checkfirst=True)

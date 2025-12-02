@@ -112,3 +112,39 @@ def get_storage() -> StorageBackend:
     if _storage is None:
         _storage = LocalStorageBackend()
     return _storage
+
+
+class StorageService:
+    """High-level storage service for document management."""
+
+    def __init__(self) -> None:
+        self._backend = get_storage()
+
+    async def save(
+        self,
+        content: bytes,
+        filename: str,
+        project_id: str,
+    ) -> str:
+        """Save file content and return storage path."""
+        import io
+        file_obj = io.BytesIO(content)
+        return await self._backend.save(file_obj, filename, UUID(project_id))
+
+    async def read(self, path: str) -> bytes:
+        """Read file contents."""
+        return await self._backend.read(path)
+
+    async def delete(self, path: str) -> None:
+        """Delete a file."""
+        await self._backend.delete(path)
+
+    async def exists(self, path: str) -> bool:
+        """Check if file exists."""
+        return await self._backend.exists(path)
+
+    def get_path(self, relative_path: str) -> str:
+        """Get absolute path for a stored file."""
+        if isinstance(self._backend, LocalStorageBackend):
+            return str(self._backend.get_absolute_path(relative_path))
+        return relative_path
