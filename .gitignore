@@ -1,12 +1,118 @@
-# Environment variables
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env.local
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# ============================================
+# Node.js / JavaScript / TypeScript
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# ============================================
+# Environment & Secrets
+# ============================================
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets/
 
-# Large audio files
+# ============================================
+# IDE & Editors
+# ============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================
+# Project-specific
+# ============================================
+# Document uploads
+uploads/
+!uploads/.gitkeep
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Audio (legacy)
 *.m4a
-
-# Audio cache and chunks
 audio_cache/
 audio_chunks/
 
-# Claude agent folder (may contain credentials)
+# Claude agent folder
 .claude/
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Test artifacts
+playwright-report/
+test-results/

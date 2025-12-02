@@ -1,0 +1,31 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+
+# IDE
+.idea
+.vscode
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Tests
+tests/
+
+# Docker
+Dockerfile
+.dockerignore

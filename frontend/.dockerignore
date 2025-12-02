@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Dependencies
+node_modules
+
+# Build output
+dist
+build
+
+# IDE
+.idea
+.vscode
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Tests
+coverage
+playwright-report
+test-results
+
+# Docker
+Dockerfile
+.dockerignore

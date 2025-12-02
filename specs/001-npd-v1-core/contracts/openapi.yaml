@@ -1,0 +1,1844 @@
+openapi: 3.1.0
+info:
+  title: Novus Project Database API
+  description: |
+    Internal REST API for the Novus Project Database (NPD) v1.
+    Provides project management, document storage, search, and RAG-assisted import capabilities.
+  version: 1.0.0
+  contact:
+    name: NPD Development Team
+
+servers:
+  - url: /api/v1
+    description: API base path
+
+tags:
+  - name: auth
+    description: Authentication endpoints
+  - name: projects
+    description: Project CRUD operations
+  - name: organizations
+    description: Organization management
+  - name: contacts
+    description: Contact management
+  - name: documents
+    description: Document upload and management
+  - name: tags
+    description: Tag management
+  - name: search
+    description: Search and saved searches
+  - name: admin
+    description: Admin-only operations
+  - name: import
+    description: Bulk import operations
+
+paths:
+  # ============================================================
+  # Authentication
+  # ============================================================
+  /auth/login:
+    get:
+      tags: [auth]
+      summary: Initiate Azure AD SSO login
+      description: Redirects to Azure AD for authentication
+      operationId: login
+      responses:
+        '302':
+          description: Redirect to Azure AD
+
+  /auth/callback:
+    get:
+      tags: [auth]
+      summary: Azure AD OAuth callback
+      description: Handles Azure AD redirect after authentication
+      operationId: authCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to application with session cookie
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Log out current user
+      operationId: logout
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Successfully logged out
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user info
+      operationId: getCurrentUser
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Current user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================
+  # Projects
+  # ============================================================
+  /projects:
+    get:
+      tags: [projects]
+      summary: List projects
+      description: Returns paginated list of projects with optional filters
+      operationId: listProjects
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ProjectStatus'
+        - name: organization_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: owner_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [name, start_date, updated_at]
+            default: updated_at
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Paginated project list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [projects]
+      summary: Create a new project
+      operationId: createProject
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /projects/{project_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectIdParam'
+
+    get:
+      tags: [projects]
+      summary: Get project details
+      operationId: getProject
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [projects]
+      summary: Update a project
+      operationId: updateProject
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [projects]
+      summary: Archive/delete a project
+      operationId: deleteProject
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Project archived successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # Organizations
+  # ============================================================
+  /organizations:
+    get:
+      tags: [organizations]
+      summary: List organizations
+      operationId: listOrganizations
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          description: Search by name or alias
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organization list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [organizations]
+      summary: Create an organization
+      operationId: createOrganization
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /organizations/{organization_id}:
+    parameters:
+      - name: organization_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [organizations]
+      summary: Get organization details
+      operationId: getOrganization
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Organization details with project count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [organizations]
+      summary: Update an organization
+      operationId: updateOrganization
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationUpdate'
+      responses:
+        '200':
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # Contacts
+  # ============================================================
+  /contacts:
+    get:
+      tags: [contacts]
+      summary: List contacts
+      operationId: listContacts
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: organization_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          description: Search by name or email
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Contact list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [contacts]
+      summary: Create a contact
+      operationId: createContact
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactCreate'
+      responses:
+        '201':
+          description: Contact created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /contacts/{contact_id}:
+    parameters:
+      - name: contact_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [contacts]
+      summary: Get contact details with related projects
+      operationId: getContact
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Contact details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [contacts]
+      summary: Update a contact
+      operationId: updateContact
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactUpdate'
+      responses:
+        '200':
+          description: Contact updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # Documents
+  # ============================================================
+  /projects/{project_id}/documents:
+    parameters:
+      - $ref: '#/components/parameters/ProjectIdParam'
+
+    get:
+      tags: [documents]
+      summary: List documents for a project
+      operationId: listProjectDocuments
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [documents]
+      summary: Upload documents to a project
+      description: Supports multiple file upload via multipart/form-data
+      operationId: uploadDocuments
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Files to upload (max 50MB each)
+              required:
+                - files
+      responses:
+        '201':
+          description: Documents uploaded and processing started
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+        '400':
+          description: Invalid file type or size exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /documents/{document_id}:
+    parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [documents]
+      summary: Download a document
+      operationId: downloadDocument
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Document file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [documents]
+      summary: Delete a document
+      operationId: deleteDocument
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Document deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # Tags
+  # ============================================================
+  /tags:
+    get:
+      tags: [tags]
+      summary: List all tags
+      operationId: listTags
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/TagType'
+        - name: search
+          in: query
+          description: Search by tag name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tag list grouped by type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [tags]
+      summary: Create a freeform tag
+      operationId: createTag
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagCreate'
+      responses:
+        '201':
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tags/suggest:
+    get:
+      tags: [tags]
+      summary: Get tag suggestions based on input
+      description: Returns similar existing tags to reduce duplicates
+      operationId: suggestTags
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        '200':
+          description: Suggested tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================
+  # Search
+  # ============================================================
+  /search:
+    get:
+      tags: [search]
+      summary: Search projects and documents
+      description: Hybrid search using keyword matching and semantic similarity
+      operationId: search
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Search query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: organization_id
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: owner_id
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: status
+          in: query
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ProjectStatus'
+        - name: technology
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: domain
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: test_type
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: tag_id
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: start_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: start_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [relevance, recency]
+            default: relevance
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /saved-searches:
+    get:
+      tags: [search]
+      summary: List saved searches
+      description: Returns user's personal and global saved searches
+      operationId: listSavedSearches
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Saved search list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  personal:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SavedSearch'
+                  global:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SavedSearch'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [search]
+      summary: Save a search
+      operationId: createSavedSearch
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedSearchCreate'
+      responses:
+        '201':
+          description: Search saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedSearch'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /saved-searches/{saved_search_id}:
+    parameters:
+      - name: saved_search_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      tags: [search]
+      summary: Delete a saved search
+      operationId: deleteSavedSearch
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Saved search deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Cannot delete another user's search
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # Import
+  # ============================================================
+  /import/upload:
+    post:
+      tags: [import]
+      summary: Upload CSV and documents for bulk import
+      operationId: uploadImport
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                csv:
+                  type: string
+                  format: binary
+                  description: CSV file with project data
+                documents:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Document files referenced in CSV
+              required:
+                - csv
+      responses:
+        '200':
+          description: Import preview with suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPreview'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /import/commit:
+    post:
+      tags: [import]
+      summary: Commit reviewed import
+      operationId: commitImport
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportCommit'
+      responses:
+        '201':
+          description: Import completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /projects/{project_id}/autofill:
+    parameters:
+      - $ref: '#/components/parameters/ProjectIdParam'
+
+    post:
+      tags: [import]
+      summary: Auto-fill project fields from documents
+      description: Uses RAG to suggest field values based on attached documents
+      operationId: autofillProject
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Suggested field values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutofillSuggestions'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # Admin
+  # ============================================================
+  /admin/tags:
+    post:
+      tags: [admin]
+      summary: Create a structured tag (admin only)
+      operationId: createStructuredTag
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StructuredTagCreate'
+      responses:
+        '201':
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Admin role required
+
+  /admin/saved-searches/{saved_search_id}/global:
+    parameters:
+      - name: saved_search_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    put:
+      tags: [admin]
+      summary: Toggle global visibility of a saved search
+      operationId: toggleGlobalSearch
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_global:
+                  type: boolean
+              required:
+                - is_global
+      responses:
+        '200':
+          description: Global status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedSearch'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Admin role required
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/overview:
+    get:
+      tags: [admin]
+      summary: Get system overview statistics
+      operationId: getOverview
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: System overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Overview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================
+  # Export
+  # ============================================================
+  /export/projects:
+    get:
+      tags: [projects]
+      summary: Export projects to CSV
+      operationId: exportProjects
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: project_ids
+          in: query
+          description: Specific project IDs to export (if not provided, uses current search/filter)
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+# ============================================================
+# Components
+# ============================================================
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    ProjectIdParam:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+  schemas:
+    # --- Enums ---
+    ProjectStatus:
+      type: string
+      enum: [approved, active, on_hold, completed, cancelled]
+
+    TagType:
+      type: string
+      enum: [technology, domain, test_type, freeform]
+
+    UserRole:
+      type: string
+      enum: [user, admin]
+
+    # --- Core Entities ---
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+      required: [id, email, display_name, role]
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, name]
+
+    OrganizationCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        aliases:
+          type: array
+          items:
+            type: string
+      required: [name]
+
+    OrganizationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        aliases:
+          type: array
+          items:
+            type: string
+
+    OrganizationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Organization'
+        - type: object
+          properties:
+            project_count:
+              type: integer
+            contacts:
+              type: array
+              items:
+                $ref: '#/components/schemas/Contact'
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        organization_id:
+          type: string
+          format: uuid
+        organization:
+          $ref: '#/components/schemas/Organization'
+        role_title:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+        monday_url:
+          type: string
+          format: uri
+      required: [id, name, email, organization_id]
+
+    ContactCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+        organization_id:
+          type: string
+          format: uuid
+        role_title:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+      required: [name, email, organization_id]
+
+    ContactUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+        role_title:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+
+    ContactDetail:
+      allOf:
+        - $ref: '#/components/schemas/Contact'
+        - type: object
+          properties:
+            projects:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProjectSummary'
+
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/TagType'
+      required: [id, name, type]
+
+    TagCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+      required: [name]
+
+    StructuredTagCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          type: string
+          enum: [technology, domain, test_type]
+      required: [name, type]
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        mime_type:
+          type: string
+        file_size:
+          type: integer
+          description: Size in bytes
+        uploaded_by:
+          $ref: '#/components/schemas/User'
+        uploaded_at:
+          type: string
+          format: date-time
+      required: [id, project_id, display_name, mime_type, file_size]
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        organization:
+          $ref: '#/components/schemas/Organization'
+        owner:
+          $ref: '#/components/schemas/User'
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        location:
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, name, organization, owner, description, status, start_date, location, tags]
+
+    ProjectSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        organization_name:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        start_date:
+          type: string
+          format: date
+      required: [id, name, organization_name, status, start_date]
+
+    ProjectDetail:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            contacts:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/Contact'
+                  - type: object
+                    properties:
+                      is_primary:
+                        type: boolean
+            documents:
+              type: array
+              items:
+                $ref: '#/components/schemas/Document'
+            billing_amount:
+              type: number
+              format: decimal
+            invoice_count:
+              type: integer
+            billing_recipient:
+              type: string
+            billing_notes:
+              type: string
+            pm_notes:
+              type: string
+            monday_url:
+              type: string
+              format: uri
+            jira_url:
+              type: string
+              format: uri
+            gitlab_url:
+              type: string
+              format: uri
+            created_by:
+              $ref: '#/components/schemas/User'
+            updated_by:
+              $ref: '#/components/schemas/User'
+
+    ProjectCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        organization_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        location:
+          type: string
+          minLength: 1
+          maxLength: 255
+        contact_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+        primary_contact_id:
+          type: string
+          format: uuid
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+        billing_amount:
+          type: number
+          format: decimal
+        invoice_count:
+          type: integer
+        billing_recipient:
+          type: string
+        billing_notes:
+          type: string
+        pm_notes:
+          type: string
+        monday_url:
+          type: string
+          format: uri
+        jira_url:
+          type: string
+          format: uri
+        gitlab_url:
+          type: string
+          format: uri
+      required:
+        - name
+        - organization_id
+        - description
+        - status
+        - start_date
+        - location
+        - contact_ids
+        - primary_contact_id
+        - tag_ids
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        organization_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        location:
+          type: string
+        contact_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        primary_contact_id:
+          type: string
+          format: uuid
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+        billing_amount:
+          type: number
+          format: decimal
+        invoice_count:
+          type: integer
+        billing_recipient:
+          type: string
+        billing_notes:
+          type: string
+        pm_notes:
+          type: string
+        monday_url:
+          type: string
+          format: uri
+        jira_url:
+          type: string
+          format: uri
+        gitlab_url:
+          type: string
+          format: uri
+
+    SavedSearch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        query:
+          type: string
+        filters:
+          type: object
+        user:
+          $ref: '#/components/schemas/User'
+        is_global:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+      required: [id, name, filters, is_global]
+
+    SavedSearchCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        query:
+          type: string
+        filters:
+          type: object
+          properties:
+            organization_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+            owner_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+            statuses:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProjectStatus'
+            tag_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+            start_date_from:
+              type: string
+              format: date
+            start_date_to:
+              type: string
+              format: date
+      required: [name, filters]
+
+    # --- List Responses ---
+    ProjectListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        pages:
+          type: integer
+      required: [items, total, page, page_size, pages]
+
+    OrganizationListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+      required: [items, total, page, page_size]
+
+    ContactListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contact'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+      required: [items, total, page, page_size]
+
+    TagListResponse:
+      type: object
+      properties:
+        technology:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        domain:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        test_type:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        freeform:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+
+    # --- Search ---
+    SearchResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        query:
+          type: string
+      required: [items, total, page, page_size]
+
+    SearchResult:
+      type: object
+      properties:
+        project:
+          $ref: '#/components/schemas/ProjectSummary'
+        snippet:
+          type: string
+          description: Matching content snippet
+        score:
+          type: number
+          description: Relevance score
+        match_source:
+          type: string
+          enum: [project, document]
+          description: Where the match was found
+      required: [project, score, match_source]
+
+    # --- Import ---
+    ImportPreview:
+      type: object
+      properties:
+        import_id:
+          type: string
+          format: uuid
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportProjectPreview'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportError'
+
+    ImportProjectPreview:
+      type: object
+      properties:
+        row_number:
+          type: integer
+        suggested:
+          type: object
+          properties:
+            name:
+              type: string
+            organization_name:
+              type: string
+            description:
+              type: string
+            tags:
+              type: array
+              items:
+                type: string
+            contacts:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  email:
+                    type: string
+        documents:
+          type: array
+          items:
+            type: string
+
+    ImportError:
+      type: object
+      properties:
+        row_number:
+          type: integer
+        field:
+          type: string
+        message:
+          type: string
+
+    ImportCommit:
+      type: object
+      properties:
+        import_id:
+          type: string
+          format: uuid
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              row_number:
+                type: integer
+              accepted:
+                type: boolean
+              overrides:
+                $ref: '#/components/schemas/ProjectCreate'
+      required: [import_id, projects]
+
+    ImportResult:
+      type: object
+      properties:
+        created_count:
+          type: integer
+        skipped_count:
+          type: integer
+        project_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    AutofillSuggestions:
+      type: object
+      properties:
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        contacts:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              email:
+                type: string
+
+    # --- Overview ---
+    Overview:
+      type: object
+      properties:
+        projects_by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        recent_projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectSummary'
+        top_clients:
+          type: array
+          items:
+            type: object
+            properties:
+              organization:
+                $ref: '#/components/schemas/Organization'
+              project_count:
+                type: integer
+        total_projects:
+          type: integer
+        total_documents:
+          type: integer
+
+    # --- Errors ---
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required: [error, message]
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          default: validation_error
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+      required: [error, message]

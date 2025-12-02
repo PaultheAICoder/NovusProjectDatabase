@@ -149,7 +149,7 @@ A program manager needs to create a report of all Bluetooth projects for leaders
 - What happens when a user tries to create a project with a duplicate name for the same client? System should warn but allow (projects can share names).
 - What happens when search returns no results? Display helpful message with suggestions to broaden search.
 - What happens when bulk import CSV has malformed data? System should report which rows failed and why, allowing partial import of valid rows.
-- What happens when a document exceeds size limits? System should reject with clear message about maximum file size.
+- What happens when a document exceeds size limits? System should reject files over 50 MB with clear error message.
 
 ## Requirements *(mandatory)*
 
@@ -175,7 +175,7 @@ A program manager needs to create a report of all Bluetooth projects for leaders
 - **FR-013**: Contact pages MUST show all related projects
 
 **Documents**
-- **FR-014**: System MUST support PDF, DOC/DOCX, XLS/XLSX file uploads
+- **FR-014**: System MUST support PDF, DOC/DOCX, XLS/XLSX file uploads (max 50 MB per file)
 - **FR-015**: System MUST store files locally on the NPD server
 - **FR-016**: System MUST extract text from supported document types for indexing
 - **FR-017**: Users MUST be able to attach multiple documents to a project
@@ -251,6 +251,12 @@ A program manager needs to create a report of all Bluetooth projects for leaders
 **Quality**
 - **SC-010**: System is stable enough to demo to ETS/Omnia as potential shared solution
 - **SC-011**: Zero data loss incidents in first 6 months
+
+## Clarifications
+
+### Session 2025-12-01
+
+- Q: What is the maximum file size for uploaded documents? → A: 50 MB per file
 
 ## Assumptions
 
