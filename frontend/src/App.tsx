@@ -12,6 +12,7 @@ import {
   ProjectsPage,
   ProjectDetailPage,
   ProjectFormPage,
+  SearchPage,
 } from "@/pages";
 
 /**
@@ -164,7 +165,7 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <PlaceholderPage title="Search" />
+              <SearchPage />
             </MainLayout>
           </ProtectedRoute>
         }

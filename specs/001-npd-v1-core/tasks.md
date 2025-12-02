@@ -135,20 +135,20 @@
 
 ### Backend for User Story 2
 
-- [ ] T068 [US2] Create full-text search index on Project fields in new migration
-- [ ] T069 [US2] Implement SearchService with PostgreSQL ts_vector in backend/app/services/search_service.py
-- [ ] T070 [US2] Create search Pydantic schemas (request, response) in backend/app/schemas/search.py
-- [ ] T071 [US2] Implement search endpoint with filters in backend/app/api/search.py
-- [ ] T072 [US2] Add sorting by relevance and recency in search_service.py
+- [x] T068 [US2] Create full-text search index on Project fields in new migration
+- [x] T069 [US2] Implement SearchService with PostgreSQL ts_vector in backend/app/services/search_service.py
+- [x] T070 [US2] Create search Pydantic schemas (request, response) in backend/app/schemas/search.py
+- [x] T071 [US2] Implement search endpoint with filters in backend/app/api/search.py
+- [x] T072 [US2] Add sorting by relevance and recency in search_service.py
 
 ### Frontend for User Story 2
 
-- [ ] T073 [P] [US2] Create SearchResult TypeScript types in frontend/src/types/search.ts
-- [ ] T074 [US2] Create useSearch hook with TanStack Query in frontend/src/hooks/useSearch.ts
-- [ ] T075 [US2] Create SearchFilters component in frontend/src/components/forms/SearchFilters.tsx
-- [ ] T076 [US2] Create SearchResults component in frontend/src/components/tables/SearchResults.tsx
-- [ ] T077 [US2] Create Search page with search bar and filters in frontend/src/pages/Search.tsx
-- [ ] T078 [US2] Add search page route in frontend/src/App.tsx
+- [x] T073 [P] [US2] Create SearchResult TypeScript types in frontend/src/types/search.ts
+- [x] T074 [US2] Create useSearch hook with TanStack Query in frontend/src/hooks/useSearch.ts
+- [x] T075 [US2] Create SearchFilters component in frontend/src/components/forms/SearchFilters.tsx
+- [x] T076 [US2] Create SearchResults component in frontend/src/components/tables/SearchResults.tsx
+- [x] T077 [US2] Create Search page with search bar and filters in frontend/src/pages/SearchPage.tsx
+- [x] T078 [US2] Add search page route in frontend/src/App.tsx
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work - projects can be created and searched
 
