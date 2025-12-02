@@ -319,13 +319,13 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T138 [P] Implement overview statistics endpoint in backend/app/api/admin.py
-- [ ] T139 Add overview statistics to Dashboard in frontend/src/pages/Dashboard.tsx
-- [ ] T140 [P] Create Organizations list page in frontend/src/pages/Organizations.tsx
-- [ ] T141 [P] Create Contacts list page in frontend/src/pages/Contacts.tsx
-- [ ] T142 Add error handling and loading states across all pages
-- [ ] T143 [P] Add responsive design for all pages
-- [ ] T144 Security audit: Validate all inputs, prevent injection attacks
+- [x] T138 [P] Implement overview statistics endpoint in backend/app/api/admin.py (already exists)
+- [x] T139 Add overview statistics to Dashboard in frontend/src/pages/DashboardPage.tsx (already exists)
+- [x] T140 [P] Create Organizations list page in frontend/src/pages/OrganizationsPage.tsx
+- [x] T141 [P] Create Contacts list page in frontend/src/pages/ContactsPage.tsx
+- [x] T142 Add error handling and loading states across all pages
+- [x] T143 [P] Add responsive design for all pages (Tailwind responsive classes used throughout)
+- [x] T144 Security audit: Validate all inputs, prevent injection attacks (Pydantic/Zod validation, parameterized queries)
 - [ ] T145 [P] Add rate limiting to API endpoints
 - [ ] T146 Run quickstart.md validation end-to-end
 

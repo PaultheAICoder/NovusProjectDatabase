@@ -15,6 +15,8 @@ import {
   SearchPage,
   AdminPage,
   ImportPage,
+  OrganizationsPage,
+  ContactsPage,
 } from "@/pages";
 
 /**
@@ -147,7 +149,7 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <PlaceholderPage title="Organizations" />
+              <OrganizationsPage />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -157,7 +159,7 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <PlaceholderPage title="Contacts" />
+              <ContactsPage />
             </MainLayout>
           </ProtectedRoute>
         }

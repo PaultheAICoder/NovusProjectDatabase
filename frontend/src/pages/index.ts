@@ -9,3 +9,5 @@ export { ProjectFormPage } from "./ProjectFormPage";
 export { SearchPage } from "./SearchPage";
 export { AdminPage } from "./AdminPage";
 export { ImportPage } from "./ImportPage";
+export { OrganizationsPage } from "./OrganizationsPage";
+export { ContactsPage } from "./ContactsPage";
