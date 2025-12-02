@@ -11,12 +11,14 @@ from app.models import Tag, TagType
 from app.models.document import Document
 from app.models.organization import Organization
 from app.models.project import Project, ProjectStatus
+from app.models.saved_search import SavedSearch
 from app.models.user import User
 from app.schemas.import_ import (
     ImportCommitRequest,
     ImportCommitResponse,
     ImportPreviewResponse,
 )
+from app.schemas.search import SavedSearchResponse
 from app.schemas.tag import (
     PopularTagResponse,
     StructuredTagCreate,
@@ -318,3 +320,34 @@ async def commit_import(
         failed=failed,
         results=results,
     )
+
+
+# ============== Saved Searches (Admin Only) ==============
+
+
+@router.patch("/saved-searches/{search_id}/toggle-global", response_model=SavedSearchResponse)
+async def toggle_saved_search_global(
+    search_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> SavedSearchResponse:
+    """
+    Toggle a saved search between private and global. Admin only.
+
+    Global searches are visible to all users.
+    """
+    result = await db.execute(
+        select(SavedSearch).where(SavedSearch.id == search_id)
+    )
+    saved_search = result.scalar_one_or_none()
+
+    if not saved_search:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Saved search not found",
+        )
+
+    saved_search.is_global = not saved_search.is_global
+    await db.flush()
+
+    return SavedSearchResponse.model_validate(saved_search)

@@ -260,19 +260,19 @@
 
 ### Backend for User Story 6
 
-- [ ] T120 [US6] Create SavedSearch model in backend/app/models/saved_search.py
-- [ ] T121 [US6] Create Alembic migration 010_create_saved_searches.py
-- [ ] T122 [P] [US6] Create SavedSearch Pydantic schemas in backend/app/schemas/search.py
-- [ ] T123 [US6] Implement saved search CRUD endpoints in backend/app/api/search.py
-- [ ] T124 [US6] Implement admin toggle global endpoint in backend/app/api/admin.py
+- [x] T120 [US6] Create SavedSearch model in backend/app/models/saved_search.py
+- [x] T121 [US6] Create Alembic migration 011_create_saved_searches.py
+- [x] T122 [P] [US6] Create SavedSearch Pydantic schemas in backend/app/schemas/search.py
+- [x] T123 [US6] Implement saved search CRUD endpoints in backend/app/api/search.py
+- [x] T124 [US6] Implement admin toggle global endpoint in backend/app/api/admin.py
 
 ### Frontend for User Story 6
 
-- [ ] T125 [P] [US6] Create SavedSearch TypeScript types in frontend/src/types/search.ts
-- [ ] T126 [US6] Create useSavedSearches hook in frontend/src/hooks/useSavedSearches.ts
-- [ ] T127 [US6] Create SavedSearchList component in frontend/src/components/SavedSearchList.tsx
-- [ ] T128 [US6] Add save search button to Search page in Search.tsx
-- [ ] T129 [US6] Add saved search sidebar/dropdown in Search.tsx
+- [x] T125 [P] [US6] Create SavedSearch TypeScript types in frontend/src/types/search.ts
+- [x] T126 [US6] Create useSavedSearches hook in frontend/src/hooks/useSavedSearches.ts
+- [x] T127 [US6] Create SavedSearchList component in frontend/src/components/SavedSearchList.tsx
+- [x] T128 [US6] Add save search button to Search page in SearchPage.tsx
+- [x] T129 [US6] Add saved search sidebar/dropdown in SearchPage.tsx
 
 **Checkpoint**: Searches can be saved, loaded, and shared globally by admins
 

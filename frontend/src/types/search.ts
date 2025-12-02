@@ -34,3 +34,45 @@ export interface SearchSuggestion {
 export interface SearchSuggestionsResponse {
   suggestions: SearchSuggestion[];
 }
+
+// Saved Searches
+
+export interface SavedSearchFilters {
+  status?: string[];
+  organization_id?: string;
+  tag_ids?: string[];
+  owner_id?: string;
+  sort_by?: string;
+  sort_order?: string;
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  description?: string;
+  query?: string;
+  filters: SavedSearchFilters;
+  is_global: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedSearchCreate {
+  name: string;
+  description?: string;
+  query?: string;
+  filters: SavedSearchFilters;
+}
+
+export interface SavedSearchUpdate {
+  name?: string;
+  description?: string;
+  query?: string;
+  filters?: SavedSearchFilters;
+}
+
+export interface SavedSearchListResponse {
+  my_searches: SavedSearch[];
+  global_searches: SavedSearch[];
+}
