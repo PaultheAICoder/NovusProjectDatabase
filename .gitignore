@@ -1,0 +1,5 @@
+# Environment variables
+.env
+
+# Large audio files
+*.m4a
