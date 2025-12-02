@@ -3,3 +3,7 @@
 
 # Large audio files
 *.m4a
+
+# Audio cache and chunks
+audio_cache/
+audio_chunks/
