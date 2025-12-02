@@ -13,6 +13,7 @@ import {
   ProjectDetailPage,
   ProjectFormPage,
   SearchPage,
+  AdminPage,
 } from "@/pages";
 
 /**
@@ -185,7 +186,7 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <PlaceholderPage title="Admin" />
+              <AdminPage />
             </MainLayout>
           </ProtectedRoute>
         }

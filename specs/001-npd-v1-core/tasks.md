@@ -186,8 +186,8 @@
 
 ### Backend Search Update for User Story 3
 
-- [ ] T094 [US3] Update SearchService to include document content search in search_service.py
-- [ ] T095 [US3] Implement hybrid search (ts_vector + pgvector + RRF fusion) in search_service.py
+- [x] T094 [US3] Update SearchService to include document content search in search_service.py
+- [x] T095 [US3] Implement hybrid search (ts_vector + pgvector + RRF fusion) in search_service.py
 
 ### Frontend for User Story 3
 
@@ -209,16 +209,16 @@
 
 ### Backend for User Story 4
 
-- [ ] T101 [US4] Implement tag suggestion endpoint with fuzzy matching in backend/app/api/tags.py
-- [ ] T102 [US4] Implement TagSuggester service for deduplication in backend/app/services/tag_suggester.py
-- [ ] T103 [US4] Add structured tag management endpoints for admins in backend/app/api/admin.py
+- [x] T101 [US4] Implement tag suggestion endpoint with fuzzy matching in backend/app/api/tags.py
+- [x] T102 [US4] Implement TagSuggester service for deduplication in backend/app/services/tag_suggester.py
+- [x] T103 [US4] Add structured tag management endpoints for admins in backend/app/api/admin.py
 
 ### Frontend for User Story 4
 
-- [ ] T104 [US4] Create TagSelector component with autocomplete in frontend/src/components/forms/TagSelector.tsx
-- [ ] T105 [US4] Add tag suggestion "Did you mean?" UI in TagSelector.tsx
-- [ ] T106 [US4] Update SearchFilters to include tag filtering in SearchFilters.tsx
-- [ ] T107 [US4] Create Tags management page for admins in frontend/src/pages/Admin.tsx
+- [x] T104 [US4] Create TagSelector component with autocomplete in frontend/src/components/forms/TagSelector.tsx
+- [x] T105 [US4] Add tag suggestion "Did you mean?" UI in TagSelector.tsx
+- [x] T106 [US4] Update SearchFilters to include tag filtering in SearchFilters.tsx
+- [x] T107 [US4] Create Tags management page for admins in frontend/src/pages/Admin.tsx
 
 **Checkpoint**: Projects can be classified with tags and filtered by tags in search
 

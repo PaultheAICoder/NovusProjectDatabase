@@ -9,11 +9,15 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import AdminUser, CurrentUser, DbSession
 from app.models import Tag, TagType
 from app.schemas.tag import (
+    PopularTagResponse,
     StructuredTagCreate,
     TagCreate,
     TagListResponse,
     TagResponse,
+    TagSuggestion,
+    TagSuggestionsResponse,
 )
+from app.services.tag_suggester import TagSuggester
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -60,6 +64,16 @@ async def create_freeform_tag(
     current_user: CurrentUser,
 ) -> TagResponse:
     """Create a freeform tag (any user can create)."""
+    # Check for duplicates using TagSuggester
+    suggester = TagSuggester(db)
+    duplicate = await suggester.check_duplicate(data.name, TagType.FREEFORM)
+
+    if duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A similar tag '{duplicate.name}' already exists",
+        )
+
     tag = Tag(
         name=data.name,
         type=TagType.FREEFORM,
@@ -78,19 +92,77 @@ async def create_freeform_tag(
     return TagResponse.model_validate(tag)
 
 
-@router.get("/suggest")
+@router.get("/suggest", response_model=TagSuggestionsResponse)
 async def suggest_tags(
-    query: str = Query(..., min_length=2),
+    query: str = Query(..., min_length=2, description="Search query for tag names"),
+    type: TagType | None = Query(default=None, description="Filter by tag type"),
+    include_fuzzy: bool = Query(
+        default=True, description="Include fuzzy matches with suggestions"
+    ),
+    limit: int = Query(default=10, ge=1, le=50),
     db: DbSession = None,
     current_user: CurrentUser = None,
-) -> list[TagResponse]:
-    """Suggest existing tags based on partial input (fuzzy matching)."""
-    # Simple prefix/contains matching for v1
-    search_query = select(Tag).where(
-        Tag.name.ilike(f"%{query}%")
-    ).order_by(Tag.name).limit(10)
+) -> TagSuggestionsResponse:
+    """
+    Suggest existing tags based on partial input with fuzzy matching.
 
-    result = await db.execute(search_query)
-    tags = result.scalars().all()
+    Returns tags ordered by relevance with optional "Did you mean X?" hints
+    for fuzzy matches (helps catch typos).
+    """
+    suggester = TagSuggester(db)
+    results = await suggester.suggest_tags(
+        query=query,
+        tag_type=type,
+        limit=limit,
+        include_fuzzy=include_fuzzy,
+    )
 
-    return [TagResponse.model_validate(tag) for tag in tags]
+    suggestions = [
+        TagSuggestion(
+            tag=TagResponse.model_validate(tag),
+            score=score,
+            suggestion=hint,
+        )
+        for tag, score, hint in results
+    ]
+
+    return TagSuggestionsResponse(suggestions=suggestions)
+
+
+@router.get("/popular", response_model=list[PopularTagResponse])
+async def get_popular_tags(
+    type: TagType | None = Query(default=None, description="Filter by tag type"),
+    limit: int = Query(default=10, ge=1, le=50),
+    db: DbSession = None,
+    current_user: CurrentUser = None,
+) -> list[PopularTagResponse]:
+    """Get the most frequently used tags."""
+    suggester = TagSuggester(db)
+    results = await suggester.get_popular_tags(tag_type=type, limit=limit)
+
+    return [
+        PopularTagResponse(
+            tag=TagResponse.model_validate(tag),
+            usage_count=count,
+        )
+        for tag, count in results
+    ]
+
+
+@router.get("/{tag_id}", response_model=TagResponse)
+async def get_tag(
+    tag_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> TagResponse:
+    """Get a single tag by ID."""
+    result = await db.execute(select(Tag).where(Tag.id == tag_id))
+    tag = result.scalar_one_or_none()
+
+    if not tag:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tag not found",
+        )
+
+    return TagResponse.model_validate(tag)

@@ -49,3 +49,47 @@ class TagListResponse(BaseModel):
     domain: list[TagResponse] = []
     test_type: list[TagResponse] = []
     freeform: list[TagResponse] = []
+
+
+class TagSuggestion(BaseModel):
+    """Tag suggestion with similarity info."""
+
+    tag: TagResponse
+    score: float = Field(..., description="Similarity score (0-1)")
+    suggestion: str | None = Field(
+        default=None, description="Suggestion hint like 'Did you mean X?'"
+    )
+
+
+class TagSuggestionsResponse(BaseModel):
+    """Response for tag suggestions."""
+
+    suggestions: list[TagSuggestion]
+
+
+class TagUpdate(BaseModel):
+    """Schema for updating a tag (admin only)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    type: TagType | None = Field(default=None)
+
+
+class TagMergeRequest(BaseModel):
+    """Request to merge one tag into another."""
+
+    source_tag_id: UUID = Field(..., description="Tag to merge from (will be deleted)")
+    target_tag_id: UUID = Field(..., description="Tag to merge into (will be kept)")
+
+
+class TagMergeResponse(BaseModel):
+    """Response for tag merge operation."""
+
+    merged_count: int = Field(..., description="Number of projects updated")
+    target_tag: TagResponse
+
+
+class PopularTagResponse(BaseModel):
+    """Response for popular tags."""
+
+    tag: TagResponse
+    usage_count: int

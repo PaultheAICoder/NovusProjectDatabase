@@ -4,7 +4,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Tag, TagCreate, TagListResponse, TagType } from "@/types/tag";
+import type {
+  PopularTag,
+  StructuredTagCreate,
+  Tag,
+  TagCreate,
+  TagListResponse,
+  TagMergeRequest,
+  TagMergeResponse,
+  TagSuggestionsResponse,
+  TagType,
+  TagUpdate,
+} from "@/types/tag";
 
 interface UseTagsParams {
   type?: TagType;
@@ -25,11 +36,41 @@ export function useTags({ type, search }: UseTagsParams = {}) {
   });
 }
 
-export function useTagSuggestions(query: string) {
+interface UseTagSuggestionsParams {
+  query: string;
+  type?: TagType;
+  includeFuzzy?: boolean;
+  limit?: number;
+}
+
+export function useTagSuggestions({
+  query,
+  type,
+  includeFuzzy = true,
+  limit = 10,
+}: UseTagSuggestionsParams) {
+  const params = new URLSearchParams();
+  params.append("query", query);
+  if (type) params.append("type", type);
+  params.append("include_fuzzy", String(includeFuzzy));
+  params.append("limit", String(limit));
+
   return useQuery({
-    queryKey: ["tags", "suggest", query],
-    queryFn: () => api.get<Tag[]>(`/tags/suggest?query=${encodeURIComponent(query)}`),
+    queryKey: ["tags", "suggest", { query, type, includeFuzzy, limit }],
+    queryFn: () =>
+      api.get<TagSuggestionsResponse>(`/tags/suggest?${params.toString()}`),
     enabled: query.length >= 2,
+  });
+}
+
+export function usePopularTags(type?: TagType, limit = 10) {
+  const params = new URLSearchParams();
+  if (type) params.append("type", type);
+  params.append("limit", String(limit));
+
+  return useQuery({
+    queryKey: ["tags", "popular", { type, limit }],
+    queryFn: () => api.get<PopularTag[]>(`/tags/popular?${params.toString()}`),
   });
 }
 
@@ -38,6 +79,54 @@ export function useCreateTag() {
 
   return useMutation({
     mutationFn: (data: TagCreate) => api.post<Tag>("/tags", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+    },
+  });
+}
+
+// Admin hooks
+
+export function useCreateStructuredTag() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: StructuredTagCreate) => api.post<Tag>("/admin/tags", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+    },
+  });
+}
+
+export function useUpdateTag() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: TagUpdate }) =>
+      api.patch<Tag>(`/admin/tags/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+    },
+  });
+}
+
+export function useDeleteTag() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/tags/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+    },
+  });
+}
+
+export function useMergeTags() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: TagMergeRequest) =>
+      api.post<TagMergeResponse>("/admin/tags/merge", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tags"] });
     },

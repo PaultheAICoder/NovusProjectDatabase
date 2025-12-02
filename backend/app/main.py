@@ -6,7 +6,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, contacts, documents, organizations, projects, search, tags
+from app.api import admin, auth, contacts, documents, organizations, projects, search, tags
 from app.config import get_settings
 from app.core.auth import azure_scheme
 
@@ -53,6 +53,7 @@ app.include_router(tags.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 
 @app.get("/health")
