@@ -49,19 +49,19 @@ docker compose up -d
 docker compose logs -f
 
 # Access the application
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
+# Frontend: http://localhost:6700
+# Backend API: http://localhost:6701
+# API Docs: http://localhost:6701/docs
 ```
 
 ### Services Started
 
 | Service | Port | Description |
 |---------|------|-------------|
-| `frontend` | 3000 | Vite React development server |
-| `backend` | 8000 | FastAPI application |
-| `db` | 5432 | PostgreSQL with pgvector |
-| `ollama` | 11434 | Local embedding/LLM service |
+| `frontend` | 6700 | Vite React development server |
+| `backend` | 6701 | FastAPI application |
+| `db` | 6702 | PostgreSQL with pgvector |
+| `ollama` | 6703 | Local embedding/LLM service |
 
 ---
 
@@ -104,7 +104,7 @@ alembic upgrade head
 python -m app.scripts.seed_tags
 
 # Start development server
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 6701
 ```
 
 ### 3. Frontend Setup
@@ -117,7 +117,7 @@ pnpm install
 
 # Copy environment config
 cp .env.example .env.local
-# Edit with API URL (default: http://localhost:8000)
+# Edit with API URL (default: http://localhost:6701)
 
 # Start development server
 pnpm dev
@@ -146,13 +146,13 @@ ollama pull llama3.2            # Summarization (~4 GB, optional)
 
 ```bash
 # Database
-DATABASE_URL=postgresql+asyncpg://npd:npd@localhost:5432/npd
+DATABASE_URL=postgresql+asyncpg://npd:npd@localhost:6702/npd
 
 # Azure AD Authentication
 AZURE_AD_TENANT_ID=your-tenant-id
 AZURE_AD_CLIENT_ID=your-client-id
 AZURE_AD_CLIENT_SECRET=your-client-secret
-AZURE_AD_REDIRECT_URI=http://localhost:8000/api/v1/auth/callback
+AZURE_AD_REDIRECT_URI=http://localhost:6701/api/v1/auth/callback
 
 # Application
 SECRET_KEY=your-random-secret-key-min-32-chars
@@ -160,20 +160,20 @@ ENVIRONMENT=development
 DEBUG=true
 
 # Ollama
-OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_BASE_URL=http://localhost:6703
 
 # File Storage
 UPLOAD_DIR=./uploads
 MAX_FILE_SIZE_MB=50
 
 # CORS (development only)
-CORS_ORIGINS=["http://localhost:3000"]
+CORS_ORIGINS=["http://localhost:6700"]
 ```
 
 ### Frontend (.env.local)
 
 ```bash
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:6701
 VITE_AZURE_AD_CLIENT_ID=your-client-id
 VITE_AZURE_AD_TENANT_ID=your-tenant-id
 ```
@@ -190,7 +190,7 @@ NPD requires Azure AD (Entra ID) for authentication. Follow these steps:
 2. Click "New registration"
 3. Name: `Novus Project Database (Dev)` or similar
 4. Supported account types: "Single tenant" (your organization only)
-5. Redirect URI: `http://localhost:8000/api/v1/auth/callback` (Web)
+5. Redirect URI: `http://localhost:6701/api/v1/auth/callback` (Web)
 6. Click "Register"
 
 ### 2. Configure Authentication
@@ -343,15 +343,15 @@ python -m app.scripts.seed_tags
 
 ### View API Documentation
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- OpenAPI JSON: http://localhost:8000/openapi.json
+- Swagger UI: http://localhost:6701/docs
+- ReDoc: http://localhost:6701/redoc
+- OpenAPI JSON: http://localhost:6701/openapi.json
 
 ### Test Document Upload
 
 ```bash
 # Upload a test PDF
-curl -X POST http://localhost:8000/api/v1/projects/{project_id}/documents \
+curl -X POST http://localhost:6701/api/v1/projects/{project_id}/documents \
   -H "Cookie: session=your-session-cookie" \
   -F "files=@test-document.pdf"
 ```
@@ -360,7 +360,7 @@ curl -X POST http://localhost:8000/api/v1/projects/{project_id}/documents \
 
 ```bash
 # Force re-index all documents (admin)
-curl -X POST http://localhost:8000/api/v1/admin/reindex \
+curl -X POST http://localhost:6701/api/v1/admin/reindex \
   -H "Cookie: session=your-session-cookie"
 ```
 
@@ -378,10 +378,10 @@ docker compose ps db
 docker compose logs db
 
 # Verify connection
-psql postgresql://npd:npd@localhost:5432/npd -c "SELECT 1;"
+psql postgresql://npd:npd@localhost:6702/npd -c "SELECT 1;"
 
 # Check pgvector extension
-psql postgresql://npd:npd@localhost:5432/npd -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+psql postgresql://npd:npd@localhost:6702/npd -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 ```
 
 ### Azure AD Login Fails
@@ -395,7 +395,7 @@ psql postgresql://npd:npd@localhost:5432/npd -c "SELECT * FROM pg_extension WHER
 
 ```bash
 # Check Ollama is running
-curl http://localhost:11434/api/tags
+curl http://localhost:6703/api/tags
 
 # Pull model if missing
 ollama pull nomic-embed-text
@@ -453,7 +453,7 @@ docker compose logs ollama
 
 After setup, you can:
 
-1. **Explore the API**: Open http://localhost:8000/docs
+1. **Explore the API**: Open http://localhost:6701/docs
 2. **Create test data**: Use the API to create organizations, contacts, and projects
 3. **Upload documents**: Test document processing and search
 4. **Review the spec**: See `specs/001-npd-v1-core/spec.md` for requirements

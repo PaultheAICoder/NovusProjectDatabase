@@ -44,7 +44,7 @@ async def auth_callback(code: str, state: str | None = None) -> RedirectResponse
     # 4. Redirect to frontend
 
     # For now, redirect to frontend (actual implementation depends on session strategy)
-    frontend_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:3000"
+    frontend_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:6700"
     return RedirectResponse(url=frontend_url, status_code=status.HTTP_302_FOUND)
 
 
