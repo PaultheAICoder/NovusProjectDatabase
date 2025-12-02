@@ -7,3 +7,6 @@
 # Audio cache and chunks
 audio_cache/
 audio_chunks/
+
+# Claude agent folder (may contain credentials)
+.claude/
