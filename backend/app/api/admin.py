@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -12,6 +12,11 @@ from app.models.document import Document
 from app.models.organization import Organization
 from app.models.project import Project, ProjectStatus
 from app.models.user import User
+from app.schemas.import_ import (
+    ImportCommitRequest,
+    ImportCommitResponse,
+    ImportPreviewResponse,
+)
 from app.schemas.tag import (
     PopularTagResponse,
     StructuredTagCreate,
@@ -20,6 +25,7 @@ from app.schemas.tag import (
     TagResponse,
     TagUpdate,
 )
+from app.services.import_service import ImportService
 from app.services.tag_suggester import TagSuggester
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -224,3 +230,91 @@ async def get_overview_statistics(
             "by_type": tag_counts,
         },
     }
+
+
+# ============== Bulk Import (Admin Only) ==============
+
+
+@router.post("/import/preview", response_model=ImportPreviewResponse)
+async def preview_import(
+    file: UploadFile = File(...),
+    include_suggestions: bool = Query(
+        default=True, description="Include AI suggestions for missing fields"
+    ),
+    db: DbSession = None,
+    admin_user: AdminUser = None,
+) -> ImportPreviewResponse:
+    """
+    Upload a CSV file and preview the import with validation and AI suggestions.
+
+    Returns validation errors, warnings, and AI-generated suggestions for each row.
+    """
+    # Validate file type
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only CSV files are supported",
+        )
+
+    # Read file content
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is empty",
+        )
+
+    # Parse and preview
+    import_service = ImportService(db)
+    rows, column_mappings = await import_service.preview_import(
+        content=content,
+        filename=file.filename,
+        include_suggestions=include_suggestions,
+    )
+
+    valid_rows = sum(1 for r in rows if r.validation.is_valid)
+    invalid_rows = len(rows) - valid_rows
+
+    return ImportPreviewResponse(
+        filename=file.filename,
+        total_rows=len(rows),
+        valid_rows=valid_rows,
+        invalid_rows=invalid_rows,
+        rows=rows,
+        column_mapping=column_mappings,
+    )
+
+
+@router.post("/import/commit", response_model=ImportCommitResponse)
+async def commit_import(
+    data: ImportCommitRequest,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> ImportCommitResponse:
+    """
+    Commit the import, creating projects from the provided rows.
+
+    Rows should have been updated by the user based on the preview response.
+    """
+    if not data.rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No rows to import",
+        )
+
+    import_service = ImportService(db)
+    results = await import_service.commit_import(
+        rows=data.rows,
+        user_id=admin_user.id,
+        skip_invalid=data.skip_invalid,
+    )
+
+    successful = sum(1 for r in results if r.success)
+    failed = len(results) - successful
+
+    return ImportCommitResponse(
+        total=len(results),
+        successful=successful,
+        failed=failed,
+        results=results,
+    )

@@ -19,12 +19,14 @@ from app.models import (
     User,
 )
 from app.schemas.base import PaginatedResponse
+from app.schemas.import_ import AutofillRequest, AutofillResponse
 from app.schemas.project import (
     ProjectCreate,
     ProjectDetail,
     ProjectResponse,
     ProjectUpdate,
 )
+from app.services.import_service import ImportService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -416,3 +418,22 @@ async def delete_project(
     project.status = ProjectStatus.CANCELLED
     project.updated_by = current_user.id
     await db.flush()
+
+
+@router.post("/autofill", response_model=AutofillResponse)
+async def autofill_project(
+    data: AutofillRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> AutofillResponse:
+    """
+    Get AI-suggested field values based on project name and context.
+
+    Uses RAG to analyze similar projects and suggest tags and description.
+    """
+    import_service = ImportService(db)
+    return await import_service.autofill_project(
+        name=data.name,
+        existing_description=data.existing_description,
+        organization_id=data.organization_id,
+    )

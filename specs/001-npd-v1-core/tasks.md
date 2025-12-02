@@ -232,20 +232,20 @@
 
 ### Backend for User Story 5
 
-- [ ] T108 [US5] Create ImportService for CSV parsing and validation in backend/app/services/import_service.py
-- [ ] T109 [US5] Implement RAG-based field suggestion in import_service.py using embeddings
-- [ ] T110 [US5] Create import preview endpoint in backend/app/api/admin.py
-- [ ] T111 [US5] Create import commit endpoint in backend/app/api/admin.py
-- [ ] T112 [US5] Implement autofill endpoint for single project in backend/app/api/projects.py
-- [ ] T113 [P] [US5] Create Import Pydantic schemas in backend/app/schemas/import_.py
+- [x] T108 [US5] Create ImportService for CSV parsing and validation in backend/app/services/import_service.py
+- [x] T109 [US5] Implement RAG-based field suggestion in import_service.py using embeddings
+- [x] T110 [US5] Create import preview endpoint in backend/app/api/admin.py
+- [x] T111 [US5] Create import commit endpoint in backend/app/api/admin.py
+- [x] T112 [US5] Implement autofill endpoint for single project in backend/app/api/projects.py
+- [x] T113 [P] [US5] Create Import Pydantic schemas in backend/app/schemas/import_.py
 
 ### Frontend for User Story 5
 
-- [ ] T114 [P] [US5] Create Import TypeScript types in frontend/src/types/import.ts
-- [ ] T115 [US5] Create useImport hook in frontend/src/hooks/useImport.ts
-- [ ] T116 [US5] Create ImportUpload component in frontend/src/components/forms/ImportUpload.tsx
-- [ ] T117 [US5] Create ImportPreview component with editable rows in frontend/src/components/tables/ImportPreview.tsx
-- [ ] T118 [US5] Create Import page in frontend/src/pages/Import.tsx
+- [x] T114 [P] [US5] Create Import TypeScript types in frontend/src/types/import.ts
+- [x] T115 [US5] Create useImport hook in frontend/src/hooks/useImport.ts
+- [x] T116 [US5] Create ImportUpload component in frontend/src/components/forms/ImportUpload.tsx
+- [x] T117 [US5] Create ImportPreview component with editable rows in frontend/src/components/tables/ImportPreview.tsx
+- [x] T118 [US5] Create Import page in frontend/src/pages/Import.tsx
 - [ ] T119 [US5] Add autofill button to ProjectForm in ProjectForm.tsx
 
 **Checkpoint**: Bulk import works with AI suggestions, autofill works for single projects
