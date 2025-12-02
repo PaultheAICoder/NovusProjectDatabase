@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Bookmark, BookmarkPlus, Loader2, ChevronRight } from "lucide-react";
+import { Search, Bookmark, BookmarkPlus, Loader2, ChevronRight, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,7 @@ import { SearchResults } from "@/components/tables/SearchResults";
 import { SavedSearchList } from "@/components/SavedSearchList";
 import { useSearch } from "@/hooks/useSearch";
 import { useCreateSavedSearch } from "@/hooks/useSavedSearches";
+import { useExportSearchResults } from "@/hooks/useExport";
 import type { ProjectStatus } from "@/types/project";
 import type { SavedSearch } from "@/types/search";
 
@@ -53,6 +54,7 @@ export function SearchPage() {
   const [selectedSavedSearchId, setSelectedSavedSearchId] = useState<string>();
 
   const createSavedSearch = useCreateSavedSearch();
+  const { exportSearchResults, isExporting } = useExportSearchResults();
 
   // Fetch search results
   const { data, isLoading } = useSearch({
@@ -189,6 +191,28 @@ export function SearchPage() {
                 }`}
               />
             </Button>
+            {data && data.total > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  exportSearchResults({
+                    q: query,
+                    status: status.length > 0 ? status : undefined,
+                    organizationId,
+                    tagIds: tagIds.length > 0 ? tagIds : undefined,
+                  })
+                }
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Export CSV
+              </Button>
+            )}
             {hasActiveSearch && (
               <Button
                 variant="outline"

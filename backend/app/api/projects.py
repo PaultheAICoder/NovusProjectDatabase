@@ -437,3 +437,105 @@ async def autofill_project(
         existing_description=data.existing_description,
         organization_id=data.organization_id,
     )
+
+
+@router.get("/export/csv")
+async def export_projects_csv(
+    db: DbSession,
+    current_user: CurrentUser,
+    status: list[ProjectStatus] | None = Query(None),
+    organization_id: UUID | None = None,
+    owner_id: UUID | None = None,
+    tag_ids: list[UUID] | None = Query(None),
+):
+    """
+    Export filtered projects to CSV.
+
+    Returns a downloadable CSV file with all project fields.
+    """
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    # Build query with same filters as list
+    query = _build_project_query()
+
+    if status:
+        query = query.where(Project.status.in_(status))
+    if organization_id:
+        query = query.where(Project.organization_id == organization_id)
+    if owner_id:
+        query = query.where(Project.owner_id == owner_id)
+    if tag_ids:
+        # Filter by tags - projects must have at least one of the specified tags
+        query = query.where(
+            Project.id.in_(
+                select(ProjectTag.project_id).where(ProjectTag.tag_id.in_(tag_ids))
+            )
+        )
+
+    query = query.order_by(Project.name)
+    result = await db.execute(query)
+    projects = result.scalars().unique().all()
+
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow([
+        "Name",
+        "Organization",
+        "Owner",
+        "Status",
+        "Start Date",
+        "End Date",
+        "Location",
+        "Description",
+        "Tags",
+        "Billing Amount",
+        "Invoice Count",
+        "Billing Recipient",
+        "Billing Notes",
+        "PM Notes",
+        "Monday URL",
+        "Jira URL",
+        "GitLab URL",
+        "Created At",
+        "Updated At",
+    ])
+
+    # Data rows
+    for project in projects:
+        tags = ", ".join(sorted(pt.tag.name for pt in project.project_tags))
+        writer.writerow([
+            project.name,
+            project.organization.name,
+            project.owner.display_name,
+            project.status.value,
+            project.start_date.isoformat() if project.start_date else "",
+            project.end_date.isoformat() if project.end_date else "",
+            project.location,
+            project.description,
+            tags,
+            str(project.billing_amount) if project.billing_amount else "",
+            str(project.invoice_count) if project.invoice_count else "",
+            project.billing_recipient or "",
+            project.billing_notes or "",
+            project.pm_notes or "",
+            project.monday_url or "",
+            project.jira_url or "",
+            project.gitlab_url or "",
+            project.created_at.isoformat() if project.created_at else "",
+            project.updated_at.isoformat() if project.updated_at else "",
+        ])
+
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=projects_export.csv"
+        },
+    )

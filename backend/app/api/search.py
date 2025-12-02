@@ -1,9 +1,12 @@
 """Search API endpoints."""
 
+import csv
+import io
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -99,6 +102,86 @@ async def get_search_suggestions(
     suggestions = [SearchSuggestion(text=name, type="project") for name in names]
 
     return SearchSuggestionsResponse(suggestions=suggestions)
+
+
+@router.get("/export/csv")
+async def export_search_results_csv(
+    q: str = Query(default="", description="Search query"),
+    status: Optional[list[ProjectStatus]] = Query(default=None),
+    organization_id: Optional[UUID] = Query(default=None),
+    tag_ids: Optional[list[UUID]] = Query(default=None),
+    owner_id: Optional[UUID] = Query(default=None),
+    sort_by: str = Query(default="relevance"),
+    sort_order: str = Query(default="desc"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Export search results to CSV.
+
+    Uses the same filters as the search endpoint but returns all matching
+    results as a downloadable CSV file.
+    """
+    search_service = SearchService(db)
+
+    # Get all results (no pagination for export)
+    projects, total = await search_service.search_projects(
+        query=q,
+        status=status,
+        organization_id=organization_id,
+        tag_ids=tag_ids,
+        owner_id=owner_id,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=1,
+        page_size=10000,  # Reasonable max for export
+    )
+
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow([
+        "Name",
+        "Organization",
+        "Owner",
+        "Status",
+        "Start Date",
+        "End Date",
+        "Location",
+        "Description",
+        "Tags",
+        "Created At",
+        "Updated At",
+    ])
+
+    # Data rows
+    for project in projects:
+        tags = ", ".join(sorted(pt.tag.name for pt in project.project_tags)) if project.project_tags else ""
+        writer.writerow([
+            project.name,
+            project.organization.name if project.organization else "",
+            project.owner.display_name if project.owner else "",
+            project.status.value if project.status else "",
+            project.start_date.isoformat() if project.start_date else "",
+            project.end_date.isoformat() if project.end_date else "",
+            project.location or "",
+            project.description or "",
+            tags,
+            project.created_at.isoformat() if project.created_at else "",
+            project.updated_at.isoformat() if project.updated_at else "",
+        ])
+
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=search_results_export.csv"
+        },
+    )
 
 
 # ============== Saved Searches ==============

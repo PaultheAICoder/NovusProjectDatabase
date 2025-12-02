@@ -286,9 +286,9 @@
 
 ### Implementation for User Story 7
 
-- [ ] T130 [US7] Add billing fields to Project model if not already present (verify in backend/app/models/project.py)
-- [ ] T131 [US7] Update ProjectForm to include billing fields in frontend/src/components/forms/ProjectForm.tsx
-- [ ] T132 [US7] Update ProjectDetail to display billing information in frontend/src/pages/ProjectDetail.tsx
+- [x] T130 [US7] Add billing fields to Project model if not already present (verified in backend/app/models/project.py - lines 101-117)
+- [x] T131 [US7] Update ProjectForm to include billing fields in frontend/src/components/forms/ProjectForm.tsx (lines 341-419)
+- [x] T132 [US7] Update ProjectDetail to display billing information in frontend/src/pages/ProjectDetailPage.tsx (lines 267-301)
 
 **Checkpoint**: Billing metadata can be recorded and displayed on projects
 
@@ -302,14 +302,14 @@
 
 ### Backend for User Story 8
 
-- [ ] T133 [US8] Implement CSV export endpoint in backend/app/api/projects.py
-- [ ] T134 [US8] Include all required fields (name, org, owner, status, dates, tags, billing) in export
+- [x] T133 [US8] Implement CSV export endpoint in backend/app/api/projects.py
+- [x] T134 [US8] Include all required fields (name, org, owner, status, dates, tags, billing) in export
 
 ### Frontend for User Story 8
 
-- [ ] T135 [US8] Create useExport hook in frontend/src/hooks/useExport.ts
-- [ ] T136 [US8] Add Export button to Projects list page in Projects.tsx
-- [ ] T137 [US8] Add Export button to Search results in Search.tsx
+- [x] T135 [US8] Create useExport hook in frontend/src/hooks/useExport.ts
+- [x] T136 [US8] Add Export button to Projects list page in ProjectsPage.tsx
+- [x] T137 [US8] Add Export button to Search results in SearchPage.tsx
 
 **Checkpoint**: Project lists can be exported to CSV from both project list and search results
 

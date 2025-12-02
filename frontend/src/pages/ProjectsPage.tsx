@@ -11,8 +11,9 @@ import {
   createColumnHelper,
 } from "@tanstack/react-table";
 import { format } from "date-fns";
-import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
+import { useExportProjects } from "@/hooks/useExport";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -96,6 +97,7 @@ export function ProjectsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus[]>([]);
+  const { exportProjects, isExporting } = useExportProjects();
 
   const { data, isLoading, isError } = useProjects({
     page,
@@ -137,12 +139,30 @@ export function ProjectsPage() {
             Manage and track all your projects
           </p>
         </div>
-        <Button asChild>
-          <Link to="/projects/new">
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              exportProjects({
+                status: statusFilter.length > 0 ? statusFilter : undefined,
+              })
+            }
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Export CSV
+          </Button>
+          <Button asChild>
+            <Link to="/projects/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New Project
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
