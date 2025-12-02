@@ -162,27 +162,27 @@
 
 ### Backend Models for User Story 3
 
-- [ ] T079 [US3] Create Document model in backend/app/models/document.py
-- [ ] T080 [US3] Create DocumentChunk model with pgvector embedding in backend/app/models/document.py
-- [ ] T081 [US3] Create Alembic migration 008_create_documents.py
-- [ ] T082 [US3] Create Alembic migration 009_create_document_chunks.py with pgvector
+- [x] T079 [US3] Create Document model in backend/app/models/document.py
+- [x] T080 [US3] Create DocumentChunk model with pgvector embedding in backend/app/models/document.py
+- [x] T081 [US3] Create Alembic migration 009_create_documents.py
+- [x] T082 [US3] Create Alembic migration 010_create_document_chunks.py with pgvector
 
 ### Backend Services for User Story 3
 
-- [ ] T083 [US3] Implement DocumentProcessor for text extraction in backend/app/services/document_processor.py
-- [ ] T084 [US3] Implement PDF extraction with pdfplumber in document_processor.py
-- [ ] T085 [US3] Implement DOCX extraction with python-docx in document_processor.py
-- [ ] T086 [US3] Implement XLSX extraction with pandas + calamine in document_processor.py
-- [ ] T087 [US3] Implement EmbeddingService with Ollama integration in backend/app/services/embedding_service.py
-- [ ] T088 [US3] Implement text chunking (512 tokens, 12% overlap) in embedding_service.py
+- [x] T083 [US3] Implement DocumentProcessor for text extraction in backend/app/services/document_processor.py
+- [x] T084 [US3] Implement PDF extraction with pdfplumber in document_processor.py
+- [x] T085 [US3] Implement DOCX extraction with python-docx in document_processor.py
+- [x] T086 [US3] Implement XLSX extraction with pandas in document_processor.py
+- [x] T087 [US3] Implement EmbeddingService with Ollama integration in backend/app/services/embedding_service.py
+- [x] T088 [US3] Implement text chunking (512 tokens, 12% overlap) in embedding_service.py
 
 ### Backend API for User Story 3
 
-- [ ] T089 [P] [US3] Create Document Pydantic schemas in backend/app/schemas/document.py
-- [ ] T090 [US3] Implement document upload endpoint with file validation in backend/app/api/documents.py
-- [ ] T091 [US3] Implement document list endpoint in backend/app/api/documents.py
-- [ ] T092 [US3] Implement document download endpoint in backend/app/api/documents.py
-- [ ] T093 [US3] Implement document delete endpoint in backend/app/api/documents.py
+- [x] T089 [P] [US3] Create Document Pydantic schemas in backend/app/schemas/document.py
+- [x] T090 [US3] Implement document upload endpoint with file validation in backend/app/api/documents.py
+- [x] T091 [US3] Implement document list endpoint in backend/app/api/documents.py
+- [x] T092 [US3] Implement document download endpoint in backend/app/api/documents.py
+- [x] T093 [US3] Implement document delete endpoint in backend/app/api/documents.py
 
 ### Backend Search Update for User Story 3
 
@@ -191,11 +191,11 @@
 
 ### Frontend for User Story 3
 
-- [ ] T096 [P] [US3] Create Document TypeScript types in frontend/src/types/document.ts
-- [ ] T097 [US3] Create useDocuments hook in frontend/src/hooks/useDocuments.ts
-- [ ] T098 [US3] Create DocumentUpload component with drag-drop in frontend/src/components/forms/DocumentUpload.tsx
-- [ ] T099 [US3] Create DocumentList component in frontend/src/components/tables/DocumentList.tsx
-- [ ] T100 [US3] Add document section to ProjectDetail page in frontend/src/pages/ProjectDetail.tsx
+- [x] T096 [P] [US3] Create Document TypeScript types in frontend/src/types/document.ts
+- [x] T097 [US3] Create useDocuments hook in frontend/src/hooks/useDocuments.ts
+- [x] T098 [US3] Create DocumentUpload component with drag-drop in frontend/src/components/forms/DocumentUpload.tsx
+- [x] T099 [US3] Create DocumentList component in frontend/src/components/tables/DocumentList.tsx
+- [x] T100 [US3] Add document section to ProjectDetail page in frontend/src/pages/ProjectDetailPage.tsx
 
 **Checkpoint**: Documents can be uploaded, viewed, and their content is searchable
 

@@ -11,9 +11,11 @@ import {
   MapPin,
   Calendar,
   User,
-  Building,
+  FileText,
 } from "lucide-react";
 import { useProject, useDeleteProject } from "@/hooks/useProjects";
+import { DocumentUpload } from "@/components/forms/DocumentUpload";
+import { DocumentList } from "@/components/tables/DocumentList";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -229,6 +231,19 @@ export function ProjectDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Documents
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <DocumentUpload projectId={id!} />
+              <DocumentList projectId={id!} />
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">
