@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import { Upload, X, FileText, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUploadDocument } from "@/hooks/useDocuments";
@@ -36,7 +36,7 @@ export function DocumentUpload({ projectId, onSuccess }: DocumentUploadProps) {
   const uploadMutation = useUploadDocument(projectId);
 
   const onDrop = useCallback(
-    (acceptedFiles: File[], rejectedFiles: { file: File; errors: { message: string }[] }[]) => {
+    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       // Handle rejected files
       const newErrors: string[] = [];
       rejectedFiles.forEach(({ file, errors }) => {

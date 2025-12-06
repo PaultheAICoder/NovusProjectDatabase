@@ -40,14 +40,6 @@ import type { ImportRowPreview, ImportRowUpdate } from "@/types/import";
 import type { ProjectStatus } from "@/types/project";
 import { cn } from "@/lib/utils";
 
-const statusOptions: { value: ProjectStatus; label: string }[] = [
-  { value: "approved", label: "Approved" },
-  { value: "active", label: "Active" },
-  { value: "on_hold", label: "On Hold" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-];
-
 interface ImportPreviewProps {
   rows: ImportRowPreview[];
   onRowsChange: (rows: ImportRowUpdate[]) => void;

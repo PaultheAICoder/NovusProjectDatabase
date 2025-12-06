@@ -12,8 +12,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
+backend/lib/
+backend/lib64/
 parts/
 sdist/
 var/
@@ -63,6 +65,8 @@ pnpm-debug.log*
 dist/
 build/
 *.tsbuildinfo
+# TypeScript declaration files in config root (generated)
+frontend/*.d.ts
 
 # ============================================
 # Environment & Secrets

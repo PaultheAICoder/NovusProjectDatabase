@@ -73,3 +73,14 @@ export function useUpdateContact() {
     },
   });
 }
+
+export function useDeleteContact() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/contacts/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    },
+  });
+}

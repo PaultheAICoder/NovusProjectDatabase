@@ -78,15 +78,6 @@ function LoginPage() {
   );
 }
 
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div>
-      <h2 className="text-2xl font-bold">{title}</h2>
-      <p className="mt-2 text-muted-foreground">Coming soon...</p>
-    </div>
-  );
-}
-
 /**
  * Application routes.
  */

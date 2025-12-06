@@ -6,8 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { X, Plus, Tag as TagIcon, Loader2, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { useTagSuggestions, useCreateTag, useAllTags } from "@/hooks/useTags";
+import { useTagSuggestions, useCreateTag } from "@/hooks/useTags";
 import type { Tag, TagType } from "@/types/tag";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +53,6 @@ export function TagSelector({
     includeFuzzy: true,
   });
 
-  const { data: allTags } = useAllTags();
   const createTagMutation = useCreateTag();
 
   // Filter out already selected tags from suggestions
@@ -103,7 +101,8 @@ export function TagSelector({
       if (highlightedIndex === filteredSuggestions.length && canCreateNew) {
         handleCreateTag();
       } else if (highlightedIndex >= 0 && highlightedIndex < filteredSuggestions.length) {
-        handleSelectTag(filteredSuggestions[highlightedIndex].tag);
+        const selected = filteredSuggestions[highlightedIndex];
+        if (selected) handleSelectTag(selected.tag);
       } else if (canCreateNew) {
         handleCreateTag();
       }

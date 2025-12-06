@@ -70,3 +70,14 @@ export function useUpdateOrganization() {
     },
   });
 }
+
+export function useDeleteOrganization() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/organizations/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}

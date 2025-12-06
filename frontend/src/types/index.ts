@@ -51,4 +51,5 @@ export interface User {
   email: string;
   display_name: string;
   role: UserRole;
+  is_admin: boolean;
 }

@@ -39,6 +39,7 @@ export interface Project {
 
 export interface ProjectContact extends Contact {
   is_primary: boolean;
+  role: string | null;
 }
 
 export interface ProjectDetail extends Project {
@@ -63,9 +64,9 @@ export interface ProjectCreate {
   start_date: string;
   end_date?: string;
   location: string;
-  contact_ids: string[];
-  primary_contact_id: string;
-  tag_ids: string[];
+  contact_ids?: string[];
+  primary_contact_id?: string;
+  tag_ids?: string[];
   billing_amount?: number;
   invoice_count?: number;
   billing_recipient?: string;
