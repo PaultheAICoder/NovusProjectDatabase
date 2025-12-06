@@ -59,6 +59,17 @@ async def get_or_create_user(
     return user
 
 
+def _is_email_domain_allowed(email: str) -> bool:
+    """Check if email domain is in the allowed list."""
+    allowed_domains = settings.allowed_email_domains
+    if not allowed_domains:
+        # Empty list = allow all domains from tenant
+        return True
+
+    email_domain = email.lower().split("@")[-1] if "@" in email else ""
+    return email_domain in allowed_domains
+
+
 async def get_current_user(
     token: dict[str, Any] = Depends(azure_scheme),
     db: AsyncSession = Depends(get_db),
@@ -73,6 +84,13 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token: missing user identifier",
+        )
+
+    # Check email domain is allowed
+    if not _is_email_domain_allowed(email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: only @novuslabs.com accounts are permitted",
         )
 
     user = await get_or_create_user(

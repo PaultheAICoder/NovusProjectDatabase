@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:6700"]
 
+    # Allowed email domains (empty = allow all from tenant)
+    allowed_email_domains: list[str] = ["novuslabs.com"]
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
@@ -55,6 +58,19 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 return [origin.strip() for origin in v.split(",")]
         return v
+
+    @field_validator("allowed_email_domains", mode="before")
+    @classmethod
+    def parse_allowed_email_domains(cls, v: str | list[str]) -> list[str]:
+        """Parse allowed email domains from string or list."""
+        if isinstance(v, str):
+            import json
+
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [domain.strip().lower() for domain in v.split(",")]
+        return [d.lower() for d in v]
 
     @property
     def is_development(self) -> bool:
