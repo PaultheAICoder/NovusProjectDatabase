@@ -2,22 +2,41 @@
  * Root application component with router and providers.
  */
 
+import { lazy, Suspense } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { Header, Sidebar, Footer } from "@/components/layout";
-import {
-  DashboardPage,
-  ProjectsPage,
-  ProjectDetailPage,
-  ProjectFormPage,
-  SearchPage,
-  AdminPage,
-  ImportPage,
-  OrganizationsPage,
-  ContactsPage,
-} from "@/pages";
+
+// Lazy load page components for code splitting
+const DashboardPage = lazy(() =>
+  import("@/pages/DashboardPage").then((m) => ({ default: m.DashboardPage }))
+);
+const ProjectsPage = lazy(() =>
+  import("@/pages/ProjectsPage").then((m) => ({ default: m.ProjectsPage }))
+);
+const ProjectDetailPage = lazy(() =>
+  import("@/pages/ProjectDetailPage").then((m) => ({ default: m.ProjectDetailPage }))
+);
+const ProjectFormPage = lazy(() =>
+  import("@/pages/ProjectFormPage").then((m) => ({ default: m.ProjectFormPage }))
+);
+const SearchPage = lazy(() =>
+  import("@/pages/SearchPage").then((m) => ({ default: m.SearchPage }))
+);
+const AdminPage = lazy(() =>
+  import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage }))
+);
+const ImportPage = lazy(() =>
+  import("@/pages/ImportPage").then((m) => ({ default: m.ImportPage }))
+);
+const OrganizationsPage = lazy(() =>
+  import("@/pages/OrganizationsPage").then((m) => ({ default: m.OrganizationsPage }))
+);
+const ContactsPage = lazy(() =>
+  import("@/pages/ContactsPage").then((m) => ({ default: m.ContactsPage }))
+);
 
 /**
  * Protected route wrapper.
@@ -38,6 +57,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+/**
+ * Loading spinner for lazy-loaded routes.
+ */
+function PageLoader() {
+  return (
+    <div className="flex min-h-[400px] items-center justify-center">
+      <div className="text-muted-foreground">Loading...</div>
+    </div>
+  );
 }
 
 /**
@@ -109,7 +139,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <DashboardPage />
+              <Suspense fallback={<PageLoader />}>
+                <DashboardPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -119,7 +151,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <ProjectsPage />
+              <Suspense fallback={<PageLoader />}>
+                <ProjectsPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -129,7 +163,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <ProjectFormPage />
+              <Suspense fallback={<PageLoader />}>
+                <ProjectFormPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -139,7 +175,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <ProjectDetailPage />
+              <Suspense fallback={<PageLoader />}>
+                <ProjectDetailPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -149,7 +187,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <ProjectFormPage />
+              <Suspense fallback={<PageLoader />}>
+                <ProjectFormPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -159,7 +199,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <OrganizationsPage />
+              <Suspense fallback={<PageLoader />}>
+                <OrganizationsPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -169,7 +211,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <ContactsPage />
+              <Suspense fallback={<PageLoader />}>
+                <ContactsPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -179,7 +223,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <SearchPage />
+              <Suspense fallback={<PageLoader />}>
+                <SearchPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -189,7 +235,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <ImportPage />
+              <Suspense fallback={<PageLoader />}>
+                <ImportPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -199,7 +247,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <AdminPage />
+              <Suspense fallback={<PageLoader />}>
+                <AdminPage />
+              </Suspense>
             </MainLayout>
           </ProtectedRoute>
         }

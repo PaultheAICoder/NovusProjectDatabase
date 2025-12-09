@@ -25,6 +25,49 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("node_modules")) {
+            // React core
+            if (id.includes("react-dom") || id.includes("react-router")) {
+              return "vendor-react";
+            }
+            if (id.includes("/react/") && !id.includes("@radix-ui")) {
+              return "vendor-react";
+            }
+            // TanStack
+            if (id.includes("@tanstack")) {
+              return "vendor-tanstack";
+            }
+            // Radix UI
+            if (id.includes("@radix-ui")) {
+              return "vendor-radix";
+            }
+            // Form libraries
+            if (
+              id.includes("react-hook-form") ||
+              id.includes("@hookform") ||
+              id.includes("zod")
+            ) {
+              return "vendor-form";
+            }
+            // Icons
+            if (id.includes("lucide-react")) {
+              return "vendor-icons";
+            }
+            // Dropzone
+            if (id.includes("react-dropzone")) {
+              return "vendor-dropzone";
+            }
+            // Date utilities
+            if (id.includes("date-fns")) {
+              return "vendor-utils";
+            }
+          }
+        },
+      },
+    },
   },
   test: {
     globals: true,
