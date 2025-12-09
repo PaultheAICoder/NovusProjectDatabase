@@ -69,6 +69,18 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Anthropic/Claude Integration
+    anthropic_api_key: str = ""
+    claude_code_path: str = "claude"  # Path to Claude Code CLI
+
+    # GitHub Integration (for issue creation)
+    github_api_token: str = ""
+    github_owner: str = "PaultheAICoder"
+    github_repo: str = "Novus-db"
+
+    # Feedback Email Integration
+    feedback_email: str = ""  # e.g., ai-coder@vital-enterprises.com
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalize_log_level(cls, v: str) -> str:
@@ -165,6 +177,21 @@ class Settings(BaseSettings):
     def max_file_size_bytes(self) -> int:
         """Get max file size in bytes."""
         return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def is_ai_configured(self) -> bool:
+        """Check if AI enhancement is available."""
+        return bool(self.anthropic_api_key)
+
+    @property
+    def is_graph_email_configured(self) -> bool:
+        """Check if Graph email is configured."""
+        return bool(
+            self.azure_ad_tenant_id
+            and self.azure_ad_client_id
+            and self.azure_ad_client_secret
+            and self.feedback_email
+        )
 
 
 @lru_cache
