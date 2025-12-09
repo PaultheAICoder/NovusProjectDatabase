@@ -226,7 +226,7 @@ async def list_saved_searches(
     # Get global searches (excluding own)
     global_result = await db.execute(
         select(SavedSearch)
-        .where(SavedSearch.is_global == True)
+        .where(SavedSearch.is_global.is_(True))
         .where(SavedSearch.created_by != current_user.id)
         .order_by(SavedSearch.name)
     )

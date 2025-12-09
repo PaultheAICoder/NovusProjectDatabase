@@ -45,3 +45,13 @@ class DocumentListResponse(BaseModel):
 
     items: list[DocumentResponse]
     total: int
+
+
+class DocumentStatusResponse(BaseModel):
+    """Lightweight status response for polling."""
+
+    id: UUID
+    processing_status: str
+    processing_error: str | None = None
+
+    model_config = {"from_attributes": True}

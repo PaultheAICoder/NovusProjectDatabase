@@ -3,7 +3,7 @@
  */
 
 import { format } from "date-fns";
-import { Download, FileText, Trash2, AlertCircle, Loader2 } from "lucide-react";
+import { Download, FileText, Trash2, AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,6 +26,7 @@ import {
 import {
   useDocuments,
   useDeleteDocument,
+  useReprocessDocument,
   getDocumentDownloadUrl,
 } from "@/hooks/useDocuments";
 import type { ProcessingStatus } from "@/types/document";
@@ -62,6 +63,7 @@ interface DocumentListProps {
 export function DocumentList({ projectId }: DocumentListProps) {
   const { data, isLoading, isError } = useDocuments(projectId);
   const deleteDocument = useDeleteDocument(projectId);
+  const reprocessDocument = useReprocessDocument(projectId);
 
   if (isLoading) {
     return (
@@ -119,7 +121,12 @@ export function DocumentList({ projectId }: DocumentListProps) {
               </TableCell>
               <TableCell>{formatFileSize(doc.file_size)}</TableCell>
               <TableCell>
-                <Badge variant={status.variant}>{status.label}</Badge>
+                <div className="flex items-center gap-2">
+                  {doc.processing_status === "pending" && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  )}
+                  <Badge variant={status.variant}>{status.label}</Badge>
+                </div>
                 {doc.processing_status === "failed" && doc.processing_error && (
                   <p className="mt-1 text-xs text-destructive">
                     {doc.processing_error}
@@ -144,6 +151,22 @@ export function DocumentList({ projectId }: DocumentListProps) {
                       <Download className="h-4 w-4" />
                     </a>
                   </Button>
+
+                  {doc.processing_status === "failed" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Retry processing"
+                      onClick={() => reprocessDocument.mutate(doc.id)}
+                      disabled={reprocessDocument.isPending}
+                    >
+                      {reprocessDocument.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 text-primary" />
+                      )}
+                    </Button>
+                  )}
 
                   <Dialog>
                     <DialogTrigger asChild>

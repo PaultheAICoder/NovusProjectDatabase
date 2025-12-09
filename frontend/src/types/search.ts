@@ -16,7 +16,7 @@ export interface SearchParams {
   pageSize?: number;
 }
 
-export interface SearchResultItem extends Project {}
+export type SearchResultItem = Project;
 
 export interface SearchResponse {
   items: SearchResultItem[];

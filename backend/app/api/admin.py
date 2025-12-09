@@ -202,11 +202,13 @@ async def get_overview_statistics(
     """Get overview statistics for the dashboard. Admin only."""
     # Count projects by status
     project_counts = {}
-    for status in ProjectStatus:
+    for proj_status in ProjectStatus:
         count = await db.scalar(
-            select(func.count()).select_from(Project).where(Project.status == status)
+            select(func.count())
+            .select_from(Project)
+            .where(Project.status == proj_status)
         )
-        project_counts[status.value] = count or 0
+        project_counts[proj_status.value] = count or 0
 
     total_projects = sum(project_counts.values())
 

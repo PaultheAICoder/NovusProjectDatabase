@@ -126,7 +126,7 @@ class ImportService:
     async def parse_csv(
         self,
         content: bytes,
-        filename: str,
+        _filename: str,
     ) -> tuple[list[dict], dict[str, str]]:
         """
         Parse CSV content and return rows with column mappings.
@@ -167,7 +167,7 @@ class ImportService:
     async def validate_row(
         self,
         row: dict,
-        row_number: int,
+        _row_number: int,
     ) -> ImportRowValidation:
         """Validate a single import row."""
         errors = []
@@ -209,11 +209,10 @@ class ImportService:
                 )
 
         # Status validation
-        if row.get("status"):
-            if row["status"].lower() not in STATUS_MAPPINGS:
-                warnings.append(
-                    f"Unknown status '{row['status']}', will default to 'approved'"
-                )
+        if row.get("status") and row["status"].lower() not in STATUS_MAPPINGS:
+            warnings.append(
+                f"Unknown status '{row['status']}', will default to 'approved'"
+            )
 
         # Location (required but can suggest)
         if not row.get("location"):
@@ -399,7 +398,7 @@ class ImportService:
     async def autofill_project(
         self,
         name: str,
-        existing_description: str | None = None,
+        _existing_description: str | None = None,
         organization_id: UUID | None = None,
     ) -> AutofillResponse:
         """
@@ -506,7 +505,7 @@ class ImportService:
 
     async def _find_similar_projects(
         self,
-        query_embedding: list[float],
+        _query_embedding: list[float],
         organization_id: UUID | None,
         limit: int = 5,
     ) -> list[Project]:

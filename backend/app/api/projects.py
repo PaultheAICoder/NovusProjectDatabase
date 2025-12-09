@@ -296,12 +296,15 @@ async def update_project(
         )
 
     # Validate status transition if status is being changed
-    if data.status and data.status != project.status:
-        if not project.can_transition_to(data.status):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status transition from {project.status.value} to {data.status.value}",
-            )
+    if (
+        data.status
+        and data.status != project.status
+        and not project.can_transition_to(data.status)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status transition from {project.status.value} to {data.status.value}",
+        )
 
     # Update scalar fields
     update_data = data.model_dump(

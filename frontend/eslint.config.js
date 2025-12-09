@@ -29,4 +29,11 @@ export default tseslint.config(
       ],
     },
   },
+  // Disable HMR warning for shadcn/ui components and hook files (standard patterns)
+  {
+    files: ["src/components/ui/**/*.tsx", "src/hooks/**/*.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );

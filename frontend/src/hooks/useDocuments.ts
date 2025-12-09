@@ -16,6 +16,14 @@ export function useDocuments(projectId: string | undefined) {
     queryFn: () =>
       api.get<DocumentListResponse>(`/projects/${projectId}/documents`),
     enabled: !!projectId,
+    // Poll every 3 seconds if any document is pending (processing in progress)
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasPending = data?.items.some(
+        (doc) => doc.processing_status === "pending"
+      );
+      return hasPending ? 3000 : false;
+    },
   });
 }
 
@@ -64,6 +72,18 @@ export function useDeleteDocument(projectId: string) {
   return useMutation({
     mutationFn: (documentId: string) =>
       api.delete(`/projects/${projectId}/documents/${documentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
+    },
+  });
+}
+
+export function useReprocessDocument(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (documentId: string) =>
+      api.post<Document>(`/projects/${projectId}/documents/${documentId}/reprocess`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
     },
