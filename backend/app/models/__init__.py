@@ -2,6 +2,7 @@
 
 from app.models.contact import Contact
 from app.models.document import Document
+from app.models.feedback import EmailMonitorState, Feedback, FeedbackStatus
 from app.models.organization import Organization
 from app.models.project import (
     STATUS_TRANSITIONS,
@@ -26,4 +27,7 @@ __all__ = [
     "ProjectStatus",
     "STATUS_TRANSITIONS",
     "Document",
+    "Feedback",
+    "FeedbackStatus",
+    "EmailMonitorState",
 ]
