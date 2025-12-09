@@ -76,3 +76,8 @@ def admin_limit() -> str:
 def auth_limit() -> str:
     """Get auth endpoint rate limit."""
     return settings.rate_limit_auth
+
+
+def feedback_limit() -> str:
+    """Get feedback endpoint rate limit."""
+    return settings.rate_limit_feedback

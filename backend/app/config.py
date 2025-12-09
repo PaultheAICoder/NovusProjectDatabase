@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     rate_limit_admin: str = "30/minute"
     rate_limit_auth: str = "20/minute"
     rate_limit_default: str = "60/minute"
+    rate_limit_feedback: str = "5/hour"  # Feedback submission limit
 
     # ClamAV Antivirus (optional)
     clamav_enabled: bool = False
@@ -77,6 +78,7 @@ class Settings(BaseSettings):
     github_api_token: str = ""
     github_owner: str = "PaultheAICoder"
     github_repo: str = "Novus-db"
+    github_webhook_secret: str = ""  # For webhook signature verification
 
     # Feedback Email Integration
     feedback_email: str = ""  # e.g., ai-coder@vital-enterprises.com

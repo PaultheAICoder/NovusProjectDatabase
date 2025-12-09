@@ -13,10 +13,12 @@ from app.api import (
     auth,
     contacts,
     documents,
+    feedback,
     organizations,
     projects,
     search,
     tags,
+    webhooks,
 )
 from app.config import get_settings
 from app.core.auth import azure_scheme
@@ -126,6 +128,8 @@ app.include_router(projects.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(feedback.router, prefix="/api/v1")
+app.include_router(webhooks.router, prefix="/api/v1")
 
 
 @app.get("/health")
