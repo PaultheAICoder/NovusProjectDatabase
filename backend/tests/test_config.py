@@ -115,3 +115,25 @@ class TestConfigSecurity:
             settings = Settings(_env_file=None)
             assert "postgresql+asyncpg://" in settings.database_url
             assert "localhost:6702" in settings.database_url
+
+    def test_cors_middleware_not_wildcard(self):
+        """CORS middleware should not use wildcard methods/headers."""
+        # This is a documentation test - actual CORS config is in main.py
+        # Verify the app doesn't have wildcard CORS in production
+        from app.main import app
+
+        for middleware in app.user_middleware:
+            if (
+                hasattr(middleware, "cls")
+                and middleware.cls.__name__ == "CORSMiddleware"
+            ):
+                # Check that wildcards are not used
+                # Middleware stores options in kwargs, not options
+                kwargs = middleware.kwargs
+                assert kwargs.get("allow_methods") != [
+                    "*"
+                ], "CORS allow_methods should not be wildcard"
+                assert kwargs.get("allow_headers") != [
+                    "*"
+                ], "CORS allow_headers should not be wildcard"
+                break
