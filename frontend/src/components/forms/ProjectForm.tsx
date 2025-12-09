@@ -7,6 +7,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
+import { Sparkles, Loader2 } from "lucide-react";
+import { useAutofill } from "@/hooks/useImport";
 import {
   Form,
   FormControl,
@@ -76,6 +78,7 @@ export function ProjectForm({
 }: ProjectFormProps) {
   const { data: orgsData } = useOrganizations({ pageSize: 100 });
   const { data: allTags } = useAllTags();
+  const autofillMutation = useAutofill();
 
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
@@ -129,6 +132,39 @@ export function ProjectForm({
     };
     onSubmit(cleanData);
   });
+
+  const handleAutofill = async () => {
+    const name = form.getValues("name");
+    const description = form.getValues("description");
+    const organizationId = form.getValues("organization_id");
+
+    if (!name.trim()) {
+      return; // Name is required for autofill
+    }
+
+    try {
+      const result = await autofillMutation.mutateAsync({
+        name,
+        existing_description: description || undefined,
+        organization_id: organizationId || undefined,
+      });
+
+      // Apply suggested tags if available
+      if (result.suggested_tag_ids && result.suggested_tag_ids.length > 0) {
+        const currentTags = form.getValues("tag_ids");
+        // Merge suggested tags with existing, avoiding duplicates
+        const mergedTags = [...new Set([...currentTags, ...result.suggested_tag_ids])];
+        form.setValue("tag_ids", mergedTags);
+      }
+
+      // Apply suggested description if available and field is empty
+      if (result.suggested_description && !description) {
+        form.setValue("description", result.suggested_description);
+      }
+    } catch {
+      // Error is handled by mutation - could add toast notification here
+    }
+  };
 
   return (
     <Form {...form}>
@@ -495,6 +531,24 @@ export function ProjectForm({
         />
 
         <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleAutofill}
+            disabled={!form.watch("name")?.trim() || isSubmitting || autofillMutation.isPending}
+          >
+            {autofillMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Suggesting...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
+                Autofill
+              </>
+            )}
+          </Button>
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
