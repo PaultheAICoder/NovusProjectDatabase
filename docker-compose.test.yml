@@ -1,0 +1,81 @@
+# docker-compose.test.yml
+# Test environment for orchestrate3 workflows
+# Uses separate database container with isolated data
+# NEVER connects to production database
+
+services:
+  db-test:
+    image: pgvector/pgvector:pg16
+    container_name: npd-db-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: npd_test
+      POSTGRES_PASSWORD: npd_test_2025
+      POSTGRES_DB: npd_test
+    ports:
+      - "6712:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U npd_test -d npd_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama-test:
+    image: ollama/ollama:latest
+    container_name: npd-ollama-test
+    restart: unless-stopped
+    ports:
+      - "6713:11434"
+    volumes:
+      - ollama_test_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+
+  backend-test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: npd-backend-test
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://npd_test:npd_test_2025@db-test:5432/npd_test
+      OLLAMA_BASE_URL: http://ollama-test:11434
+    ports:
+      - "6711:6701"
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/alembic:/app/alembic:ro
+      - uploads_test_data:/app/uploads
+    depends_on:
+      db-test:
+        condition: service_healthy
+      ollama-test:
+        condition: service_started
+    command: uvicorn app.main:app --host 0.0.0.0 --port 6701 --reload
+
+  frontend-test:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: npd-frontend-test
+    restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://backend-test:6701
+    ports:
+      - "6710:6700"
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+    depends_on:
+      - backend-test
+    command: pnpm dev --host 0.0.0.0 --port 6700
+
+volumes:
+  postgres_test_data:
+  ollama_test_data:
+  uploads_test_data:

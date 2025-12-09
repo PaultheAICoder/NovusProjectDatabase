@@ -14,6 +14,7 @@ export default defineConfig({
   server: {
     port: 6700,
     host: true,
+    allowedHosts: ["localhost", ".ngrok-free.dev", ".ngrok.io"],
     proxy: {
       "/api": {
         target: process.env.VITE_API_PROXY_TARGET || "http://localhost:6701",

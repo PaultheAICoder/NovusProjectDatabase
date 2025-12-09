@@ -110,8 +110,11 @@ logs/
 audio_cache/
 audio_chunks/
 
-# Claude agent folder
-.claude/
+# Claude agent folder (kept locally, not tracked)
+.agents/
+
+# Database backups (local only)
+.backups/
 
 # Coverage reports
 coverage/

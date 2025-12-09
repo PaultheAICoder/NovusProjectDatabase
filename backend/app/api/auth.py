@@ -51,7 +51,12 @@ async def auth_callback(
 
     Processes the authorization code and creates a session.
     """
-    frontend_url = settings.cors_origins[0] if settings.cors_origins else "http://localhost:6700"
+    # Derive frontend URL from the redirect URI (same origin for cookie to work)
+    # E.g., https://xxx.ngrok-free.dev/api/v1/auth/callback -> https://xxx.ngrok-free.dev
+    redirect_uri = settings.azure_ad_redirect_uri
+    frontend_url = redirect_uri.rsplit("/api/", 1)[0] if "/api/" in redirect_uri else (
+        settings.cors_origins[0] if settings.cors_origins else "http://localhost:6700"
+    )
 
     # 1. Exchange code for tokens
     token_url = f"https://login.microsoftonline.com/{settings.azure_ad_tenant_id}/oauth2/v2.0/token"
@@ -138,12 +143,14 @@ async def auth_callback(
     )
 
     # 7. Redirect to frontend with session cookie
+    # Use secure cookie if redirect URI is HTTPS
+    is_https = frontend_url.startswith("https://")
     response = RedirectResponse(url=frontend_url, status_code=status.HTTP_302_FOUND)
     response.set_cookie(
         key="session",
         value=session_token,
         httponly=True,
-        secure=False,  # Set to True in production with HTTPS
+        secure=is_https,
         samesite="lax",
         max_age=JWT_EXPIRATION_HOURS * 3600,
     )
