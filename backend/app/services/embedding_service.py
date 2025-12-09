@@ -1,7 +1,6 @@
 """Embedding service with Ollama integration."""
 
 import httpx
-from typing import Optional
 
 from app.config import get_settings
 
@@ -77,7 +76,7 @@ class EmbeddingService:
 
         return chunks
 
-    async def generate_embedding(self, text: str) -> Optional[list[float]]:
+    async def generate_embedding(self, text: str) -> list[float] | None:
         """
         Generate embedding for text using Ollama.
 
@@ -110,7 +109,7 @@ class EmbeddingService:
     async def generate_embeddings_batch(
         self,
         texts: list[str],
-    ) -> list[Optional[list[float]]]:
+    ) -> list[list[float] | None]:
         """
         Generate embeddings for multiple texts.
 

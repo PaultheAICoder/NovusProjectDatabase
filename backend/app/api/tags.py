@@ -2,15 +2,15 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import AdminUser, CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession
+from app.core.rate_limit import crud_limit, limiter
 from app.models import Tag, TagType
 from app.schemas.tag import (
     PopularTagResponse,
-    StructuredTagCreate,
     TagCreate,
     TagListResponse,
     TagResponse,
@@ -23,7 +23,9 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 @router.get("", response_model=TagListResponse)
+@limiter.limit(crud_limit)
 async def list_tags(
+    request: Request,
     db: DbSession,
     current_user: CurrentUser,
     type: TagType | None = None,
@@ -58,7 +60,9 @@ async def list_tags(
 
 
 @router.post("", response_model=TagResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(crud_limit)
 async def create_freeform_tag(
+    request: Request,
     data: TagCreate,
     db: DbSession,
     current_user: CurrentUser,
@@ -93,7 +97,9 @@ async def create_freeform_tag(
 
 
 @router.get("/suggest", response_model=TagSuggestionsResponse)
+@limiter.limit(crud_limit)
 async def suggest_tags(
+    request: Request,
     query: str = Query(..., min_length=2, description="Search query for tag names"),
     type: TagType | None = Query(default=None, description="Filter by tag type"),
     include_fuzzy: bool = Query(
@@ -130,7 +136,9 @@ async def suggest_tags(
 
 
 @router.get("/popular", response_model=list[PopularTagResponse])
+@limiter.limit(crud_limit)
 async def get_popular_tags(
+    request: Request,
     type: TagType | None = Query(default=None, description="Filter by tag type"),
     limit: int = Query(default=10, ge=1, le=50),
     db: DbSession = None,
@@ -150,7 +158,9 @@ async def get_popular_tags(
 
 
 @router.get("/{tag_id}", response_model=TagResponse)
+@limiter.limit(crud_limit)
 async def get_tag(
+    request: Request,
     tag_id: UUID,
     db: DbSession,
     current_user: CurrentUser,

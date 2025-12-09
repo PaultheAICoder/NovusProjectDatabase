@@ -1,0 +1,72 @@
+"""Rate limiting configuration using slowapi."""
+
+from fastapi import Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+from app.config import get_settings
+
+settings = get_settings()
+
+
+def get_rate_limit_key(request: Request) -> str:
+    """
+    Get rate limit key - user ID if authenticated, IP address otherwise.
+
+    This provides per-user rate limiting for authenticated requests
+    and IP-based limiting for unauthenticated requests.
+    """
+    # Try to get user ID from session
+    session_token = request.cookies.get("session")
+    if session_token:
+        try:
+            from jose import jwt
+
+            payload = jwt.decode(
+                session_token,
+                settings.secret_key,
+                algorithms=["HS256"],
+            )
+            user_id = payload.get("sub")
+            if user_id:
+                return f"user:{user_id}"
+        except Exception:
+            pass
+
+    # Fall back to IP address
+    return get_remote_address(request)
+
+
+# Create the limiter instance
+limiter = Limiter(
+    key_func=get_rate_limit_key,
+    storage_uri=settings.rate_limit_storage_uri,
+    headers_enabled=True,  # Add X-RateLimit-* headers
+    enabled=settings.rate_limit_enabled,
+)
+
+
+# Pre-defined limit decorators for different endpoint types
+def search_limit() -> str:
+    """Get search endpoint rate limit."""
+    return settings.rate_limit_search
+
+
+def crud_limit() -> str:
+    """Get CRUD endpoint rate limit."""
+    return settings.rate_limit_crud
+
+
+def upload_limit() -> str:
+    """Get upload endpoint rate limit."""
+    return settings.rate_limit_upload
+
+
+def admin_limit() -> str:
+    """Get admin endpoint rate limit."""
+    return settings.rate_limit_admin
+
+
+def auth_limit() -> str:
+    """Get auth endpoint rate limit."""
+    return settings.rate_limit_auth

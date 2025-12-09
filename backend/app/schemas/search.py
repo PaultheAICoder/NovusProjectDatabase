@@ -1,7 +1,6 @@
 """Search Pydantic schemas."""
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,14 +13,14 @@ class SearchRequest(BaseModel):
     """Search request parameters."""
 
     q: str = Field(default="", description="Search query string")
-    status: Optional[list[ProjectStatus]] = Field(
+    status: list[ProjectStatus] | None = Field(
         default=None, description="Filter by project status"
     )
-    organization_id: Optional[UUID] = Field(
+    organization_id: UUID | None = Field(
         default=None, description="Filter by organization"
     )
-    tag_ids: Optional[list[UUID]] = Field(default=None, description="Filter by tags")
-    owner_id: Optional[UUID] = Field(default=None, description="Filter by owner")
+    tag_ids: list[UUID] | None = Field(default=None, description="Filter by tags")
+    owner_id: UUID | None = Field(default=None, description="Filter by owner")
     sort_by: str = Field(
         default="relevance",
         description="Sort field: relevance, name, start_date, updated_at",
@@ -66,30 +65,30 @@ class SearchSuggestionsResponse(BaseModel):
 class SavedSearchFilters(BaseModel):
     """Filters stored in a saved search."""
 
-    status: Optional[list[str]] = None
-    organization_id: Optional[UUID] = None
-    tag_ids: Optional[list[UUID]] = None
-    owner_id: Optional[UUID] = None
-    sort_by: Optional[str] = None
-    sort_order: Optional[str] = None
+    status: list[str] | None = None
+    organization_id: UUID | None = None
+    tag_ids: list[UUID] | None = None
+    owner_id: UUID | None = None
+    sort_by: str | None = None
+    sort_order: str | None = None
 
 
 class SavedSearchCreate(BaseModel):
     """Schema for creating a saved search."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-    query: Optional[str] = None
+    description: str | None = None
+    query: str | None = None
     filters: SavedSearchFilters = Field(default_factory=SavedSearchFilters)
 
 
 class SavedSearchUpdate(BaseModel):
     """Schema for updating a saved search."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    query: Optional[str] = None
-    filters: Optional[SavedSearchFilters] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+    query: str | None = None
+    filters: SavedSearchFilters | None = None
 
 
 class SavedSearchResponse(BaseModel):
@@ -99,8 +98,8 @@ class SavedSearchResponse(BaseModel):
 
     id: UUID
     name: str
-    description: Optional[str]
-    query: Optional[str]
+    description: str | None
+    query: str | None
     filters: dict
     is_global: bool
     created_by: UUID

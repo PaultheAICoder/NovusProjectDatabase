@@ -45,6 +45,18 @@ class Settings(BaseSettings):
     # Allowed email domains (empty = allow all from tenant)
     allowed_email_domains: list[str] = ["novuslabs.com"]
 
+    # Rate Limiting
+    rate_limit_enabled: bool = True
+    rate_limit_storage_uri: str = (
+        "memory://"  # Use "redis://localhost:6379" for production
+    )
+    rate_limit_search: str = "100/minute"
+    rate_limit_crud: str = "60/minute"
+    rate_limit_upload: str = "10/minute"
+    rate_limit_admin: str = "30/minute"
+    rate_limit_auth: str = "20/minute"
+    rate_limit_default: str = "60/minute"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list[str]) -> list[str]:

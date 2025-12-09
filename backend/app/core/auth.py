@@ -1,10 +1,9 @@
 """Azure AD SSO authentication with fastapi-azure-auth."""
 
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
-from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi_azure_auth import SingleTenantAzureAuthorizationCodeBearer
 from jose import JWTError, jwt
 from sqlalchemy import select

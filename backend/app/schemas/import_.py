@@ -2,7 +2,6 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -14,22 +13,22 @@ class ImportRowBase(BaseModel):
     """Base import row representing a project to import."""
 
     row_number: int = Field(..., description="Row number in the source CSV")
-    name: Optional[str] = None
-    organization_name: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    location: Optional[str] = None
-    owner_email: Optional[str] = None
-    tags: Optional[list[str]] = None
-    billing_amount: Optional[str] = None
-    billing_recipient: Optional[str] = None
-    billing_notes: Optional[str] = None
-    pm_notes: Optional[str] = None
-    monday_url: Optional[str] = None
-    jira_url: Optional[str] = None
-    gitlab_url: Optional[str] = None
+    name: str | None = None
+    organization_name: str | None = None
+    description: str | None = None
+    status: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    location: str | None = None
+    owner_email: str | None = None
+    tags: list[str] | None = None
+    billing_amount: str | None = None
+    billing_recipient: str | None = None
+    billing_notes: str | None = None
+    pm_notes: str | None = None
+    monday_url: str | None = None
+    jira_url: str | None = None
+    gitlab_url: str | None = None
 
 
 class ImportRowValidation(BaseModel):
@@ -43,10 +42,10 @@ class ImportRowValidation(BaseModel):
 class ImportRowSuggestion(BaseModel):
     """AI-generated suggestions for an import row."""
 
-    suggested_description: Optional[str] = None
-    suggested_tags: Optional[list[str]] = None
-    suggested_organization_id: Optional[UUID] = None
-    suggested_owner_id: Optional[UUID] = None
+    suggested_description: str | None = None
+    suggested_tags: list[str] | None = None
+    suggested_organization_id: UUID | None = None
+    suggested_owner_id: UUID | None = None
     confidence: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Confidence score for suggestions"
     )
@@ -56,12 +55,12 @@ class ImportRowPreview(ImportRowBase):
     """Import row with validation and suggestions for preview."""
 
     validation: ImportRowValidation
-    suggestions: Optional[ImportRowSuggestion] = None
+    suggestions: ImportRowSuggestion | None = None
 
     # Resolved IDs (when found)
-    resolved_organization_id: Optional[UUID] = None
-    resolved_owner_id: Optional[UUID] = None
-    resolved_tag_ids: Optional[list[UUID]] = None
+    resolved_organization_id: UUID | None = None
+    resolved_owner_id: UUID | None = None
+    resolved_tag_ids: list[UUID] | None = None
 
 
 class ImportPreviewRequest(BaseModel):
@@ -89,22 +88,22 @@ class ImportRowUpdate(BaseModel):
     """Updates to an import row before committing."""
 
     row_number: int
-    name: Optional[str] = None
-    organization_id: Optional[UUID] = None
-    owner_id: Optional[UUID] = None
-    description: Optional[str] = None
-    status: Optional[ProjectStatus] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
-    location: Optional[str] = None
-    tag_ids: Optional[list[UUID]] = None
-    billing_amount: Optional[Decimal] = None
-    billing_recipient: Optional[str] = None
-    billing_notes: Optional[str] = None
-    pm_notes: Optional[str] = None
-    monday_url: Optional[str] = None
-    jira_url: Optional[str] = None
-    gitlab_url: Optional[str] = None
+    name: str | None = None
+    organization_id: UUID | None = None
+    owner_id: UUID | None = None
+    description: str | None = None
+    status: ProjectStatus | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    location: str | None = None
+    tag_ids: list[UUID] | None = None
+    billing_amount: Decimal | None = None
+    billing_recipient: str | None = None
+    billing_notes: str | None = None
+    pm_notes: str | None = None
+    monday_url: str | None = None
+    jira_url: str | None = None
+    gitlab_url: str | None = None
 
 
 class ImportCommitRequest(BaseModel):
@@ -123,8 +122,8 @@ class ImportCommitResult(BaseModel):
 
     row_number: int
     success: bool
-    project_id: Optional[UUID] = None
-    error: Optional[str] = None
+    project_id: UUID | None = None
+    error: str | None = None
 
 
 class ImportCommitResponse(BaseModel):
@@ -140,14 +139,14 @@ class AutofillRequest(BaseModel):
     """Request for AI-assisted field autofill."""
 
     name: str = Field(..., min_length=1, description="Project name to use for context")
-    existing_description: Optional[str] = None
-    organization_id: Optional[UUID] = None
+    existing_description: str | None = None
+    organization_id: UUID | None = None
 
 
 class AutofillResponse(BaseModel):
     """Response with AI-suggested field values."""
 
-    suggested_description: Optional[str] = None
+    suggested_description: str | None = None
     suggested_tags: list[str] = Field(default_factory=list)
     suggested_tag_ids: list[UUID] = Field(default_factory=list)
     confidence: float = Field(

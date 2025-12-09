@@ -266,8 +266,8 @@ class ProjectTag(Base):
 
 
 # Forward references
-from app.models.organization import Organization  # noqa: E402, F401
-from app.models.user import User  # noqa: E402, F401
 from app.models.contact import Contact  # noqa: E402, F401
-from app.models.tag import Tag  # noqa: E402, F401
 from app.models.document import Document  # noqa: E402, F401
+from app.models.organization import Organization  # noqa: E402, F401
+from app.models.tag import Tag  # noqa: E402, F401
+from app.models.user import User  # noqa: E402, F401

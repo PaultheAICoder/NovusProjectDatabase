@@ -25,9 +25,7 @@ class Tag(Base):
 
     __tablename__ = "tags"
 
-    __table_args__ = (
-        UniqueConstraint("name", "type", name="uq_tag_name_type"),
-    )
+    __table_args__ = (UniqueConstraint("name", "type", name="uq_tag_name_type"),)
 
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -68,5 +66,5 @@ class Tag(Base):
 
 
 # Forward references
-from app.models.user import User  # noqa: E402, F401
 from app.models.project import ProjectTag  # noqa: E402, F401
+from app.models.user import User  # noqa: E402, F401

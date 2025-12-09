@@ -1,14 +1,26 @@
 """FastAPI application entry point."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
-from app.api import admin, auth, contacts, documents, organizations, projects, search, tags
+from app.api import (
+    admin,
+    auth,
+    contacts,
+    documents,
+    organizations,
+    projects,
+    search,
+    tags,
+)
 from app.config import get_settings
 from app.core.auth import azure_scheme
+from app.core.rate_limit import limiter
 
 settings = get_settings()
 
@@ -50,6 +62,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")

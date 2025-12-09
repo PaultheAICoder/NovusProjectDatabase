@@ -4,7 +4,6 @@ This module provides an abstract interface for file storage that can be
 implemented with different backends (local filesystem, SharePoint, S3, etc.).
 """
 
-import os
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -128,6 +127,7 @@ class StorageService:
     ) -> str:
         """Save file content and return storage path."""
         import io
+
         file_obj = io.BytesIO(content)
         return await self._backend.save(file_obj, filename, UUID(project_id))
 

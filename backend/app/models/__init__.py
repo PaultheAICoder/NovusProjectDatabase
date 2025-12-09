@@ -1,17 +1,17 @@
 """SQLAlchemy models."""
 
-from app.models.user import User, UserRole
-from app.models.organization import Organization
 from app.models.contact import Contact
-from app.models.tag import Tag, TagType
+from app.models.document import Document
+from app.models.organization import Organization
 from app.models.project import (
+    STATUS_TRANSITIONS,
     Project,
     ProjectContact,
-    ProjectTag,
     ProjectStatus,
-    STATUS_TRANSITIONS,
+    ProjectTag,
 )
-from app.models.document import Document
+from app.models.tag import Tag, TagType
+from app.models.user import User, UserRole
 
 __all__ = [
     "User",

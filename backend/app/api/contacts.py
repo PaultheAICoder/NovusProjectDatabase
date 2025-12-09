@@ -2,12 +2,13 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.rate_limit import crud_limit, limiter
 from app.models import Contact, Organization
 from app.schemas.base import PaginatedResponse
 from app.schemas.contact import (
@@ -21,7 +22,9 @@ router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 
 @router.get("", response_model=PaginatedResponse[ContactWithOrganization])
+@limiter.limit(crud_limit)
 async def list_contacts(
+    request: Request,
     db: DbSession,
     current_user: CurrentUser,
     page: int = Query(1, ge=1),
@@ -62,7 +65,9 @@ async def list_contacts(
 
 
 @router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(crud_limit)
 async def create_contact(
+    request: Request,
     data: ContactCreate,
     db: DbSession,
     current_user: CurrentUser,
@@ -101,7 +106,9 @@ async def create_contact(
 
 
 @router.get("/{contact_id}", response_model=ContactWithOrganization)
+@limiter.limit(crud_limit)
 async def get_contact(
+    request: Request,
     contact_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
@@ -124,16 +131,16 @@ async def get_contact(
 
 
 @router.put("/{contact_id}", response_model=ContactResponse)
+@limiter.limit(crud_limit)
 async def update_contact(
+    request: Request,
     contact_id: UUID,
     data: ContactUpdate,
     db: DbSession,
     current_user: CurrentUser,
 ) -> ContactResponse:
     """Update a contact."""
-    result = await db.execute(
-        select(Contact).where(Contact.id == contact_id)
-    )
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
     contact = result.scalar_one_or_none()
 
     if not contact:

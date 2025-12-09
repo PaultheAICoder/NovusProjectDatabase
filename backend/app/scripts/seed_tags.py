@@ -4,8 +4,8 @@ Run with: python -m app.scripts.seed_tags
 """
 
 import asyncio
+
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session_maker
 from app.models import Tag, TagType

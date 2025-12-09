@@ -4,10 +4,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from pgvector.sqlalchemy import Vector
 
 from app.database import Base
 

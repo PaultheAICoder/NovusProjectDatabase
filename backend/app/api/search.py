@@ -2,15 +2,15 @@
 
 import csv
 import io
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.rate_limit import limiter, search_limit
 from app.models.project import ProjectStatus
 from app.models.saved_search import SavedSearch
 from app.models.user import User
@@ -30,12 +30,14 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 
 @router.get("", response_model=SearchResponse)
+@limiter.limit(search_limit)
 async def search_projects(
+    request: Request,
     q: str = Query(default="", description="Search query"),
-    status: Optional[list[ProjectStatus]] = Query(default=None),
-    organization_id: Optional[UUID] = Query(default=None),
-    tag_ids: Optional[list[UUID]] = Query(default=None),
-    owner_id: Optional[UUID] = Query(default=None),
+    status: list[ProjectStatus] | None = Query(default=None),
+    organization_id: UUID | None = Query(default=None),
+    tag_ids: list[UUID] | None = Query(default=None),
+    owner_id: UUID | None = Query(default=None),
     sort_by: str = Query(default="relevance"),
     sort_order: str = Query(default="desc"),
     page: int = Query(default=1, ge=1),
@@ -85,7 +87,9 @@ async def search_projects(
 
 
 @router.get("/suggest", response_model=SearchSuggestionsResponse)
+@limiter.limit(search_limit)
 async def get_search_suggestions(
+    request: Request,
     q: str = Query(min_length=2, description="Search query prefix"),
     limit: int = Query(default=10, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
@@ -105,12 +109,14 @@ async def get_search_suggestions(
 
 
 @router.get("/export/csv")
+@limiter.limit(search_limit)
 async def export_search_results_csv(
+    request: Request,
     q: str = Query(default="", description="Search query"),
-    status: Optional[list[ProjectStatus]] = Query(default=None),
-    organization_id: Optional[UUID] = Query(default=None),
-    tag_ids: Optional[list[UUID]] = Query(default=None),
-    owner_id: Optional[UUID] = Query(default=None),
+    status: list[ProjectStatus] | None = Query(default=None),
+    organization_id: UUID | None = Query(default=None),
+    tag_ids: list[UUID] | None = Query(default=None),
+    owner_id: UUID | None = Query(default=None),
     sort_by: str = Query(default="relevance"),
     sort_order: str = Query(default="desc"),
     db: AsyncSession = Depends(get_db),
@@ -142,36 +148,44 @@ async def export_search_results_csv(
     writer = csv.writer(output)
 
     # Header row
-    writer.writerow([
-        "Name",
-        "Organization",
-        "Owner",
-        "Status",
-        "Start Date",
-        "End Date",
-        "Location",
-        "Description",
-        "Tags",
-        "Created At",
-        "Updated At",
-    ])
+    writer.writerow(
+        [
+            "Name",
+            "Organization",
+            "Owner",
+            "Status",
+            "Start Date",
+            "End Date",
+            "Location",
+            "Description",
+            "Tags",
+            "Created At",
+            "Updated At",
+        ]
+    )
 
     # Data rows
     for project in projects:
-        tags = ", ".join(sorted(pt.tag.name for pt in project.project_tags)) if project.project_tags else ""
-        writer.writerow([
-            project.name,
-            project.organization.name if project.organization else "",
-            project.owner.display_name if project.owner else "",
-            project.status.value if project.status else "",
-            project.start_date.isoformat() if project.start_date else "",
-            project.end_date.isoformat() if project.end_date else "",
-            project.location or "",
-            project.description or "",
-            tags,
-            project.created_at.isoformat() if project.created_at else "",
-            project.updated_at.isoformat() if project.updated_at else "",
-        ])
+        tags = (
+            ", ".join(sorted(pt.tag.name for pt in project.project_tags))
+            if project.project_tags
+            else ""
+        )
+        writer.writerow(
+            [
+                project.name,
+                project.organization.name if project.organization else "",
+                project.owner.display_name if project.owner else "",
+                project.status.value if project.status else "",
+                project.start_date.isoformat() if project.start_date else "",
+                project.end_date.isoformat() if project.end_date else "",
+                project.location or "",
+                project.description or "",
+                tags,
+                project.created_at.isoformat() if project.created_at else "",
+                project.updated_at.isoformat() if project.updated_at else "",
+            ]
+        )
 
     output.seek(0)
 
@@ -188,7 +202,9 @@ async def export_search_results_csv(
 
 
 @router.get("/saved", response_model=SavedSearchListResponse)
+@limiter.limit(search_limit)
 async def list_saved_searches(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SavedSearchListResponse:
@@ -218,14 +234,18 @@ async def list_saved_searches(
 
     return SavedSearchListResponse(
         my_searches=[SavedSearchResponse.model_validate(s) for s in my_searches],
-        global_searches=[SavedSearchResponse.model_validate(s) for s in global_searches],
+        global_searches=[
+            SavedSearchResponse.model_validate(s) for s in global_searches
+        ],
     )
 
 
 @router.post(
     "/saved", response_model=SavedSearchResponse, status_code=status.HTTP_201_CREATED
 )
+@limiter.limit(search_limit)
 async def create_saved_search(
+    request: Request,
     data: SavedSearchCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -245,15 +265,15 @@ async def create_saved_search(
 
 
 @router.get("/saved/{search_id}", response_model=SavedSearchResponse)
+@limiter.limit(search_limit)
 async def get_saved_search(
+    request: Request,
     search_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SavedSearchResponse:
     """Get a saved search by ID."""
-    result = await db.execute(
-        select(SavedSearch).where(SavedSearch.id == search_id)
-    )
+    result = await db.execute(select(SavedSearch).where(SavedSearch.id == search_id))
     saved_search = result.scalar_one_or_none()
 
     if not saved_search:
@@ -273,16 +293,16 @@ async def get_saved_search(
 
 
 @router.patch("/saved/{search_id}", response_model=SavedSearchResponse)
+@limiter.limit(search_limit)
 async def update_saved_search(
+    request: Request,
     search_id: UUID,
     data: SavedSearchUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SavedSearchResponse:
     """Update a saved search."""
-    result = await db.execute(
-        select(SavedSearch).where(SavedSearch.id == search_id)
-    )
+    result = await db.execute(select(SavedSearch).where(SavedSearch.id == search_id))
     saved_search = result.scalar_one_or_none()
 
     if not saved_search:
@@ -313,15 +333,15 @@ async def update_saved_search(
 
 
 @router.delete("/saved/{search_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(search_limit)
 async def delete_saved_search(
+    request: Request,
     search_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Delete a saved search."""
-    result = await db.execute(
-        select(SavedSearch).where(SavedSearch.id == search_id)
-    )
+    result = await db.execute(select(SavedSearch).where(SavedSearch.id == search_id))
     saved_search = result.scalar_one_or_none()
 
     if not saved_search:

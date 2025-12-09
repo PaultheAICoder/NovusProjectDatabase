@@ -1,13 +1,12 @@
 """Search service with hybrid search (PostgreSQL full-text + vector search with RRF)."""
 
-from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import func, select, text, literal_column
+from sqlalchemy import func, literal_column, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.document import Document, DocumentChunk
+from app.models.document import Document
 from app.models.project import Project, ProjectStatus
 from app.services.embedding_service import EmbeddingService
 
@@ -26,10 +25,10 @@ class SearchService:
         self,
         query: str,
         *,
-        status: Optional[list[ProjectStatus]] = None,
-        organization_id: Optional[UUID] = None,
-        tag_ids: Optional[list[UUID]] = None,
-        owner_id: Optional[UUID] = None,
+        status: list[ProjectStatus] | None = None,
+        organization_id: UUID | None = None,
+        tag_ids: list[UUID] | None = None,
+        owner_id: UUID | None = None,
         sort_by: str = "relevance",
         sort_order: str = "desc",
         page: int = 1,
@@ -78,10 +77,10 @@ class SearchService:
 
     def _build_filter_conditions(
         self,
-        status: Optional[list[ProjectStatus]],
-        organization_id: Optional[UUID],
-        tag_ids: Optional[list[UUID]],
-        owner_id: Optional[UUID],
+        status: list[ProjectStatus] | None,
+        organization_id: UUID | None,
+        tag_ids: list[UUID] | None,
+        owner_id: UUID | None,
     ) -> list:
         """Build filter conditions for search queries."""
         conditions = []
@@ -94,13 +93,15 @@ class SearchService:
 
         if tag_ids:
             for tag_id in tag_ids:
-                tag_subquery = text("""
+                tag_subquery = text(
+                    """
                     EXISTS (
                         SELECT 1 FROM project_tags
                         WHERE project_tags.project_id = projects.id
                         AND project_tags.tag_id = :tag_id
                     )
-                """).bindparams(tag_id=tag_id)
+                """
+                ).bindparams(tag_id=tag_id)
                 conditions.append(tag_subquery)
 
         if owner_id:
@@ -160,7 +161,9 @@ class SearchService:
         RRF Formula: score = sum(1 / (k + rank_i)) for each ranking source
         """
         # Get rankings from different sources
-        project_text_ranks = await self._get_project_text_ranks(query, filter_conditions)
+        project_text_ranks = await self._get_project_text_ranks(
+            query, filter_conditions
+        )
 
         document_text_ranks = {}
         vector_ranks = {}
@@ -244,13 +247,10 @@ class SearchService:
         ts_query = func.plainto_tsquery("english", query)
 
         # Query for projects matching the text search
-        stmt = (
-            select(
-                Project.id,
-                func.ts_rank(Project.search_vector, ts_query).label("rank"),
-            )
-            .where(Project.search_vector.op("@@")(ts_query))
-        )
+        stmt = select(
+            Project.id,
+            func.ts_rank(Project.search_vector, ts_query).label("rank"),
+        ).where(Project.search_vector.op("@@")(ts_query))
 
         if filter_conditions:
             stmt = stmt.where(*filter_conditions)
@@ -312,7 +312,8 @@ class SearchService:
         # pgvector uses <=> for cosine distance (lower is better)
         embedding_literal = f"[{','.join(str(x) for x in query_embedding)}]"
 
-        stmt = text("""
+        stmt = text(
+            """
             SELECT DISTINCT ON (d.project_id)
                 d.project_id,
                 dc.embedding <=> :embedding AS distance
@@ -320,7 +321,8 @@ class SearchService:
             JOIN documents d ON d.id = dc.document_id
             WHERE dc.embedding IS NOT NULL
             ORDER BY d.project_id, dc.embedding <=> :embedding
-        """).bindparams(embedding=embedding_literal)
+        """
+        ).bindparams(embedding=embedding_literal)
 
         result = await self.db.execute(stmt)
         rows = result.all()
@@ -412,7 +414,7 @@ class SearchService:
     async def search_documents(
         self,
         query: str,
-        project_id: Optional[UUID] = None,
+        project_id: UUID | None = None,
         limit: int = 10,
     ) -> list[dict]:
         """
@@ -429,7 +431,8 @@ class SearchService:
 
         # Build query for similar chunks
         if project_id:
-            stmt = text("""
+            stmt = text(
+                """
                 SELECT
                     dc.id as chunk_id,
                     dc.content,
@@ -444,13 +447,15 @@ class SearchService:
                   AND d.project_id = :project_id
                 ORDER BY dc.embedding <=> :embedding
                 LIMIT :limit
-            """).bindparams(
+            """
+            ).bindparams(
                 embedding=embedding_literal,
                 project_id=project_id,
                 limit=limit,
             )
         else:
-            stmt = text("""
+            stmt = text(
+                """
                 SELECT
                     dc.id as chunk_id,
                     dc.content,
@@ -464,7 +469,8 @@ class SearchService:
                 WHERE dc.embedding IS NOT NULL
                 ORDER BY dc.embedding <=> :embedding
                 LIMIT :limit
-            """).bindparams(embedding=embedding_literal, limit=limit)
+            """
+            ).bindparams(embedding=embedding_literal, limit=limit)
 
         result = await self.db.execute(stmt)
         rows = result.all()

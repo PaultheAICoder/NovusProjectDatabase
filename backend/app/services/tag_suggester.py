@@ -1,7 +1,6 @@
 """Tag suggestion service with fuzzy matching and deduplication."""
 
 from difflib import SequenceMatcher
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -27,7 +26,7 @@ class TagSuggester:
         self,
         query: str,
         *,
-        tag_type: Optional[TagType] = None,
+        tag_type: TagType | None = None,
         limit: int = 10,
         include_fuzzy: bool = True,
     ) -> list[tuple[Tag, float, str | None]]:
@@ -78,9 +77,7 @@ class TagSuggester:
             if include_fuzzy:
                 similarity = self._similarity(query_lower, tag_name_lower)
                 if similarity >= self.FUZZY_THRESHOLD:
-                    suggestions.append(
-                        (tag, similarity, f"Did you mean '{tag.name}'?")
-                    )
+                    suggestions.append((tag, similarity, f"Did you mean '{tag.name}'?"))
 
         # Sort by score descending
         suggestions.sort(key=lambda x: x[1], reverse=True)
@@ -90,8 +87,8 @@ class TagSuggester:
     async def check_duplicate(
         self,
         name: str,
-        tag_type: Optional[TagType] = None,
-    ) -> Optional[Tag]:
+        tag_type: TagType | None = None,
+    ) -> Tag | None:
         """
         Check if a tag with similar name already exists.
 
@@ -127,7 +124,7 @@ class TagSuggester:
 
     async def get_popular_tags(
         self,
-        tag_type: Optional[TagType] = None,
+        tag_type: TagType | None = None,
         limit: int = 10,
     ) -> list[tuple[Tag, int]]:
         """
@@ -165,7 +162,8 @@ class TagSuggester:
         Updates all project associations from source to target, then deletes source.
         Returns the number of projects updated.
         """
-        from sqlalchemy import update, delete
+        from sqlalchemy import delete, update
+
         from app.models.project import ProjectTag
 
         # Get existing associations for target tag

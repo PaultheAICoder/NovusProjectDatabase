@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import delete, func, select, update
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import AdminUser, DbSession
+from app.core.rate_limit import admin_limit, limiter
 from app.models import Tag, TagType
 from app.models.document import Document
 from app.models.organization import Organization
@@ -20,7 +21,6 @@ from app.schemas.import_ import (
 )
 from app.schemas.search import SavedSearchResponse
 from app.schemas.tag import (
-    PopularTagResponse,
     StructuredTagCreate,
     TagMergeRequest,
     TagMergeResponse,
@@ -37,7 +37,9 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.post("/tags", response_model=TagResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(admin_limit)
 async def create_structured_tag(
+    request: Request,
     data: StructuredTagCreate,
     db: DbSession,
     admin_user: AdminUser,
@@ -78,7 +80,9 @@ async def create_structured_tag(
 
 
 @router.patch("/tags/{tag_id}", response_model=TagResponse)
+@limiter.limit(admin_limit)
 async def update_tag(
+    request: Request,
     tag_id: UUID,
     data: TagUpdate,
     db: DbSession,
@@ -114,7 +118,9 @@ async def update_tag(
 
 
 @router.delete("/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(admin_limit)
 async def delete_tag(
+    request: Request,
     tag_id: UUID,
     db: DbSession,
     admin_user: AdminUser,
@@ -133,7 +139,9 @@ async def delete_tag(
 
 
 @router.post("/tags/merge", response_model=TagMergeResponse)
+@limiter.limit(admin_limit)
 async def merge_tags(
+    request: Request,
     data: TagMergeRequest,
     db: DbSession,
     admin_user: AdminUser,
@@ -185,7 +193,9 @@ async def merge_tags(
 
 
 @router.get("/stats")
+@limiter.limit(admin_limit)
 async def get_overview_statistics(
+    request: Request,
     db: DbSession,
     admin_user: AdminUser,
 ) -> dict:
@@ -238,7 +248,9 @@ async def get_overview_statistics(
 
 
 @router.post("/import/preview", response_model=ImportPreviewResponse)
+@limiter.limit(admin_limit)
 async def preview_import(
+    request: Request,
     file: UploadFile = File(...),
     include_suggestions: bool = Query(
         default=True, description="Include AI suggestions for missing fields"
@@ -288,7 +300,9 @@ async def preview_import(
 
 
 @router.post("/import/commit", response_model=ImportCommitResponse)
+@limiter.limit(admin_limit)
 async def commit_import(
+    request: Request,
     data: ImportCommitRequest,
     db: DbSession,
     admin_user: AdminUser,
@@ -325,8 +339,12 @@ async def commit_import(
 # ============== Saved Searches (Admin Only) ==============
 
 
-@router.patch("/saved-searches/{search_id}/toggle-global", response_model=SavedSearchResponse)
+@router.patch(
+    "/saved-searches/{search_id}/toggle-global", response_model=SavedSearchResponse
+)
+@limiter.limit(admin_limit)
 async def toggle_saved_search_global(
+    request: Request,
     search_id: UUID,
     db: DbSession,
     admin_user: AdminUser,
@@ -336,9 +354,7 @@ async def toggle_saved_search_global(
 
     Global searches are visible to all users.
     """
-    result = await db.execute(
-        select(SavedSearch).where(SavedSearch.id == search_id)
-    )
+    result = await db.execute(select(SavedSearch).where(SavedSearch.id == search_id))
     saved_search = result.scalar_one_or_none()
 
     if not saved_search:

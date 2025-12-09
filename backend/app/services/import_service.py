@@ -4,7 +4,6 @@ import csv
 import io
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -23,7 +22,6 @@ from app.schemas.import_ import (
     ImportRowValidation,
 )
 from app.services.embedding_service import EmbeddingService
-
 
 # Column name mappings (CSV header -> internal field)
 COLUMN_MAPPINGS = {
@@ -387,8 +385,8 @@ class ImportService:
     async def autofill_project(
         self,
         name: str,
-        existing_description: Optional[str] = None,
-        organization_id: Optional[UUID] = None,
+        existing_description: str | None = None,
+        organization_id: UUID | None = None,
     ) -> AutofillResponse:
         """
         Generate AI suggestions for project fields based on name and context.
@@ -495,7 +493,7 @@ class ImportService:
     async def _find_similar_projects(
         self,
         query_embedding: list[float],
-        organization_id: Optional[UUID],
+        organization_id: UUID | None,
         limit: int = 5,
     ) -> list[Project]:
         """Find similar projects using vector search on project names/descriptions."""
@@ -518,15 +516,13 @@ class ImportService:
         result = await self.db.execute(stmt)
         return list(result.scalars().all()[:limit])
 
-    async def _find_organization(self, name: str) -> Optional[Organization]:
+    async def _find_organization(self, name: str) -> Organization | None:
         """Find organization by name (case-insensitive)."""
-        stmt = select(Organization).where(
-            func.lower(Organization.name) == name.lower()
-        )
+        stmt = select(Organization).where(func.lower(Organization.name) == name.lower())
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def _find_user_by_email(self, email: str) -> Optional[User]:
+    async def _find_user_by_email(self, email: str) -> User | None:
         """Find user by email (case-insensitive)."""
         stmt = select(User).where(func.lower(User.email) == email.lower())
         result = await self.db.execute(stmt)

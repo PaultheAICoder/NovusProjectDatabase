@@ -1,15 +1,17 @@
 """Authentication routes for Azure AD SSO."""
 
-import httpx
 from datetime import datetime, timedelta
-from jose import jwt
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+
+import httpx
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import RedirectResponse
+from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
 from app.config import get_settings
-from app.core.auth import azure_scheme, get_or_create_user
+from app.core.auth import get_or_create_user
+from app.core.rate_limit import auth_limit, limiter
 from app.database import get_db
 from app.schemas.user import UserResponse
 
@@ -23,7 +25,8 @@ JWT_EXPIRATION_HOURS = 24
 
 
 @router.get("/login")
-async def login() -> RedirectResponse:
+@limiter.limit(auth_limit)
+async def login(request: Request) -> RedirectResponse:
     """Initiate Azure AD SSO login.
 
     Redirects to Azure AD for authentication.
@@ -42,7 +45,9 @@ async def login() -> RedirectResponse:
 
 
 @router.get("/callback")
+@limiter.limit(auth_limit)
 async def auth_callback(
+    request: Request,
     code: str,
     state: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -54,8 +59,14 @@ async def auth_callback(
     # Derive frontend URL from the redirect URI (same origin for cookie to work)
     # E.g., https://xxx.ngrok-free.dev/api/v1/auth/callback -> https://xxx.ngrok-free.dev
     redirect_uri = settings.azure_ad_redirect_uri
-    frontend_url = redirect_uri.rsplit("/api/", 1)[0] if "/api/" in redirect_uri else (
-        settings.cors_origins[0] if settings.cors_origins else "http://localhost:6700"
+    frontend_url = (
+        redirect_uri.rsplit("/api/", 1)[0]
+        if "/api/" in redirect_uri
+        else (
+            settings.cors_origins[0]
+            if settings.cors_origins
+            else "http://localhost:6700"
+        )
     )
 
     # 1. Exchange code for tokens
@@ -158,7 +169,8 @@ async def auth_callback(
 
 
 @router.post("/logout")
-async def logout(current_user: CurrentUser) -> dict[str, str]:
+@limiter.limit(auth_limit)
+async def logout(request: Request, current_user: CurrentUser) -> dict[str, str]:
     """Log out current user.
 
     Clears session and returns success message.
@@ -168,6 +180,9 @@ async def logout(current_user: CurrentUser) -> dict[str, str]:
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: CurrentUser) -> UserResponse:
+@limiter.limit(auth_limit)
+async def get_current_user_info(
+    request: Request, current_user: CurrentUser
+) -> UserResponse:
     """Get current authenticated user info."""
     return UserResponse.model_validate(current_user)

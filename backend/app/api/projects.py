@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.rate_limit import crud_limit, limiter
 from app.models import (
     Contact,
     Organization,
@@ -14,9 +15,7 @@ from app.models import (
     ProjectContact,
     ProjectStatus,
     ProjectTag,
-    STATUS_TRANSITIONS,
     Tag,
-    User,
 )
 from app.schemas.base import PaginatedResponse
 from app.schemas.import_ import AutofillRequest, AutofillResponse
@@ -33,21 +32,20 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 def _build_project_query():
     """Build base query with all required joins."""
-    return (
-        select(Project)
-        .options(
-            selectinload(Project.organization),
-            selectinload(Project.owner),
-            selectinload(Project.project_tags).selectinload(ProjectTag.tag),
-            selectinload(Project.project_contacts).selectinload(ProjectContact.contact),
-            selectinload(Project.creator),
-            selectinload(Project.updater),
-        )
+    return select(Project).options(
+        selectinload(Project.organization),
+        selectinload(Project.owner),
+        selectinload(Project.project_tags).selectinload(ProjectTag.tag),
+        selectinload(Project.project_contacts).selectinload(ProjectContact.contact),
+        selectinload(Project.creator),
+        selectinload(Project.updater),
     )
 
 
 @router.get("", response_model=PaginatedResponse[ProjectResponse])
+@limiter.limit(crud_limit)
 async def list_projects(
+    request: Request,
     db: DbSession,
     current_user: CurrentUser,
     page: int = Query(1, ge=1),
@@ -117,7 +115,9 @@ async def list_projects(
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(crud_limit)
 async def create_project(
+    request: Request,
     data: ProjectCreate,
     db: DbSession,
     current_user: CurrentUser,
@@ -145,9 +145,7 @@ async def create_project(
         )
 
     # Verify all tags exist
-    tag_result = await db.execute(
-        select(Tag).where(Tag.id.in_(data.tag_ids))
-    )
+    tag_result = await db.execute(select(Tag).where(Tag.id.in_(data.tag_ids)))
     tags = tag_result.scalars().all()
     if len(tags) != len(data.tag_ids):
         raise HTTPException(
@@ -196,9 +194,7 @@ async def create_project(
     await db.flush()
 
     # Reload with relationships
-    result = await db.execute(
-        _build_project_query().where(Project.id == project.id)
-    )
+    result = await db.execute(_build_project_query().where(Project.id == project.id))
     project = result.scalar_one()
 
     return ProjectResponse(
@@ -218,15 +214,15 @@ async def create_project(
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)
+@limiter.limit(crud_limit)
 async def get_project(
+    request: Request,
     project_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
 ) -> ProjectDetail:
     """Get project details."""
-    result = await db.execute(
-        _build_project_query().where(Project.id == project_id)
-    )
+    result = await db.execute(_build_project_query().where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -281,16 +277,16 @@ async def get_project(
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
+@limiter.limit(crud_limit)
 async def update_project(
+    request: Request,
     project_id: UUID,
     data: ProjectUpdate,
     db: DbSession,
     current_user: CurrentUser,
 ) -> ProjectResponse:
     """Update a project."""
-    result = await db.execute(
-        _build_project_query().where(Project.id == project_id)
-    )
+    result = await db.execute(_build_project_query().where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -353,9 +349,7 @@ async def update_project(
     # Update tags if provided
     if data.tag_ids is not None:
         # Verify tags exist
-        tag_result = await db.execute(
-            select(Tag).where(Tag.id.in_(data.tag_ids))
-        )
+        tag_result = await db.execute(select(Tag).where(Tag.id.in_(data.tag_ids)))
         tags = tag_result.scalars().all()
         if len(tags) != len(data.tag_ids):
             raise HTTPException(
@@ -375,9 +369,7 @@ async def update_project(
     await db.flush()
 
     # Reload with relationships
-    result = await db.execute(
-        _build_project_query().where(Project.id == project.id)
-    )
+    result = await db.execute(_build_project_query().where(Project.id == project.id))
     project = result.scalar_one()
 
     return ProjectResponse(
@@ -397,15 +389,15 @@ async def update_project(
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(crud_limit)
 async def delete_project(
+    request: Request,
     project_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
 ) -> None:
     """Archive/delete a project (soft delete by setting status to cancelled)."""
-    result = await db.execute(
-        select(Project).where(Project.id == project_id)
-    )
+    result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -421,7 +413,9 @@ async def delete_project(
 
 
 @router.post("/autofill", response_model=AutofillResponse)
+@limiter.limit(crud_limit)
 async def autofill_project(
+    request: Request,
     data: AutofillRequest,
     db: DbSession,
     current_user: CurrentUser,
@@ -440,7 +434,9 @@ async def autofill_project(
 
 
 @router.get("/export/csv")
+@limiter.limit(crud_limit)
 async def export_projects_csv(
+    request: Request,
     db: DbSession,
     current_user: CurrentUser,
     status: list[ProjectStatus] | None = Query(None),
@@ -455,6 +451,7 @@ async def export_projects_csv(
     """
     import csv
     import io
+
     from fastapi.responses import StreamingResponse
 
     # Build query with same filters as list
@@ -483,59 +480,61 @@ async def export_projects_csv(
     writer = csv.writer(output)
 
     # Header row
-    writer.writerow([
-        "Name",
-        "Organization",
-        "Owner",
-        "Status",
-        "Start Date",
-        "End Date",
-        "Location",
-        "Description",
-        "Tags",
-        "Billing Amount",
-        "Invoice Count",
-        "Billing Recipient",
-        "Billing Notes",
-        "PM Notes",
-        "Monday URL",
-        "Jira URL",
-        "GitLab URL",
-        "Created At",
-        "Updated At",
-    ])
+    writer.writerow(
+        [
+            "Name",
+            "Organization",
+            "Owner",
+            "Status",
+            "Start Date",
+            "End Date",
+            "Location",
+            "Description",
+            "Tags",
+            "Billing Amount",
+            "Invoice Count",
+            "Billing Recipient",
+            "Billing Notes",
+            "PM Notes",
+            "Monday URL",
+            "Jira URL",
+            "GitLab URL",
+            "Created At",
+            "Updated At",
+        ]
+    )
 
     # Data rows
     for project in projects:
         tags = ", ".join(sorted(pt.tag.name for pt in project.project_tags))
-        writer.writerow([
-            project.name,
-            project.organization.name,
-            project.owner.display_name,
-            project.status.value,
-            project.start_date.isoformat() if project.start_date else "",
-            project.end_date.isoformat() if project.end_date else "",
-            project.location,
-            project.description,
-            tags,
-            str(project.billing_amount) if project.billing_amount else "",
-            str(project.invoice_count) if project.invoice_count else "",
-            project.billing_recipient or "",
-            project.billing_notes or "",
-            project.pm_notes or "",
-            project.monday_url or "",
-            project.jira_url or "",
-            project.gitlab_url or "",
-            project.created_at.isoformat() if project.created_at else "",
-            project.updated_at.isoformat() if project.updated_at else "",
-        ])
+        writer.writerow(
+            [
+                project.name,
+                project.organization.name,
+                project.owner.display_name,
+                project.status.value,
+                project.start_date.isoformat() if project.start_date else "",
+                project.end_date.isoformat() if project.end_date else "",
+                project.location,
+                project.description,
+                tags,
+                str(project.billing_amount) if project.billing_amount else "",
+                str(project.invoice_count) if project.invoice_count else "",
+                project.billing_recipient or "",
+                project.billing_notes or "",
+                project.pm_notes or "",
+                project.monday_url or "",
+                project.jira_url or "",
+                project.gitlab_url or "",
+                project.created_at.isoformat() if project.created_at else "",
+                project.updated_at.isoformat() if project.updated_at else "",
+            ]
+        )
 
     output.seek(0)
 
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=projects_export.csv"
-        },
+        headers={"Content-Disposition": "attachment; filename=projects_export.csv"},
     )

@@ -3,14 +3,15 @@
 import os
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.config import get_settings
+from app.core.rate_limit import crud_limit, limiter, upload_limit
 from app.core.storage import StorageService
 from app.models.document import Document, DocumentChunk
 from app.models.project import Project
@@ -53,7 +54,9 @@ async def get_project(
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(upload_limit)
 async def upload_document(
+    request: Request,
     project_id: UUID,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -149,7 +152,9 @@ async def upload_document(
 
 
 @router.get("", response_model=DocumentListResponse)
+@limiter.limit(crud_limit)
 async def list_documents(
+    request: Request,
     project_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -167,7 +172,9 @@ async def list_documents(
 
     # Get count
     count_result = await db.execute(
-        select(func.count()).select_from(Document).where(Document.project_id == project_id)
+        select(func.count())
+        .select_from(Document)
+        .where(Document.project_id == project_id)
     )
     total = count_result.scalar() or 0
 
@@ -178,7 +185,9 @@ async def list_documents(
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)
+@limiter.limit(crud_limit)
 async def get_document(
+    request: Request,
     project_id: UUID,
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -202,7 +211,9 @@ async def get_document(
 
 
 @router.get("/{document_id}/download")
+@limiter.limit(crud_limit)
 async def download_document(
+    request: Request,
     project_id: UUID,
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -240,7 +251,9 @@ async def download_document(
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(crud_limit)
 async def delete_document(
+    request: Request,
     project_id: UUID,
     document_id: UUID,
     db: AsyncSession = Depends(get_db),

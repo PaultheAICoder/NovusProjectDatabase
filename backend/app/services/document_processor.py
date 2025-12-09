@@ -1,12 +1,10 @@
 """Document processing service for text extraction."""
 
 import io
-from pathlib import Path
-from typing import Optional
 
+import pandas as pd
 import pdfplumber
 from docx import Document as DocxDocument
-import pandas as pd
 
 
 class DocumentProcessor:
@@ -27,7 +25,7 @@ class DocumentProcessor:
         return mime_type in cls.SUPPORTED_MIME_TYPES
 
     @classmethod
-    def get_file_type(cls, mime_type: str) -> Optional[str]:
+    def get_file_type(cls, mime_type: str) -> str | None:
         """Get the file type from MIME type."""
         return cls.SUPPORTED_MIME_TYPES.get(mime_type)
 

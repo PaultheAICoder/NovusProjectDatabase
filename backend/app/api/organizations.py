@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.rate_limit import crud_limit, limiter
 from app.models import Organization, Project
 from app.schemas.base import PaginatedResponse
 from app.schemas.organization import (
@@ -20,7 +21,9 @@ router = APIRouter(prefix="/organizations", tags=["organizations"])
 
 
 @router.get("", response_model=PaginatedResponse[OrganizationResponse])
+@limiter.limit(crud_limit)
 async def list_organizations(
+    request: Request,
     db: DbSession,
     current_user: CurrentUser,
     page: int = Query(1, ge=1),
@@ -57,8 +60,12 @@ async def list_organizations(
     )
 
 
-@router.post("", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED
+)
+@limiter.limit(crud_limit)
 async def create_organization(
+    request: Request,
     data: OrganizationCreate,
     db: DbSession,
     current_user: CurrentUser,
@@ -82,7 +89,9 @@ async def create_organization(
 
 
 @router.get("/{organization_id}", response_model=OrganizationDetail)
+@limiter.limit(crud_limit)
 async def get_organization(
+    request: Request,
     organization_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
@@ -114,7 +123,9 @@ async def get_organization(
 
 
 @router.put("/{organization_id}", response_model=OrganizationResponse)
+@limiter.limit(crud_limit)
 async def update_organization(
+    request: Request,
     organization_id: UUID,
     data: OrganizationUpdate,
     db: DbSession,
@@ -141,7 +152,7 @@ async def update_organization(
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Organization name already exists",
+            detail="Organization name already exists",
         )
 
     return OrganizationResponse.model_validate(org)
