@@ -5,6 +5,9 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.config import get_settings
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 settings = get_settings()
 
@@ -30,8 +33,11 @@ def get_rate_limit_key(request: Request) -> str:
             user_id = payload.get("sub")
             if user_id:
                 return f"user:{user_id}"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "rate_limit_key_fallback_to_ip",
+                error_type=type(e).__name__,
+            )
 
     # Fall back to IP address
     return get_remote_address(request)

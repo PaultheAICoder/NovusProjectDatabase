@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     rate_limit_auth: str = "20/minute"
     rate_limit_default: str = "60/minute"
 
+    # Logging
+    log_level: str = "INFO"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def normalize_log_level(cls, v: str) -> str:
+        """Normalize log level to uppercase."""
+        return v.upper() if isinstance(v, str) else "INFO"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list[str]) -> list[str]:

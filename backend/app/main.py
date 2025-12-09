@@ -20,21 +20,30 @@ from app.api import (
 )
 from app.config import get_settings
 from app.core.auth import azure_scheme
+from app.core.logging import (
+    configure_logging,
+    generate_request_id,
+    get_logger,
+    request_id_ctx,
+)
 from app.core.rate_limit import limiter
 
 settings = get_settings()
+
+# Configure structured logging
+configure_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     # Log environment info
-    logger.info(f"Starting NPD API in {settings.environment} mode")
-    logger.info(f"Debug mode: {settings.debug}")
+    logger.info(
+        "application_starting",
+        environment=settings.environment,
+        debug=settings.debug,
+    )
 
     # Startup - only load Azure AD config if valid credentials are provided
     has_valid_azure_config = bool(
@@ -45,16 +54,17 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
 
     if has_valid_azure_config:
         await azure_scheme.openid_config.load_config()
-        logger.info("Azure AD configuration loaded")
+        logger.info("azure_ad_configured")
     else:
         logger.warning(
-            "Azure AD not configured - authentication endpoints will fail. "
-            "Set AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID, and AZURE_AD_CLIENT_SECRET."
+            "azure_ad_not_configured",
+            message="Authentication endpoints will fail. "
+            "Set AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID, and AZURE_AD_CLIENT_SECRET.",
         )
 
     yield
     # Shutdown
-    logger.info("Shutting down NPD API")
+    logger.info("application_shutdown")
 
 
 app = FastAPI(
@@ -82,6 +92,18 @@ app.add_middleware(
 # Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# Request correlation ID middleware
+@app.middleware("http")
+async def add_request_id_middleware(request, call_next):
+    """Add correlation ID to each request."""
+    request_id = generate_request_id()
+    request_id_ctx.set(request_id)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")

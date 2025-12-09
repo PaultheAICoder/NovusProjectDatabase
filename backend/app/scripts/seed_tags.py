@@ -7,6 +7,7 @@ import asyncio
 
 from sqlalchemy import select
 
+from app.core.logging import configure_logging, get_logger
 from app.database import async_session_maker
 from app.models import Tag, TagType
 
@@ -55,6 +56,10 @@ STRUCTURED_TAGS = {
 
 async def seed_tags() -> None:
     """Seed structured tags into the database."""
+    # Configure logging for standalone script
+    configure_logging()
+    logger = get_logger(__name__)
+
     async with async_session_maker() as db:
         created = 0
         skipped = 0
@@ -80,7 +85,11 @@ async def seed_tags() -> None:
                 created += 1
 
         await db.commit()
-        print(f"Seeded {created} tags, skipped {skipped} existing tags")
+        logger.info(
+            "tags_seeded",
+            created=created,
+            skipped=skipped,
+        )
 
 
 if __name__ == "__main__":

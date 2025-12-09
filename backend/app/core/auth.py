@@ -10,8 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.logging import get_logger
 from app.database import get_db
 from app.models.user import User, UserRole
+
+logger = get_logger(__name__)
 
 settings = get_settings()
 
@@ -91,7 +94,11 @@ async def get_user_from_session(
 
         result = await db.execute(select(User).where(User.id == UUID(user_id)))
         return result.scalar_one_or_none()
-    except (JWTError, ValueError):
+    except (JWTError, ValueError) as e:
+        logger.debug(
+            "session_token_invalid",
+            error_type=type(e).__name__,
+        )
         return None
 
 

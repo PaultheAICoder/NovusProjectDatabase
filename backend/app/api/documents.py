@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.config import get_settings
+from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter, upload_limit
 from app.core.storage import StorageService
 from app.models.document import Document, DocumentChunk
@@ -23,6 +24,8 @@ from app.schemas.document import (
 )
 from app.services.document_processor import DocumentProcessor
 from app.services.embedding_service import EmbeddingService
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["documents"])
 
@@ -144,6 +147,13 @@ async def upload_document(
         await db.refresh(document)
 
     except Exception as e:
+        logger.exception(
+            "document_processing_failed",
+            document_id=str(document.id),
+            project_id=str(project_id),
+            filename=document.display_name,
+            error=str(e),
+        )
         document.processing_status = "failed"
         document.processing_error = str(e)
         await db.commit()
@@ -277,8 +287,14 @@ async def delete_document(
     storage = StorageService()
     try:
         await storage.delete(document.file_path)
-    except Exception:
-        pass  # File may already be deleted
+    except Exception as e:
+        logger.debug(
+            "document_file_deletion_skipped",
+            document_id=str(document_id),
+            file_path=document.file_path,
+            reason="File may already be deleted",
+            error=str(e),
+        )
 
     # Delete from database (cascade will delete chunks)
     await db.delete(document)

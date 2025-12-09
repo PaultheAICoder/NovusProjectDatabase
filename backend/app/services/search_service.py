@@ -6,9 +6,12 @@ from sqlalchemy import func, literal_column, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.logging import get_logger
 from app.models.document import Document
 from app.models.project import Project, ProjectStatus
 from app.services.embedding_service import EmbeddingService
+
+logger = get_logger(__name__)
 
 
 class SearchService:
@@ -46,6 +49,14 @@ class SearchService:
 
         Returns tuple of (projects, total_count).
         """
+        logger.info(
+            "search_projects",
+            query=query[:50] if query else None,  # Truncate for logs
+            has_filters=bool(status or organization_id or tag_ids or owner_id),
+            page=page,
+            page_size=page_size,
+        )
+
         # Base conditions for filtering
         filter_conditions = self._build_filter_conditions(
             status=status,
@@ -306,6 +317,7 @@ class SearchService:
         query_embedding = await self.embedding_service.generate_embedding(query)
 
         if not query_embedding:
+            logger.debug("vector_search_skipped", reason="embedding_generation_failed")
             return {}
 
         # Find most similar document chunks using cosine distance

@@ -6,6 +6,10 @@ import pandas as pd
 import pdfplumber
 from docx import Document as DocxDocument
 
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class DocumentProcessor:
     """Service for extracting text from various document types."""
@@ -49,6 +53,12 @@ class DocumentProcessor:
         Raises:
             ValueError: If the file type is not supported
         """
+        logger.debug(
+            "text_extraction_started",
+            mime_type=mime_type,
+            filename=filename,
+        )
+
         file_type = self.get_file_type(mime_type)
         if not file_type:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
@@ -131,7 +141,12 @@ class DocumentProcessor:
             try:
                 return file_content.decode(encoding)
             except UnicodeDecodeError:
+                logger.debug(
+                    "encoding_fallback",
+                    encoding=encoding,
+                )
                 continue
 
         # Fallback with error handling
+        logger.debug("encoding_using_fallback", encoding="utf-8_with_replace")
         return file_content.decode("utf-8", errors="replace")

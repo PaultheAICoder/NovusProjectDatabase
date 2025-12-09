@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.models.organization import Organization
 from app.models.project import Project, ProjectStatus
 from app.models.tag import Tag
@@ -22,6 +23,8 @@ from app.schemas.import_ import (
     ImportRowValidation,
 )
 from app.services.embedding_service import EmbeddingService
+
+logger = get_logger(__name__)
 
 # Column name mappings (CSV header -> internal field)
 COLUMN_MAPPINGS = {
@@ -313,6 +316,12 @@ class ImportService:
 
         Returns list of results for each row.
         """
+        logger.info(
+            "import_commit_started",
+            row_count=len(rows),
+            skip_invalid=skip_invalid,
+        )
+
         results = []
 
         for row in rows:
@@ -369,6 +378,11 @@ class ImportService:
                     )
                 )
             except Exception as e:
+                logger.warning(
+                    "import_row_failed",
+                    row_number=row.row_number,
+                    error=str(e),
+                )
                 if skip_invalid:
                     results.append(
                         ImportCommitResult(

@@ -3,6 +3,9 @@
 import httpx
 
 from app.config import get_settings
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class EmbeddingService:
@@ -103,7 +106,11 @@ class EmbeddingService:
                 return data.get("embedding")
         except httpx.HTTPError as e:
             # Log error but don't raise - embeddings are optional
-            print(f"Error generating embedding: {e}")
+            logger.warning(
+                "embedding_generation_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
 
     async def generate_embeddings_batch(

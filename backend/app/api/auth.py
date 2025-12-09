@@ -11,9 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser
 from app.config import get_settings
 from app.core.auth import get_or_create_user
+from app.core.logging import get_logger
 from app.core.rate_limit import auth_limit, limiter
 from app.database import get_db
 from app.schemas.user import UserResponse
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
@@ -106,7 +109,12 @@ async def auth_callback(
     # 2. Decode ID token (without verification for now - Azure already validated it)
     try:
         claims = jwt.get_unverified_claims(id_token)
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "oauth_token_decode_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return RedirectResponse(
             url=f"{frontend_url}/login?error=invalid_token",
             status_code=status.HTTP_302_FOUND,
