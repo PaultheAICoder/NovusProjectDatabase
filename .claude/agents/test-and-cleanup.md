@@ -22,17 +22,35 @@ color: cyan
 
 ## DATABASE SAFETY PROTOCOL
 
-**MANDATORY: All validation runs against DEVELOPMENT/TEST environment**
+**MANDATORY: All validation runs against TEST environment ONLY**
 
-| Environment | Target | Port | URL |
-|-------------|--------|------|-----|
-| Production | NEVER access directly | varies | N/A |
-| **Development** | **USE THIS** | 6702 | http://localhost:6700 |
+| Environment | Container | Port | Database | User | URL |
+|-------------|-----------|------|----------|------|-----|
+| **Production** | npd-db | 6702 | npd | npd | **NEVER ACCESS** |
+| **Test** | npd-db-test | 6712 | npd_test | npd_test | http://localhost:6710 |
 
-**E2E Tests MUST target development environment:**
+### Required DATABASE_URL for ALL Database Operations
+
 ```bash
-# Run E2E tests against development environment
+# TEST DATABASE ONLY - Use this for ALL validation commands
+export TEST_DATABASE_URL="postgresql+asyncpg://npd_test:npd_test_2025@localhost:6712/npd_test"
+
+# Verify test database before running tests
+docker exec npd-db-test psql -U npd_test -d npd_test -c "SELECT 1;"
+
+# For any Alembic verification
+DATABASE_URL="$TEST_DATABASE_URL" alembic current
+```
+
+**E2E Tests MUST target test environment:**
+```bash
+# Run E2E tests against test environment (port 6710)
 cd frontend && npm run test:e2e
+```
+
+**If test containers are not running:**
+```bash
+docker compose -f docker-compose.test.yml up -d
 ```
 
 ---

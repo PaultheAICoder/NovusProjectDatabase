@@ -311,7 +311,30 @@ Don't say "update SQLAlchemy queries" - list each explicitly:
 
 **Too Large Indicators**: Build >16 hours, >20 files, >50 subtasks
 
-**If too large**: Split into phases, plan Phase 1 only (8-12 hours), document remaining phases.
+**If too large - RECOMMEND TASK-SHARD**:
+
+When an issue is too large, DO NOT attempt to plan it all. Instead:
+
+1. **Stop planning immediately**
+2. **Report to orchestrator**: "This issue is too large for a single workflow cycle"
+3. **Recommend task-shard agent**: The `task-shard` agent will decompose the issue into smaller sub-issues
+
+**Include in your output**:
+```markdown
+## TASK TOO LARGE - RECOMMEND SHARDING
+
+**Estimated Effort**: [X] hours (exceeds 16-hour threshold)
+**Files Affected**: [X] files (exceeds 20-file threshold)
+
+**Recommendation**: Use `task-shard` agent to decompose this issue into smaller sub-issues before proceeding.
+
+**Suggested Decomposition**:
+1. [Sub-task 1 description] (~X hours)
+2. [Sub-task 2 description] (~X hours)
+3. [Sub-task 3 description] (~X hours)
+```
+
+The orchestrator will then invoke the task-shard agent to create proper GitHub sub-issues.
 
 ## Subtask Structure
 

@@ -19,25 +19,42 @@ color: orange
 
 ## DATABASE SAFETY PROTOCOL
 
-**MANDATORY: All database operations target TEST environment**
+**MANDATORY: All database operations target TEST environment ONLY**
 
-| Environment | Target | Port |
-|-------------|--------|------|
-| Production | NEVER access | 6702 |
-| **Test** | **USE THIS** | 6702 (test container) |
+| Environment | Container | Port | Database | User |
+|-------------|-----------|------|----------|------|
+| **Production** | npd-db | 6702 | npd | npd | **NEVER ACCESS** |
+| **Test** | npd-db-test | 6712 | npd_test | npd_test | **USE THIS** |
+
+### Required DATABASE_URL for ALL Alembic Operations
+
+**ALWAYS use this exact DATABASE_URL for migrations:**
 
 ```bash
-# Verify test database connection BEFORE any DB operations
-docker exec npd-db psql -U npd_test -d npd_test -c "SELECT 1;"
+# TEST DATABASE ONLY - Use this for ALL migration commands
+export TEST_DATABASE_URL="postgresql+asyncpg://npd_test:npd_test_2025@localhost:6712/npd_test"
 
-# For Alembic commands, use test DATABASE_URL
-DATABASE_URL="postgresql+asyncpg://npd_test:npd_test_2025@localhost:6702/npd_test" alembic upgrade head
+# Verify test database connection BEFORE any DB operations
+docker exec npd-db-test psql -U npd_test -d npd_test -c "SELECT 1;"
+
+# For Alembic commands - ALWAYS use TEST_DATABASE_URL
+cd /home/pbrown/Novus-db/backend
+DATABASE_URL="$TEST_DATABASE_URL" alembic upgrade head
+DATABASE_URL="$TEST_DATABASE_URL" alembic current
 ```
 
-**NEVER run these on production:**
-- `alembic downgrade base`
-- Direct SQL to production container
+### CRITICAL: Production Protection
+
+**NEVER run these commands without TEST_DATABASE_URL:**
+- `alembic upgrade head` (without explicit TEST_DATABASE_URL)
+- `alembic downgrade`
+- Direct SQL to `npd-db` container (production)
 - Any DELETE/TRUNCATE without WHERE clause
+
+**If test container is not running:**
+```bash
+docker compose -f docker-compose.test.yml up -d db-test
+```
 
 ## Pre-Build Verification (MANDATORY)
 
