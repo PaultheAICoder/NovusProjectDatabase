@@ -34,6 +34,7 @@ from app.schemas.document import (
 )
 from app.services.document_processing_task import process_document_background
 from app.services.document_processor import DocumentProcessor
+from app.services.file_validation import FileValidationService
 
 logger = get_logger(__name__)
 
@@ -101,6 +102,32 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large. Maximum size is {settings.max_file_size_mb}MB",
+        )
+
+    # Validate file content matches claimed type (magic number check)
+    validator = FileValidationService()
+
+    # First, check for dangerous file types
+    if not validator.is_safe_file_type(content):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File type not allowed for security reasons",
+        )
+
+    # Then verify content matches claimed MIME type
+    is_valid, detected_mime = validator.validate_content_type(
+        content, file.content_type or "application/octet-stream"
+    )
+    if not is_valid:
+        logger.warning(
+            "file_type_spoofing_attempt",
+            claimed_type=file.content_type,
+            detected_type=detected_mime,
+            filename=file.filename,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match the declared file type",
         )
 
     # Store file
