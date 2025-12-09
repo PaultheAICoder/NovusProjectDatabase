@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     rate_limit_auth: str = "20/minute"
     rate_limit_default: str = "60/minute"
 
+    # ClamAV Antivirus (optional)
+    clamav_enabled: bool = False
+    clamav_host: str = "localhost"
+    clamav_port: int = 3310
+    clamav_timeout: int = 30  # seconds
+    clamav_scan_on_upload: bool = True  # When enabled, scan files during upload
+    clamav_fail_open: bool = True  # If True, allow upload when scan fails/unavailable
+
     # Logging
     log_level: str = "INFO"
 

@@ -29,6 +29,24 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
 
+  clamav:
+    image: clamav/clamav:latest
+    container_name: npd-clamav
+    restart: unless-stopped
+    ports:
+      - "6704:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    environment:
+      # Reduce memory usage for development
+      - CLAMAV_NO_CLAMONACC=true
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "3"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # ClamAV needs time to load signatures
+
   backend:
     build:
       context: ./backend
@@ -41,6 +59,9 @@ services:
       # Override env file for Docker network URLs
       DATABASE_URL: postgresql+asyncpg://npd:npd@db:5432/npd
       OLLAMA_BASE_URL: http://ollama:11434
+      # ClamAV connection (disabled by default)
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
       # Development defaults - override in production!
       ENVIRONMENT: development
       DEBUG: "true"
@@ -78,3 +99,4 @@ volumes:
   postgres_data:
   ollama_data:
   uploads_data:
+  clamav_data:

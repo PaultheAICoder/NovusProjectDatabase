@@ -32,6 +32,7 @@ from app.schemas.document import (
     DocumentResponse,
     DocumentStatusResponse,
 )
+from app.services.antivirus import AntivirusService, ScanResult
 from app.services.document_processing_task import process_document_background
 from app.services.document_processor import DocumentProcessor
 from app.services.file_validation import FileValidationService
@@ -129,6 +130,49 @@ async def upload_document(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match the declared file type",
         )
+
+    # Antivirus scan (if enabled)
+    antivirus = AntivirusService()
+    if antivirus.is_enabled:
+        scan_result = await antivirus.scan_bytes(content, file.filename or "document")
+
+        if scan_result.result == ScanResult.INFECTED:
+            logger.warning(
+                "upload_blocked_malware",
+                filename=file.filename,
+                threat_name=scan_result.threat_name,
+                user_id=str(current_user.id),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File rejected: malware detected ({scan_result.threat_name})",
+            )
+
+        if scan_result.result == ScanResult.ERROR:
+            if not antivirus.fail_open:
+                logger.warning(
+                    "upload_blocked_scan_error",
+                    filename=file.filename,
+                    error=scan_result.message,
+                    user_id=str(current_user.id),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Antivirus scanning unavailable. Upload rejected.",
+                )
+            else:
+                logger.warning(
+                    "upload_allowed_scan_error",
+                    filename=file.filename,
+                    error=scan_result.message,
+                    user_id=str(current_user.id),
+                )
+
+        if scan_result.result == ScanResult.CLEAN:
+            logger.info(
+                "antivirus_scan_passed",
+                filename=file.filename,
+            )
 
     # Store file
     storage = StorageService()

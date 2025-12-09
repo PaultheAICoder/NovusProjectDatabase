@@ -76,4 +76,7 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 filterwarnings = [
     "ignore::DeprecationWarning",
+    # Ignore ResourceWarnings from mock coroutines in test isolation scenarios
+    # This occurs when async mocks from earlier tests interact with module imports
+    "ignore:coroutine.*was never awaited:RuntimeWarning",
 ]
