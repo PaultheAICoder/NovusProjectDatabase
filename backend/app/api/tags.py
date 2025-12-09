@@ -100,14 +100,14 @@ async def create_freeform_tag(
 @limiter.limit(crud_limit)
 async def suggest_tags(
     request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
     query: str = Query(..., min_length=2, description="Search query for tag names"),
     type: TagType | None = Query(default=None, description="Filter by tag type"),
     include_fuzzy: bool = Query(
         default=True, description="Include fuzzy matches with suggestions"
     ),
     limit: int = Query(default=10, ge=1, le=50),
-    db: DbSession = None,
-    current_user: CurrentUser = None,
 ) -> TagSuggestionsResponse:
     """
     Suggest existing tags based on partial input with fuzzy matching.
@@ -139,10 +139,10 @@ async def suggest_tags(
 @limiter.limit(crud_limit)
 async def get_popular_tags(
     request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
     type: TagType | None = Query(default=None, description="Filter by tag type"),
     limit: int = Query(default=10, ge=1, le=50),
-    db: DbSession = None,
-    current_user: CurrentUser = None,
 ) -> list[PopularTagResponse]:
     """Get the most frequently used tags."""
     suggester = TagSuggester(db)

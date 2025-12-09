@@ -251,12 +251,12 @@ async def get_overview_statistics(
 @limiter.limit(admin_limit)
 async def preview_import(
     request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
     file: UploadFile = File(...),
     include_suggestions: bool = Query(
         default=True, description="Include AI suggestions for missing fields"
     ),
-    db: DbSession = None,
-    admin_user: AdminUser = None,
 ) -> ImportPreviewResponse:
     """
     Upload a CSV file and preview the import with validation and AI suggestions.
