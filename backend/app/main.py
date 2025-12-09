@@ -26,19 +26,35 @@ settings = get_settings()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Log environment info
+    logger.info(f"Starting NPD API in {settings.environment} mode")
+    logger.info(f"Debug mode: {settings.debug}")
+
     # Startup - only load Azure AD config if valid credentials are provided
-    has_valid_azure_config = (
+    has_valid_azure_config = bool(
         settings.azure_ad_client_id
         and settings.azure_ad_tenant_id
-        and not settings.azure_ad_client_id.startswith("your-")
-        and not settings.azure_ad_tenant_id.startswith("your-")
+        and settings.azure_ad_client_secret
     )
+
     if has_valid_azure_config:
         await azure_scheme.openid_config.load_config()
+        logger.info("Azure AD configuration loaded")
+    else:
+        logger.warning(
+            "Azure AD not configured - authentication endpoints will fail. "
+            "Set AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID, and AZURE_AD_CLIENT_SECRET."
+        )
+
     yield
     # Shutdown
+    logger.info("Shutting down NPD API")
 
 
 app = FastAPI(

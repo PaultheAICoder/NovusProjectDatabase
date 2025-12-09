@@ -38,8 +38,12 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      # Override env file for Docker network URLs
       DATABASE_URL: postgresql+asyncpg://npd:npd@db:5432/npd
       OLLAMA_BASE_URL: http://ollama:11434
+      # Development defaults - override in production!
+      ENVIRONMENT: development
+      DEBUG: "true"
     ports:
       - "6701:6701"
     volumes:

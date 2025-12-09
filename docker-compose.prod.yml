@@ -1,0 +1,37 @@
+# docker-compose.prod.yml
+# Production Docker Compose - requires proper .env configuration
+#
+# REQUIRED environment variables in backend/.env:
+#   - DATABASE_URL (with production credentials)
+#   - SECRET_KEY (minimum 32 characters)
+#   - AZURE_AD_TENANT_ID
+#   - AZURE_AD_CLIENT_ID
+#   - AZURE_AD_CLIENT_SECRET
+#
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: npd-backend-prod
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+    ports:
+      - "6701:6701"
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6701/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: uvicorn app.main:app --host 0.0.0.0 --port 6701
+
+volumes:
+  uploads_data:

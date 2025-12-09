@@ -1,9 +1,10 @@
 """Application configuration using Pydantic settings."""
 
 from functools import lru_cache
+from secrets import token_urlsafe
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    database_url: str = "postgresql+asyncpg://npd:npd@localhost:6702/npd"
+    database_url: str = ""  # Required - validated in model_validator
 
     # Azure AD Authentication
     azure_ad_tenant_id: str = ""
@@ -27,9 +28,9 @@ class Settings(BaseSettings):
     azure_ad_redirect_uri: str = "http://localhost:6701/api/v1/auth/callback"
 
     # Application
-    secret_key: str = "change-me-in-production-min-32-chars"
+    secret_key: str = ""  # Will be validated and set default in model_validator
     environment: Literal["development", "staging", "production"] = "development"
-    debug: bool = True
+    debug: bool = False
 
     # Ollama
     ollama_base_url: str = "http://localhost:6703"
@@ -83,6 +84,60 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 return [domain.strip().lower() for domain in v.split(",")]
         return [d.lower() for d in v]
+
+    @model_validator(mode="after")
+    def validate_security_settings(self) -> "Settings":
+        """Validate security-critical settings based on environment."""
+        import warnings
+
+        # Generate secure secret_key if not provided
+        if not self.secret_key:
+            self.secret_key = token_urlsafe(32)
+            if self.environment != "development":
+                warnings.warn(
+                    "SECRET_KEY not set - using auto-generated key. "
+                    "Set SECRET_KEY environment variable for production.",
+                    stacklevel=2,
+                )
+
+        # Validate secret_key length
+        if len(self.secret_key) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters")
+
+        # Production environment requires explicit configuration
+        if self.environment == "production":
+            errors = []
+
+            if not self.database_url:
+                errors.append("DATABASE_URL is required in production")
+
+            if not self.azure_ad_tenant_id or self.azure_ad_tenant_id.startswith(
+                "your-"
+            ):
+                errors.append("AZURE_AD_TENANT_ID is required in production")
+
+            if not self.azure_ad_client_id or self.azure_ad_client_id.startswith(
+                "your-"
+            ):
+                errors.append("AZURE_AD_CLIENT_ID is required in production")
+
+            if (
+                not self.azure_ad_client_secret
+                or self.azure_ad_client_secret.startswith("your-")
+            ):
+                errors.append("AZURE_AD_CLIENT_SECRET is required in production")
+
+            if errors:
+                raise ValueError(
+                    "Production configuration errors:\n"
+                    + "\n".join(f"  - {e}" for e in errors)
+                )
+
+        # Development/staging: provide sensible defaults and warnings
+        if self.environment == "development" and not self.database_url:
+            self.database_url = "postgresql+asyncpg://npd:npd@localhost:6702/npd"
+
+        return self
 
     @property
     def is_development(self) -> bool:
