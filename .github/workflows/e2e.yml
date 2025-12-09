@@ -1,0 +1,117 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e-tests:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: frontend
+        run: npx playwright install-deps chromium
+
+      - name: Start test environment
+        run: |
+          docker compose -f docker-compose.test.yml up -d
+          echo "Waiting for services to be healthy..."
+
+      - name: Wait for services to be ready
+        run: |
+          # Wait for database
+          timeout 60 bash -c 'until docker compose -f docker-compose.test.yml exec -T db-test pg_isready -U npd_test; do sleep 2; done'
+          echo "Database is ready"
+
+          # Wait for backend (health endpoint)
+          timeout 120 bash -c 'until curl -sf http://localhost:6711/health > /dev/null 2>&1; do sleep 5; done'
+          echo "Backend is ready"
+
+          # Wait for frontend
+          timeout 120 bash -c 'until curl -sf http://localhost:6710 > /dev/null 2>&1; do sleep 5; done'
+          echo "Frontend is ready"
+
+      - name: Run E2E tests
+        working-directory: frontend
+        run: npx playwright test --project=chromium
+        env:
+          CI: true
+          PLAYWRIGHT_BASE_URL: http://localhost:6710
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 30
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results
+          path: frontend/test-results/
+          retention-days: 7
+
+      - name: Show docker logs on failure
+        if: failure()
+        run: |
+          echo "=== Frontend logs ==="
+          docker compose -f docker-compose.test.yml logs frontend-test --tail=100
+          echo "=== Backend logs ==="
+          docker compose -f docker-compose.test.yml logs backend-test --tail=100
+          echo "=== Database logs ==="
+          docker compose -f docker-compose.test.yml logs db-test --tail=50
+
+      - name: Stop test environment
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v
