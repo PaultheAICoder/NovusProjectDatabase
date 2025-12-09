@@ -38,7 +38,12 @@ class Tag(Base):
         index=True,
     )
     type: Mapped[TagType] = mapped_column(
-        Enum(TagType),
+        Enum(
+            TagType,
+            name="tagtype",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         index=True,
     )

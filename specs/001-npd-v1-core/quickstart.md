@@ -37,13 +37,19 @@ The fastest way to run the full stack locally:
 git clone <repo-url>
 cd novus-database
 
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your Azure AD credentials (see Azure AD Setup below)
+# Copy environment templates (environment files are per-service)
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+# Edit backend/.env with your Azure AD credentials (see Azure AD Setup below)
 
 # Start all services
 docker compose up -d
+
+# Wait for services to be healthy, then seed initial data
+docker exec npd-backend python -m app.scripts.seed_tags
+
+# Pull the embedding model for RAG features
+docker exec npd-ollama ollama pull nomic-embed-text
 
 # View logs
 docker compose logs -f
@@ -62,6 +68,20 @@ docker compose logs -f
 | `backend` | 6701 | FastAPI application |
 | `db` | 6702 | PostgreSQL with pgvector |
 | `ollama` | 6703 | Local embedding/LLM service |
+
+### Authentication Note
+
+All API endpoints except `/health` and `/docs` require Azure AD authentication.
+To use the API:
+1. Complete the Azure AD Setup (below)
+2. Navigate to `http://localhost:6700` and log in
+3. Use the session cookie for API requests
+
+Public endpoints (no auth required):
+- `GET /health` - Health check
+- `GET /` - API info
+- `GET /docs` - Swagger UI
+- `GET /redoc` - ReDoc
 
 ---
 
@@ -397,8 +417,8 @@ psql postgresql://npd:npd@localhost:6702/npd -c "SELECT * FROM pg_extension WHER
 # Check Ollama is running
 curl http://localhost:6703/api/tags
 
-# Pull model if missing
-ollama pull nomic-embed-text
+# Pull model if missing (use Docker exec when running in container)
+docker exec npd-ollama ollama pull nomic-embed-text
 
 # Check Ollama logs
 docker compose logs ollama
