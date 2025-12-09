@@ -59,10 +59,13 @@ services:
       dockerfile: Dockerfile
     container_name: npd-frontend
     restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:6701
     ports:
       - "6700:6700"
     volumes:
       - ./frontend/src:/app/src:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
     depends_on:
       - backend
     command: pnpm dev --host 0.0.0.0 --port 6700

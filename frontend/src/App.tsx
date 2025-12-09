@@ -6,7 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import { Header, Sidebar } from "@/components/layout";
+import { Header, Sidebar, Footer } from "@/components/layout";
 import {
   DashboardPage,
   ProjectsPage,
@@ -49,8 +49,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
       <Header />
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6 pb-12">{children}</main>
       </div>
+      <Footer />
     </div>
   );
 }
@@ -63,17 +64,20 @@ function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold">Novus Project Database</h1>
-        <p className="mt-2 text-muted-foreground">Sign in to continue</p>
-        <button
-          onClick={login}
-          className="mt-4 rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
-        >
-          Sign in with Azure AD
-        </button>
+    <div className="flex min-h-screen flex-col">
+      <div className="flex flex-1 items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold">Novus Project Database</h1>
+          <p className="mt-2 text-muted-foreground">Sign in to continue</p>
+          <button
+            onClick={login}
+            className="mt-4 rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
+          >
+            Sign in with Azure AD
+          </button>
+        </div>
       </div>
+      <Footer />
     </div>
   );
 }

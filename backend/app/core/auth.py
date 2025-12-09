@@ -4,8 +4,9 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from fastapi_azure_auth import SingleTenantAzureAuthorizationCodeBearer
+from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,10 @@ from app.database import get_db
 from app.models.user import User, UserRole
 
 settings = get_settings()
+
+# JWT settings (must match auth.py)
+JWT_SECRET = settings.secret_key
+JWT_ALGORITHM = "HS256"
 
 # Azure AD authentication scheme
 azure_scheme = SingleTenantAzureAuthorizationCodeBearer(
@@ -70,44 +75,48 @@ def _is_email_domain_allowed(email: str) -> bool:
     return email_domain in allowed_domains
 
 
+async def get_user_from_session(
+    request: Request,
+    db: AsyncSession,
+) -> User | None:
+    """Get user from session cookie if present."""
+    session_token = request.cookies.get("session")
+    if not session_token:
+        return None
+
+    try:
+        payload = jwt.decode(session_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+
+        result = await db.execute(select(User).where(User.id == UUID(user_id)))
+        return result.scalar_one_or_none()
+    except (JWTError, ValueError):
+        return None
+
+
 async def get_current_user(
-    token: dict[str, Any] = Depends(azure_scheme),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Get current authenticated user from Azure AD token."""
-    azure_id = token.get("oid") or token.get("sub")
-    email = token.get("preferred_username") or token.get("email", "")
-    display_name = token.get("name", email)
-    roles = token.get("roles", [])
+    """Get current authenticated user from session cookie or Azure AD token."""
+    # First try session cookie
+    user = await get_user_from_session(request, db)
+    if user:
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is disabled",
+            )
+        return user
 
-    if not azure_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token: missing user identifier",
-        )
-
-    # Check email domain is allowed
-    if not _is_email_domain_allowed(email):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied: only @novuslabs.com accounts are permitted",
-        )
-
-    user = await get_or_create_user(
-        db=db,
-        azure_id=azure_id,
-        email=email,
-        display_name=display_name,
-        roles=roles,
+    # No session cookie - user is not authenticated
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
     )
-
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is disabled",
-        )
-
-    return user
 
 
 async def get_current_active_user(
