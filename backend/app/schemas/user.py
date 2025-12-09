@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, computed_field
 
 from app.models.user import UserRole
 
@@ -22,6 +22,12 @@ class UserResponse(UserBase):
 
     id: UUID
     role: UserRole
+
+    @computed_field
+    @property
+    def is_admin(self) -> bool:
+        """Computed field indicating admin status."""
+        return self.role == UserRole.ADMIN
 
 
 class UserDetail(UserResponse):

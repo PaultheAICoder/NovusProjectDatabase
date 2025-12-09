@@ -3,7 +3,7 @@
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { Header, Sidebar, Footer } from "@/components/layout";
@@ -58,6 +58,18 @@ function MainLayout({ children }: { children: React.ReactNode }) {
 
 function LoginPage() {
   const { login, isAuthenticated } = useAuth();
+  const [searchParams] = useSearchParams();
+  const error = searchParams.get("error");
+
+  const errorMessages: Record<string, string> = {
+    token_exchange_failed: "Authentication failed. Please try again.",
+    no_id_token: "Authentication failed. Please try again.",
+    invalid_token: "Invalid authentication response. Please try again.",
+    missing_user_info: "Could not retrieve your user information.",
+    domain_not_allowed: "Your email domain is not authorized to access this application.",
+  };
+
+  const errorMessage = error ? errorMessages[error] || "An error occurred during sign in." : null;
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -69,6 +81,9 @@ function LoginPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold">Novus Project Database</h1>
           <p className="mt-2 text-muted-foreground">Sign in to continue</p>
+          {errorMessage && (
+            <p className="mt-2 text-sm text-destructive">{errorMessage}</p>
+          )}
           <button
             onClick={login}
             className="mt-4 rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"

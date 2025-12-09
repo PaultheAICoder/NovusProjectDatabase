@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,9 @@ JWT_EXPIRATION_HOURS = 24
 
 @router.get("/login")
 @limiter.limit(auth_limit)
-async def login(request: Request) -> RedirectResponse:
+async def login(
+    request: Request,  # noqa: ARG001
+) -> RedirectResponse:
     """Initiate Azure AD SSO login.
 
     Redirects to Azure AD for authentication.
@@ -47,9 +49,9 @@ async def login(request: Request) -> RedirectResponse:
 @router.get("/callback")
 @limiter.limit(auth_limit)
 async def auth_callback(
-    request: Request,
+    request: Request,  # noqa: ARG001 - Required by rate limiter
     code: str,
-    state: str | None = None,
+    state: str | None = None,  # noqa: ARG001 - Reserved for CSRF protection
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Handle Azure AD OAuth callback.
@@ -170,19 +172,28 @@ async def auth_callback(
 
 @router.post("/logout")
 @limiter.limit(auth_limit)
-async def logout(request: Request, current_user: CurrentUser) -> dict[str, str]:
+async def logout(
+    request: Request,  # noqa: ARG001
+    current_user: CurrentUser,  # noqa: ARG001
+) -> JSONResponse:
     """Log out current user.
 
-    Clears session and returns success message.
+    Clears session cookie and returns success message.
     """
-    # In production, clear session cookie here
-    return {"message": "Successfully logged out"}
+    response = JSONResponse(content={"message": "Successfully logged out"})
+    response.delete_cookie(
+        key="session",
+        path="/",
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/me", response_model=UserResponse)
 @limiter.limit(auth_limit)
 async def get_current_user_info(
-    request: Request, current_user: CurrentUser
+    request: Request,  # noqa: ARG001
+    current_user: CurrentUser,
 ) -> UserResponse:
     """Get current authenticated user info."""
     return UserResponse.model_validate(current_user)
