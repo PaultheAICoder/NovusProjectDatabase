@@ -12,6 +12,7 @@ from app.api import (
     admin,
     auth,
     contacts,
+    cron,
     documents,
     feedback,
     organizations,
@@ -130,6 +131,7 @@ app.include_router(documents.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
+app.include_router(cron.router, prefix="/api/v1")
 
 
 @app.get("/health")

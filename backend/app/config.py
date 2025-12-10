@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     # Feedback Email Integration
     feedback_email: str = ""  # e.g., ai-coder@vital-enterprises.com
 
+    # Cron Job Security
+    cron_secret: str = ""  # Bearer token for cron endpoint authentication
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalize_log_level(cls, v: str) -> str:
