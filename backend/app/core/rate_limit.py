@@ -44,10 +44,13 @@ def get_rate_limit_key(request: Request) -> str:
 
 
 # Create the limiter instance
+# Note: headers_enabled=False because slowapi 0.1.9 has issues with FastAPI's
+# auto-serialization of Pydantic models - it can't inject headers when the
+# endpoint returns a Pydantic model directly (not a Response object).
 limiter = Limiter(
     key_func=get_rate_limit_key,
     storage_uri=settings.rate_limit_storage_uri,
-    headers_enabled=True,  # Add X-RateLimit-* headers
+    headers_enabled=False,  # Disabled due to slowapi compatibility issue
     enabled=settings.rate_limit_enabled,
 )
 

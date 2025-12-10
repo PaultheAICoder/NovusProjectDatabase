@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,6 @@ from app.api.deps import CurrentUser
 from app.config import get_settings
 from app.core.auth import get_or_create_user
 from app.core.logging import get_logger
-from app.core.rate_limit import auth_limit, limiter
 from app.database import get_db
 from app.schemas.user import UserResponse
 
@@ -27,11 +26,20 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
 
+@router.get("/debug")
+async def auth_debug() -> dict:
+    """Debug endpoint showing Azure AD configuration (non-sensitive parts)."""
+    return {
+        "tenant_id": settings.azure_ad_tenant_id,
+        "client_id": settings.azure_ad_client_id,
+        "redirect_uri": settings.azure_ad_redirect_uri,
+        "client_secret_set": bool(settings.azure_ad_client_secret),
+        "allowed_email_domains": settings.allowed_email_domains,
+    }
+
+
 @router.get("/login")
-@limiter.limit(auth_limit)
-async def login(
-    request: Request,  # noqa: ARG001
-) -> RedirectResponse:
+async def login() -> RedirectResponse:
     """Initiate Azure AD SSO login.
 
     Redirects to Azure AD for authentication.
@@ -46,13 +54,12 @@ async def login(
         f"&scope=openid profile email"
         f"&response_mode=query"
     )
+    logger.info("auth_login_redirect", auth_url=auth_url)
     return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/callback")
-@limiter.limit(auth_limit)
 async def auth_callback(
-    request: Request,  # noqa: ARG001 - Required by rate limiter
     code: str,
     state: str | None = None,  # noqa: ARG001 - Reserved for CSRF protection
     db: AsyncSession = Depends(get_db),
@@ -61,6 +68,8 @@ async def auth_callback(
 
     Processes the authorization code and creates a session.
     """
+    logger.info("auth_callback_started", code_length=len(code) if code else 0)
+
     # Derive frontend URL from the redirect URI (same origin for cookie to work)
     # E.g., https://xxx.ngrok-free.dev/api/v1/auth/callback -> https://xxx.ngrok-free.dev
     redirect_uri = settings.azure_ad_redirect_uri
@@ -73,6 +82,7 @@ async def auth_callback(
             else "http://localhost:6700"
         )
     )
+    logger.info("auth_callback_frontend_url", frontend_url=frontend_url)
 
     # 1. Exchange code for tokens
     token_url = f"https://login.microsoftonline.com/{settings.azure_ad_tenant_id}/oauth2/v2.0/token"
@@ -90,8 +100,11 @@ async def auth_callback(
             },
         )
 
+    logger.info("auth_callback_token_response", status=token_response.status_code)
+
     if token_response.status_code != 200:
         # Redirect to frontend with error
+        logger.warning("auth_callback_token_failed", response=token_response.text)
         return RedirectResponse(
             url=f"{frontend_url}/login?error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND,
@@ -179,9 +192,7 @@ async def auth_callback(
 
 
 @router.post("/logout")
-@limiter.limit(auth_limit)
 async def logout(
-    request: Request,  # noqa: ARG001
     current_user: CurrentUser,  # noqa: ARG001
 ) -> JSONResponse:
     """Log out current user.
@@ -198,9 +209,7 @@ async def logout(
 
 
 @router.get("/me", response_model=UserResponse)
-@limiter.limit(auth_limit)
 async def get_current_user_info(
-    request: Request,  # noqa: ARG001
     current_user: CurrentUser,
 ) -> UserResponse:
     """Get current authenticated user info."""
