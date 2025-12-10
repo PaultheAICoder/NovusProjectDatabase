@@ -2,8 +2,11 @@
  * Application header component.
  */
 
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { FeedbackButton } from "@/components/features/FeedbackButton";
+import { FeedbackDialog } from "@/components/features/FeedbackDialog";
 
 interface HeaderProps {
   className?: string;
@@ -11,6 +14,7 @@ interface HeaderProps {
 
 export function Header({ className }: HeaderProps) {
   const { user, isAuthenticated, login, logout } = useAuth();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   return (
     <header
@@ -27,6 +31,7 @@ export function Header({ className }: HeaderProps) {
         <div className="flex items-center gap-4">
           {isAuthenticated ? (
             <>
+              <FeedbackButton onClick={() => setFeedbackOpen(true)} />
               <span className="text-sm text-muted-foreground">
                 {user?.display_name}
               </span>
@@ -36,6 +41,10 @@ export function Header({ className }: HeaderProps) {
               >
                 Sign out
               </button>
+              <FeedbackDialog
+                open={feedbackOpen}
+                onOpenChange={setFeedbackOpen}
+              />
             </>
           ) : (
             <button
