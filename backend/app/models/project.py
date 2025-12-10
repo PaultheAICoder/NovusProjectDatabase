@@ -79,7 +79,12 @@ class Project(Base):
         nullable=False,
     )
     status: Mapped[ProjectStatus] = mapped_column(
-        Enum(ProjectStatus),
+        Enum(
+            ProjectStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="projectstatus",
+            create_type=False,  # Enum already exists in DB
+        ),
         nullable=False,
         default=ProjectStatus.APPROVED,
         index=True,
