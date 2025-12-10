@@ -179,6 +179,10 @@ Your ONLY job is to call agents via the Task tool and report their results. Noth
 
 **Purpose**: Track actual execution time for each agent to identify bottlenecks
 
+**IMPORTANT: Timing is captured by the ORCHESTRATOR ONLY, not by agents.**
+
+Agents should NOT update the timing file. The orchestrator captures actual wall-clock time before and after each agent call. This ensures consistent, accurate timing across all workflows.
+
 **Your Role**:
 1. Create timing file for this workflow:
    ```bash
@@ -196,6 +200,45 @@ EOF
    ```
 
 2. Report to user: "Timing metrics initialized for Issue #$ISSUE_NUMBER (3-agent workflow)"
+
+**Timing Update Protocol** (after EACH agent completes):
+```bash
+# After Scout-and-Plan completes:
+SCOUT_PLAN_END=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+# Calculate duration: $(($(date -d "$SCOUT_PLAN_END" +%s) - $(date -d "$SCOUT_PLAN_START" +%s))) / 60
+
+# After Build completes:
+BUILD_END=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+
+# After Test-and-Cleanup completes:
+TEST_CLEANUP_END=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+WORKFLOW_END="$TEST_CLEANUP_END"
+
+# Update timing file with actual measured durations
+cat > $TIMING_FILE << EOF
+{
+  "issue": "$ISSUE_NUMBER",
+  "workflow": "3-agent",
+  "workflow_start": "$WORKFLOW_START",
+  "workflow_end": "$WORKFLOW_END",
+  "phases": {
+    "scout_and_plan": {
+      "start": "$SCOUT_PLAN_START",
+      "end": "$SCOUT_PLAN_END"
+    },
+    "build": {
+      "start": "$BUILD_START",
+      "end": "$BUILD_END"
+    },
+    "test_cleanup": {
+      "start": "$TEST_CLEANUP_START",
+      "end": "$TEST_CLEANUP_END"
+    }
+  },
+  "status": "complete"
+}
+EOF
+```
 
 ### Phase 1: Scout-and-Plan Agent
 

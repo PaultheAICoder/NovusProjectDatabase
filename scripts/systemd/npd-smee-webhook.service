@@ -9,7 +9,7 @@ User=pbrown
 WorkingDirectory=/home/pbrown/Novus-db
 # IMPORTANT: Replace YOUR_CHANNEL with actual smee.io channel URL
 # Create a channel at https://smee.io/new
-ExecStart=/home/pbrown/.npm-global/bin/smee -u https://smee.io/YOUR_CHANNEL --target http://localhost:6701/api/v1/webhooks/github
+ExecStart=/home/pbrown/.npm-global/bin/smee -u https://smee.io/YOUR_CHANNEL --target http://172.16.20.50:6700/api/v1/webhooks/github
 Restart=always
 RestartSec=10
 

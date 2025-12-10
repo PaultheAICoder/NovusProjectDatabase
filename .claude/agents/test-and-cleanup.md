@@ -384,15 +384,47 @@ Write to `/home/pbrown/Novus-db/completion-docs/YYYY-MM-DD-issue-XXX-description
 1. [Specific issue] - [Suggested fix for future]
 2. [Another improvement opportunity]
 
-### Similar Bug Patterns Detected (CHECK THIS)
+### Similar Bug Patterns Detected (MANDATORY for BUG_FIX issues)
+
+**This section is REQUIRED for all BUG_FIX issues. Do not skip.**
+
 **Did the bug fixed in this issue exist in other files?**
-- If YES: List the other files that likely have the same bug
-- Create a follow-up issue if >3 files affected
+
+1. **Pattern Identification**: What was the root cause pattern?
+   - Example: "Missing auth check on endpoint"
+   - Example: "Nullable field not handled"
+   - Example: "Async operation without await"
+
+2. **Proactive Scan Results**: Run these searches and document findings:
+```bash
+# Auth pattern bugs
+grep -l "get_current_user" backend/app/api/*.py | xargs grep -L "HTTPException"
+
+# Missing validation
+grep -r "= None" backend/app/api/*.py | grep "Depends"
+
+# Type mismatches
+grep -r "Optional\[" backend/app/schemas/*.py
+```
+
+3. **Files with Same Bug**:
+   - [ ] Scanned [X] similar files
+   - [ ] Found [Y] additional instances
+   - Files: [list or "None found"]
+
+4. **Action Taken**:
+   - If 0 additional: "Pattern unique to this file"
+   - If 1-3 additional: "Fixed in this PR" (list files)
+   - If >3 additional: "Created Issue #X to track batch fix"
 
 **Common patterns to check:**
-- Auth handling bugs -> Check ALL API routes
-- Validation missing -> Check ALL Pydantic schemas
-- Type mismatches -> Check ALL TypeScript interfaces
+| Bug Type | Search Command | Files to Check |
+|----------|---------------|----------------|
+| Auth bypass | `grep "= None" \| grep "Depends"` | All API routes |
+| Missing validation | `grep "Field(" \| grep -v "..."` | All Pydantic schemas |
+| Hydration errors | `grep "toLocale"` | All React components |
+| Unhandled async | `grep "async def" \| grep -v "await"` | All service files |
+| SQL injection risk | `grep "f\".*{.*}.*\"" \| grep -v "logger"` | All database queries |
 
 ### Process Improvements Identified
 - [ ] [Improvement for Scout-and-Plan agent]

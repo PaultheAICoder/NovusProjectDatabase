@@ -474,11 +474,45 @@ Write to `/home/pbrown/Novus-db/.agents/outputs/plan-[ISSUE]-[MMDDYY].md`:
 3. Handle API calls with TanStack Query
 **Completion Criteria**: [ ] Compiles, [ ] Renders
 
-## Phase 5: Tests (if applicable)
-### Subtask 5.1: Add Unit Tests
-**File**: `backend/tests/[name]_test.py`
-**Instructions**: [test cases to add]
-**Completion Criteria**: [ ] Tests pass
+## Phase 5: Tests (REQUIRED for non-trivial changes)
+
+**IMPORTANT: Test coverage is REQUIRED, not optional. Plans without test requirements will result in technical debt.**
+
+### Test Coverage Requirements by Change Type
+
+| Change Type | Backend Tests Required | Frontend Tests Required | E2E Tests |
+|-------------|----------------------|------------------------|-----------|
+| NEW_FEATURE | YES - unit + integration | YES if UI | YES if UI |
+| BUG_FIX | YES - regression test | If frontend affected | If UI bug |
+| REFACTORING | Only if behavior changes | Only if behavior changes | No |
+| CHORE | No | No | No |
+
+### Subtask 5.1: Plan Backend Tests
+**File**: `backend/tests/test_[name].py`
+**Instructions**:
+1. List test cases to cover new functionality
+2. Include edge cases and error conditions
+3. For bug fixes: include regression test that would have caught the bug
+
+**Test Cases to Create**:
+- [ ] Test case 1: [description]
+- [ ] Test case 2: [description]
+- [ ] Edge case: [description]
+- [ ] Error case: [description]
+
+**Completion Criteria**: [ ] All test cases documented [ ] Test file location specified
+
+### Subtask 5.2: Plan Frontend Tests (if UI changes)
+**File**: `frontend/src/__tests__/[component].test.tsx` or `frontend/tests/e2e/[feature].spec.ts`
+**Instructions**:
+1. Unit tests for component logic (Vitest)
+2. E2E tests for user flows (Playwright)
+
+**Test Cases to Create**:
+- [ ] Unit: [component behavior]
+- [ ] E2E: [user flow]
+
+**Note**: If frontend test infrastructure doesn't exist, document this as a known limitation and include setup instructions.
 
 ---
 

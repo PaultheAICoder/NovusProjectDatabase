@@ -7,7 +7,7 @@ This document describes how to configure GitHub webhooks for the Novus Project D
 GitHub webhooks cannot reach private network IPs directly. We use [smee.io](https://smee.io) as a webhook proxy:
 
 ```
-GitHub --> smee.io --> smee-client (local) --> http://localhost:6701/api/v1/webhooks/github
+GitHub --> smee.io --> smee-client (local) --> http://172.16.20.50:6700/api/v1/webhooks/github
 ```
 
 ## Prerequisites
@@ -31,17 +31,26 @@ Before setting up the webhook, ensure:
 
 4. **Backend endpoint** is accessible:
    ```bash
-   curl http://localhost:6701/api/v1/webhooks/github
+   curl http://172.16.20.50:6700/api/v1/webhooks/github
    # Expected: {"status":"ok","service":"github-webhook"}
    ```
 
 ## Smee Channel Setup
 
-1. Visit https://smee.io/new to create a new channel
+1. Create a new smee channel:
+   ```bash
+   # Via browser
+   # Visit https://smee.io/new
+
+   # Or via command line
+   curl -sL https://smee.io/new -o /dev/null -w '%{url_effective}\n'
+   ```
 2. Copy the channel URL (e.g., `https://smee.io/XXXXX`)
 3. Save this URL - you will need it for:
    - The smee-client command
    - The GitHub webhook configuration
+
+**Important**: The free ngrok tunnel (port 6700) is already in use for the frontend. Since free ngrok only allows one tunnel, we use smee.io for webhook forwarding instead.
 
 ## Manual Testing
 
@@ -49,17 +58,17 @@ Before setting up the webhook, ensure:
 
 ```bash
 # Run smee forwarder (foreground)
-npx smee -u https://smee.io/YOUR_CHANNEL --target http://localhost:6701/api/v1/webhooks/github
+npx smee -u https://smee.io/YOUR_CHANNEL --target http://172.16.20.50:6700/api/v1/webhooks/github
 
 # Or run in background
-nohup npx smee -u https://smee.io/YOUR_CHANNEL --target http://localhost:6701/api/v1/webhooks/github > /tmp/smee-npd.log 2>&1 &
+nohup npx smee -u https://smee.io/YOUR_CHANNEL --target http://172.16.20.50:6700/api/v1/webhooks/github > /tmp/smee-npd.log 2>&1 &
 ```
 
 ### Verify Endpoint
 
 ```bash
 # Test webhook health endpoint
-curl http://localhost:6701/api/v1/webhooks/github
+curl http://172.16.20.50:6700/api/v1/webhooks/github
 
 # Check Docker logs for webhook activity
 docker logs npd-backend 2>&1 | grep -i webhook
@@ -166,7 +175,7 @@ sudo systemctl status npd-smee-webhook.service
 **Solution**:
 ```bash
 # Start smee manually
-npx smee -u https://smee.io/YOUR_CHANNEL --target http://localhost:6701/api/v1/webhooks/github
+npx smee -u https://smee.io/YOUR_CHANNEL --target http://172.16.20.50:6700/api/v1/webhooks/github
 
 # Or start the systemd service
 sudo systemctl start npd-smee-webhook.service
@@ -190,7 +199,7 @@ sudo systemctl start npd-smee-webhook.service
 
 ```bash
 # Check webhook health and email status
-curl http://localhost:6701/api/v1/webhooks/github
+curl http://172.16.20.50:6700/api/v1/webhooks/github
 
 # Check backend logs
 docker logs npd-backend 2>&1 | grep -i webhook
@@ -274,7 +283,7 @@ sudo systemctl status npd-smee-webhook.service
 sudo systemctl status npd-email-monitor.timer
 
 # Test webhook
-curl http://localhost:6701/api/v1/webhooks/github
+curl http://172.16.20.50:6700/api/v1/webhooks/github
 
 # Check logs
 tail -f /var/log/npd/email-monitor.log
