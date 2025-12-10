@@ -1,0 +1,17 @@
+[Unit]
+Description=NPD Email Monitor Cron Job
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=pbrown
+# Read CRON_SECRET from environment file
+EnvironmentFile=/home/pbrown/Novus-db/backend/.env
+ExecStart=/usr/bin/curl -sS -X GET "http://localhost:6701/api/v1/cron/email-monitor" -H "Authorization: Bearer ${CRON_SECRET}"
+StandardOutput=append:/var/log/npd/email-monitor.log
+StandardError=append:/var/log/npd/email-monitor.log
+TimeoutSec=60
+
+[Install]
+WantedBy=multi-user.target

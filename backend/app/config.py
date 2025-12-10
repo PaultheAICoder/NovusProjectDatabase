@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     # GitHub Integration (for issue creation)
     github_api_token: str = ""
     github_owner: str = "PaultheAICoder"
-    github_repo: str = "Novus-db"
+    github_repo: str = "NovusProjectDatabase"
     github_webhook_secret: str = ""  # For webhook signature verification
 
     # Feedback Email Integration
