@@ -29,6 +29,8 @@ import {
   useUpdateTag,
   useDeleteTag,
   useMergeTags,
+  usePopularTags,
+  useTagUsage,
 } from "@/hooks/useTags";
 import { useAuth } from "@/hooks/useAuth";
 import type { Tag, TagType } from "@/types/tag";
@@ -76,6 +78,12 @@ export function AdminPage() {
   const [targetTagId, setTargetTagId] = useState("");
   const mergeTags = useMergeTags();
 
+  // Usage counts for tags
+  const { data: popularTags } = usePopularTags(undefined, 500); // Get all tags with counts
+  const { data: deletingTagUsage, isLoading: isLoadingUsage } = useTagUsage(
+    deletingTag?.id ?? null
+  );
+
   // Check if user is admin (in real app, check user roles)
   const isAdmin = user?.is_admin ?? false;
 
@@ -94,6 +102,14 @@ export function AdminPage() {
   const allTags = tags
     ? [...tags.technology, ...tags.domain, ...tags.test_type, ...tags.freeform]
     : [];
+
+  // Create usage count map from popular tags data
+  const usageMap = new Map<string, number>();
+  if (popularTags) {
+    popularTags.forEach((pt) => {
+      usageMap.set(pt.tag.id, pt.usage_count);
+    });
+  }
 
   // Filter tags
   const filteredTags = allTags
@@ -248,6 +264,9 @@ export function AdminPage() {
                       {tagTypeLabels[tag.type]}
                     </Badge>
                     <span className="font-medium">{tag.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({usageMap.get(tag.id) ?? 0} projects)
+                    </span>
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -368,11 +387,26 @@ export function AdminPage() {
           <DialogHeader>
             <DialogTitle>Delete Tag</DialogTitle>
           </DialogHeader>
-          <p className="py-4">
-            Are you sure you want to delete the tag{" "}
-            <strong>"{deletingTag?.name}"</strong>? This will remove the tag from
-            all projects.
-          </p>
+          <div className="py-4">
+            <p>
+              Are you sure you want to delete the tag{" "}
+              <strong>"{deletingTag?.name}"</strong>?
+            </p>
+            {isLoadingUsage ? (
+              <p className="mt-2 text-muted-foreground">
+                Loading usage information...
+              </p>
+            ) : deletingTagUsage && deletingTagUsage.usage_count > 0 ? (
+              <p className="mt-2 text-destructive">
+                This will remove the tag from {deletingTagUsage.usage_count}{" "}
+                project{deletingTagUsage.usage_count !== 1 ? "s" : ""}.
+              </p>
+            ) : (
+              <p className="mt-2 text-muted-foreground">
+                This tag is not used by any projects.
+              </p>
+            )}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeletingTag(null)}>
               Cancel
@@ -380,7 +414,7 @@ export function AdminPage() {
             <Button
               variant="destructive"
               onClick={handleDeleteTag}
-              disabled={deleteTag.isPending}
+              disabled={deleteTag.isPending || isLoadingUsage}
             >
               {deleteTag.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete

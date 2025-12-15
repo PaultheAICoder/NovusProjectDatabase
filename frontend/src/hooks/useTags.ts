@@ -121,6 +121,17 @@ export function useDeleteTag() {
   });
 }
 
+export function useTagUsage(tagId: string | null) {
+  return useQuery({
+    queryKey: ["tags", "usage", tagId],
+    queryFn: () =>
+      api.get<{ tag_id: string; usage_count: number }>(
+        `/admin/tags/${tagId}/usage`
+      ),
+    enabled: !!tagId,
+  });
+}
+
 export function useMergeTags() {
   const queryClient = useQueryClient();
 

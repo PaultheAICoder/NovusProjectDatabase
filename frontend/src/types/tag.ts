@@ -10,6 +10,10 @@ export interface Tag {
   type: TagType;
 }
 
+export interface TagWithUsage extends Tag {
+  usage_count: number;
+}
+
 export interface TagCreate {
   name: string;
 }

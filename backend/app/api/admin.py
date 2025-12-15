@@ -138,6 +138,35 @@ async def delete_tag(
     await db.execute(delete(Tag).where(Tag.id == tag_id))
 
 
+@router.get("/tags/{tag_id}/usage")
+@limiter.limit(admin_limit)
+async def get_tag_usage(
+    request: Request,
+    tag_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> dict:
+    """Get usage count for a specific tag. Admin only."""
+    from app.models.project import ProjectTag
+
+    # Verify tag exists
+    result = await db.execute(select(Tag).where(Tag.id == tag_id))
+    tag = result.scalar_one_or_none()
+
+    if not tag:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tag not found",
+        )
+
+    # Count projects using this tag
+    count = await db.scalar(
+        select(func.count()).select_from(ProjectTag).where(ProjectTag.tag_id == tag_id)
+    )
+
+    return {"tag_id": str(tag_id), "usage_count": count or 0}
+
+
 @router.post("/tags/merge", response_model=TagMergeResponse)
 @limiter.limit(admin_limit)
 async def merge_tags(
