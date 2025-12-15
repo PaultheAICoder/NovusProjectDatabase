@@ -49,8 +49,8 @@ const projectFormSchema = z.object({
   end_date: z.string().optional(),
   location: z.string().min(1, "Location is required").max(255),
   contact_ids: z.array(z.string()).default([]),
-  primary_contact_id: z.string().optional(),
-  tag_ids: z.array(z.string()).default([]),
+  primary_contact_id: z.string().min(1, "Primary contact is required"),
+  tag_ids: z.array(z.string()).min(1, "At least one tag is required"),
   billing_amount: z.number().optional(),
   invoice_count: z.number().int().optional(),
   billing_recipient: z.string().max(255).optional(),
@@ -123,8 +123,14 @@ export function ProjectForm({
   }, [selectedOrgId, project?.organization?.id, form]);
 
   const handleSubmit = form.handleSubmit((data) => {
+    // Ensure primary_contact_id is included in contact_ids
+    const contactIds = data.contact_ids.includes(data.primary_contact_id)
+      ? data.contact_ids
+      : [...data.contact_ids, data.primary_contact_id];
+
     const cleanData = {
       ...data,
+      contact_ids: contactIds,
       end_date: data.end_date || undefined,
       monday_url: data.monday_url || undefined,
       jira_url: data.jira_url || undefined,
@@ -309,7 +315,7 @@ export function ProjectForm({
             name="primary_contact_id"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Primary Contact</FormLabel>
+                <FormLabel>Primary Contact *</FormLabel>
                 <Select
                   onValueChange={field.onChange}
                   defaultValue={field.value}
@@ -338,7 +344,7 @@ export function ProjectForm({
             name="tag_ids"
             render={() => (
               <FormItem>
-                <FormLabel>Tags</FormLabel>
+                <FormLabel>Tags *</FormLabel>
                 <div className="flex flex-wrap gap-2 rounded-md border p-2 min-h-[40px]">
                   {allTags?.map((tag) => {
                     const isSelected = form.watch("tag_ids").includes(tag.id);
