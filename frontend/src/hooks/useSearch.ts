@@ -44,6 +44,9 @@ export function useSearch({
     ],
     queryFn: () => api.get<SearchResponse>(`/search?${params.toString()}`),
     enabled: true,
+    // Cache search results for 2 minutes - search results don't change frequently
+    // and this reduces redundant API calls when navigating or changing pagination
+    staleTime: 1000 * 60 * 2,
   });
 }
 

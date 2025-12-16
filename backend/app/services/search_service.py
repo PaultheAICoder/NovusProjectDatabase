@@ -1,5 +1,7 @@
 """Search service with hybrid search (PostgreSQL full-text + vector search with RRF)."""
 
+import asyncio
+import time
 from uuid import UUID
 
 from sqlalchemy import func, literal_column, select, text
@@ -170,20 +172,28 @@ class SearchService:
         Perform hybrid search combining full-text and vector search with RRF.
 
         RRF Formula: score = sum(1 / (k + rank_i)) for each ranking source
+
+        Optimization: Runs all ranking queries in parallel using asyncio.gather()
+        when include_documents is True, reducing total search time.
         """
+        start_time = time.perf_counter()
+
         # Get rankings from different sources
-        project_text_ranks = await self._get_project_text_ranks(
-            query, filter_conditions
-        )
-
-        document_text_ranks = {}
-        vector_ranks = {}
-
+        # Run queries in parallel for better performance
         if include_documents:
-            document_text_ranks = await self._get_document_text_ranks(
+            project_text_ranks, document_text_ranks, vector_ranks = (
+                await asyncio.gather(
+                    self._get_project_text_ranks(query, filter_conditions),
+                    self._get_document_text_ranks(query, filter_conditions),
+                    self._get_vector_ranks(query, filter_conditions),
+                )
+            )
+        else:
+            project_text_ranks = await self._get_project_text_ranks(
                 query, filter_conditions
             )
-            vector_ranks = await self._get_vector_ranks(query, filter_conditions)
+            document_text_ranks = {}
+            vector_ranks = {}
 
         # Combine all project IDs
         all_project_ids = set(project_text_ranks.keys())
@@ -254,6 +264,17 @@ class SearchService:
             # Apply non-relevance sorting
             projects = list(projects_dict.values())
             projects = self._sort_projects(projects, sort_by, sort_order)
+
+        # Log performance metrics
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "hybrid_search_complete",
+            query_length=len(query),
+            total_results=total,
+            page_results=len(projects),
+            elapsed_ms=round(elapsed_ms, 2),
+            include_documents=include_documents,
+        )
 
         return projects, total
 
@@ -327,6 +348,18 @@ class SearchService:
         filter_conditions: list,
     ) -> dict[UUID, int]:
         """Get project rankings from vector similarity search on document chunks."""
+        # Quick check - skip if no embeddings exist at all
+        # This avoids expensive HTTP call to Ollama when database is empty or has no embeddings
+        count_result = await self.db.execute(
+            text(
+                "SELECT EXISTS(SELECT 1 FROM document_chunks WHERE embedding IS NOT NULL)"
+            )
+        )
+        has_embeddings = count_result.scalar()
+        if not has_embeddings:
+            logger.debug("vector_search_skipped", reason="no_embeddings_in_database")
+            return {}
+
         # Generate embedding for the query
         query_embedding = await self.embedding_service.generate_embedding(query)
 

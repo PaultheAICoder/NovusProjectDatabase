@@ -1,4 +1,6 @@
-"""Embedding service with Ollama integration."""
+"""Embedding service with Ollama integration and query embedding caching."""
+
+import time
 
 import httpx
 
@@ -6,6 +8,63 @@ from app.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class EmbeddingCache:
+    """Thread-safe embedding cache with LRU eviction."""
+
+    def __init__(self, maxsize: int = 1000):
+        self._cache: dict[str, list[float]] = {}
+        self._access_order: list[str] = []
+        self._maxsize = maxsize
+        self._hits = 0
+        self._misses = 0
+
+    def _normalize_key(self, text: str) -> str:
+        """Normalize text for cache key."""
+        return text.strip().lower()
+
+    def get(self, text: str) -> list[float] | None:
+        """Get embedding from cache."""
+        key = self._normalize_key(text)
+        if key in self._cache:
+            self._hits += 1
+            # Move to end (most recently used)
+            self._access_order.remove(key)
+            self._access_order.append(key)
+            return self._cache[key]
+        self._misses += 1
+        return None
+
+    def set(self, text: str, embedding: list[float]) -> None:
+        """Store embedding in cache."""
+        key = self._normalize_key(text)
+        if key in self._cache:
+            # Update existing
+            self._access_order.remove(key)
+        elif len(self._cache) >= self._maxsize:
+            # Evict oldest
+            oldest = self._access_order.pop(0)
+            del self._cache[oldest]
+        self._cache[key] = embedding
+        self._access_order.append(key)
+
+    @property
+    def stats(self) -> dict:
+        """Return cache statistics."""
+        total = self._hits + self._misses
+        hit_rate = (self._hits / total * 100) if total > 0 else 0
+        return {
+            "size": len(self._cache),
+            "maxsize": self._maxsize,
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate_percent": round(hit_rate, 2),
+        }
+
+
+# Global cache instance
+_embedding_cache = EmbeddingCache(maxsize=1000)
 
 
 class EmbeddingService:
@@ -83,6 +142,9 @@ class EmbeddingService:
         """
         Generate embedding for text using Ollama.
 
+        Uses an in-memory LRU cache to avoid redundant HTTP calls for
+        repeated queries (e.g., during pagination or filter changes).
+
         Args:
             text: The text to embed
 
@@ -92,6 +154,18 @@ class EmbeddingService:
         if not text or not text.strip():
             return None
 
+        # Check cache first
+        cached = _embedding_cache.get(text)
+        if cached is not None:
+            logger.debug(
+                "embedding_cache_hit",
+                query_length=len(text),
+                cache_stats=_embedding_cache.stats,
+            )
+            return cached
+
+        # Cache miss - generate embedding
+        start_time = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
@@ -103,13 +177,29 @@ class EmbeddingService:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data.get("embedding")
+                embedding = data.get("embedding")
+
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+                if embedding:
+                    # Store in cache
+                    _embedding_cache.set(text, embedding)
+                    logger.debug(
+                        "embedding_cache_miss",
+                        query_length=len(text),
+                        generation_time_ms=round(elapsed_ms, 2),
+                        cache_stats=_embedding_cache.stats,
+                    )
+
+                return embedding
         except httpx.HTTPError as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
             # Log error but don't raise - embeddings are optional
             logger.warning(
                 "embedding_generation_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                elapsed_ms=round(elapsed_ms, 2),
             )
             return None
 

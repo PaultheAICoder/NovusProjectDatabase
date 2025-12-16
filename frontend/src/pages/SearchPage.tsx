@@ -20,6 +20,7 @@ import { SearchFilters } from "@/components/forms/SearchFilters";
 import { SearchResults } from "@/components/tables/SearchResults";
 import { SavedSearchList } from "@/components/SavedSearchList";
 import { useSearch } from "@/hooks/useSearch";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useCreateSavedSearch } from "@/hooks/useSavedSearches";
 import { useExportSearchResults } from "@/hooks/useExport";
 import type { ProjectStatus } from "@/types/project";
@@ -56,12 +57,19 @@ export function SearchPage() {
   const createSavedSearch = useCreateSavedSearch();
   const { exportSearchResults, isExporting } = useExportSearchResults();
 
-  // Fetch search results
+  // Debounce filter values to prevent excessive API calls during rapid filter changes
+  // 300ms delay allows for a good balance between responsiveness and reducing API calls
+  const debouncedStatus = useDebounce(status, 300);
+  const debouncedOrgId = useDebounce(organizationId, 300);
+  const debouncedTagIds = useDebounce(tagIds, 300);
+
+  // Fetch search results using debounced filter values
+  // Note: query is submitted via form so no debounce needed
   const { data, isLoading } = useSearch({
     q: query,
-    status: status.length > 0 ? status : undefined,
-    organizationId,
-    tagIds: tagIds.length > 0 ? tagIds : undefined,
+    status: debouncedStatus.length > 0 ? debouncedStatus : undefined,
+    organizationId: debouncedOrgId,
+    tagIds: debouncedTagIds.length > 0 ? debouncedTagIds : undefined,
     page,
     pageSize,
   });

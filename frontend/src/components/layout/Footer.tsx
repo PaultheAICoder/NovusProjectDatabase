@@ -3,8 +3,8 @@
  */
 
 // Version is auto-incremented by git pre-commit hook
-export const APP_VERSION = "0.25.30";
-export const BUILD_TIMESTAMP = "2025-12-16T00:02:52Z";
+export const APP_VERSION = "0.25.31";
+export const BUILD_TIMESTAMP = "2025-12-16T00:20:26Z";
 
 export function Footer() {
   return (
