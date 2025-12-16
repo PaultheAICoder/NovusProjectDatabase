@@ -13,6 +13,7 @@ import {
   FolderKanban,
   Mail,
   Phone,
+  Plus,
   User,
 } from "lucide-react";
 import {
@@ -180,6 +181,12 @@ export function ContactDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link to={`/projects/new?contact_id=${id}&organization_id=${contact.organization_id}`}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add to Project
+            </Link>
+          </Button>
           <Button variant="outline" onClick={handleEditOpen}>
             <Edit className="mr-2 h-4 w-4" />
             Edit

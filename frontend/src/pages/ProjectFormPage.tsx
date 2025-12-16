@@ -2,7 +2,7 @@
  * Project form page for creating and editing projects.
  */
 
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useProject, useCreateProject, useUpdateProject } from "@/hooks/useProjects";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,10 @@ export function ProjectFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEditing = Boolean(id);
+
+  const [searchParams] = useSearchParams();
+  const initialOrganizationId = searchParams.get("organization_id") ?? undefined;
+  const initialContactId = searchParams.get("contact_id") ?? undefined;
 
   const { data: project, isLoading } = useProject(id);
   const createProject = useCreateProject();
@@ -87,6 +91,15 @@ export function ProjectFormPage() {
         <CardContent>
           <ProjectForm
             project={project}
+            initialValues={
+              !isEditing
+                ? {
+                    organization_id: initialOrganizationId,
+                    contact_ids: initialContactId ? [initialContactId] : undefined,
+                    primary_contact_id: initialContactId,
+                  }
+                : undefined
+            }
             onSubmit={handleSubmit}
             onCancel={handleCancel}
             isSubmitting={createProject.isPending || updateProject.isPending}

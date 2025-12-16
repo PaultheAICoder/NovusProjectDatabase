@@ -106,6 +106,11 @@ const fieldLabels: Record<string, string> = {
 
 interface ProjectFormProps {
   project?: ProjectDetail;
+  initialValues?: {
+    organization_id?: string;
+    contact_ids?: string[];
+    primary_contact_id?: string;
+  };
   onSubmit: (data: ProjectFormValues) => void;
   onCancel: () => void;
   isSubmitting?: boolean;
@@ -113,6 +118,7 @@ interface ProjectFormProps {
 
 export function ProjectForm({
   project,
+  initialValues,
   onSubmit,
   onCancel,
   isSubmitting = false,
@@ -125,7 +131,7 @@ export function ProjectForm({
     resolver: zodResolver(projectFormSchema),
     defaultValues: {
       name: project?.name ?? "",
-      organization_id: project?.organization?.id ?? "",
+      organization_id: project?.organization?.id ?? initialValues?.organization_id ?? "",
       description: project?.description ?? "",
       status: project?.status ?? "approved",
       start_date: project?.start_date
@@ -136,9 +142,9 @@ export function ProjectForm({
         : "",
       location: project?.location ?? "headquarters",
       location_other: project?.location_other ?? "",
-      contact_ids: project?.contacts?.map((c) => c.id) ?? [],
+      contact_ids: project?.contacts?.map((c) => c.id) ?? initialValues?.contact_ids ?? [],
       primary_contact_id:
-        project?.contacts?.find((c) => c.is_primary)?.id ?? "",
+        project?.contacts?.find((c) => c.is_primary)?.id ?? initialValues?.primary_contact_id ?? "",
       tag_ids: project?.tags?.map((t) => t.id) ?? [],
       billing_amount: project?.billing_amount ?? undefined,
       invoice_count: project?.invoice_count ?? undefined,
