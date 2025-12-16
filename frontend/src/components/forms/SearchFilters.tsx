@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { TagFilterCombobox } from "@/components/forms/TagFilterCombobox";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAllTags } from "@/hooks/useTags";
 import type { ProjectStatus } from "@/types/project";
@@ -118,23 +119,12 @@ export function SearchFilters({
           </SelectContent>
         </Select>
 
-        <Select value="" onValueChange={handleTagToggle}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Tags" />
-          </SelectTrigger>
-          <SelectContent>
-            {allTags?.map((tag) => (
-              <SelectItem key={tag.id} value={tag.id}>
-                <span className="flex items-center gap-2">
-                  {tagIds.includes(tag.id) && (
-                    <span className="text-primary">✓</span>
-                  )}
-                  {tag.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <TagFilterCombobox
+          allTags={allTags ?? []}
+          selectedTagIds={tagIds}
+          onTagToggle={handleTagToggle}
+          placeholder="Tags"
+        />
 
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={onClearAll}>
