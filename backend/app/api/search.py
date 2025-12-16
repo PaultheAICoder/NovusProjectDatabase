@@ -161,6 +161,7 @@ async def export_search_results_csv(
             "Tags",
             "Milestone/Version",
             "Run Number",
+            "Engagement Period",
             "Created At",
             "Updated At",
         ]
@@ -186,6 +187,7 @@ async def export_search_results_csv(
                 tags,
                 project.milestone_version or "",
                 project.run_number or "",
+                project.engagement_period or "",
                 project.created_at.isoformat() if project.created_at else "",
                 project.updated_at.isoformat() if project.updated_at else "",
             ]

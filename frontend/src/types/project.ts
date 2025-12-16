@@ -42,6 +42,7 @@ export interface Project {
   location_other: string | null;
   milestone_version: string | null;
   run_number: string | null;
+  engagement_period: string | null;
   tags: Tag[];
   created_at: string;
   updated_at: string;
@@ -64,6 +65,7 @@ export interface ProjectDetail extends Project {
   gitlab_url: string | null;
   milestone_version: string | null;
   run_number: string | null;
+  engagement_period: string | null;
   created_by: User;
   updated_by: User;
 }
@@ -90,6 +92,7 @@ export interface ProjectCreate {
   gitlab_url?: string;
   milestone_version?: string;
   run_number?: string;
+  engagement_period?: string;
 }
 
 export interface ProjectUpdate {
@@ -114,4 +117,5 @@ export interface ProjectUpdate {
   gitlab_url?: string;
   milestone_version?: string;
   run_number?: string;
+  engagement_period?: string;
 }

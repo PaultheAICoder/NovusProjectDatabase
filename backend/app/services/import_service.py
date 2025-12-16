@@ -105,6 +105,11 @@ COLUMN_MAPPINGS = {
     "run": "run_number",
     "iteration": "run_number",
     "build_number": "run_number",
+    # Engagement period variations
+    "engagement_period": "engagement_period",
+    "engagement period": "engagement_period",
+    "period": "engagement_period",
+    "quarter": "engagement_period",
 }
 
 # Status value mappings
@@ -330,6 +335,7 @@ class ImportService:
                 gitlab_url=row.get("gitlab_url"),
                 milestone_version=row.get("milestone_version"),
                 run_number=row.get("run_number"),
+                engagement_period=row.get("engagement_period"),
                 validation=validation,
                 suggestions=suggestions,
                 resolved_organization_id=org_id,
@@ -396,6 +402,7 @@ class ImportService:
                     gitlab_url=row.gitlab_url,
                     milestone_version=row.milestone_version,
                     run_number=row.run_number,
+                    engagement_period=row.engagement_period,
                     created_by=user_id,
                     updated_by=user_id,
                 )

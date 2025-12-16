@@ -74,6 +74,7 @@ const projectFormSchema = z.object({
   gitlab_url: z.string().url().optional().or(z.literal("")),
   milestone_version: z.string().max(255).optional().or(z.literal("")),
   run_number: z.string().max(100).optional().or(z.literal("")),
+  engagement_period: z.string().max(100).optional().or(z.literal("")),
 });
 
 export type ProjectFormValues = z.infer<typeof projectFormSchema>;
@@ -100,6 +101,7 @@ const fieldLabels: Record<string, string> = {
   gitlab_url: "GitLab URL",
   milestone_version: "Milestone/Version",
   run_number: "Run Number",
+  engagement_period: "Engagement Period",
 };
 
 interface ProjectFormProps {
@@ -148,6 +150,7 @@ export function ProjectForm({
       gitlab_url: project?.gitlab_url ?? "",
       milestone_version: project?.milestone_version ?? "",
       run_number: project?.run_number ?? "",
+      engagement_period: project?.engagement_period ?? "",
     },
   });
 
@@ -181,6 +184,7 @@ export function ProjectForm({
         gitlab_url: data.gitlab_url || undefined,
         milestone_version: data.milestone_version || undefined,
         run_number: data.run_number || undefined,
+        engagement_period: data.engagement_period || undefined,
       };
       onSubmit(cleanData);
     },
@@ -621,7 +625,7 @@ export function ProjectForm({
 
         <div className="border-t pt-4">
           <h3 className="mb-4 text-sm font-medium">Project Tracking</h3>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <FormField
               control={form.control}
               name="milestone_version"
@@ -644,6 +648,20 @@ export function ProjectForm({
                   <FormLabel>Run Number</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., R-001, Build 42" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="engagement_period"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Engagement Period</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., Q1 2025, December 2025" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

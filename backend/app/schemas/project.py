@@ -33,6 +33,7 @@ class ProjectBase(BaseModel):
     gitlab_url: str | None = None
     milestone_version: str | None = Field(None, max_length=255)
     run_number: str | None = Field(None, max_length=100)
+    engagement_period: str | None = Field(None, max_length=100)
 
     @field_validator("end_date")
     @classmethod
@@ -94,6 +95,7 @@ class ProjectUpdate(BaseModel):
     gitlab_url: str | None = None
     milestone_version: str | None = Field(None, max_length=255)
     run_number: str | None = Field(None, max_length=100)
+    engagement_period: str | None = Field(None, max_length=100)
 
 
 class ProjectContactResponse(ContactResponse):
@@ -148,5 +150,6 @@ class ProjectDetail(ProjectResponse):
     gitlab_url: str | None = None
     milestone_version: str | None = None
     run_number: str | None = None
+    engagement_period: str | None = None
     created_by: UserResponse
     updated_by: UserResponse

@@ -31,6 +31,7 @@ class ImportRowBase(BaseModel):
     gitlab_url: str | None = None
     milestone_version: str | None = None
     run_number: str | None = None
+    engagement_period: str | None = None
 
 
 class ImportRowValidation(BaseModel):
@@ -109,6 +110,7 @@ class ImportRowUpdate(BaseModel):
     gitlab_url: str | None = None
     milestone_version: str | None = None
     run_number: str | None = None
+    engagement_period: str | None = None
 
 
 class ImportCommitRequest(BaseModel):

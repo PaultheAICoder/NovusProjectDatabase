@@ -241,7 +241,7 @@ export function ProjectDetailPage() {
             </Card>
           )}
 
-          {(project.milestone_version || project.run_number) && (
+          {(project.milestone_version || project.run_number || project.engagement_period) && (
             <Card>
               <CardHeader>
                 <CardTitle>Project Tracking</CardTitle>
@@ -257,6 +257,12 @@ export function ProjectDetailPage() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Run Number</span>
                     <span className="font-medium">{project.run_number}</span>
+                  </div>
+                )}
+                {project.engagement_period && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Engagement Period</span>
+                    <span className="font-medium">{project.engagement_period}</span>
                   </div>
                 )}
               </CardContent>

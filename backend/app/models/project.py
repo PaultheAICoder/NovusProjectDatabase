@@ -171,6 +171,10 @@ class Project(Base):
         String(100),
         nullable=True,
     )
+    engagement_period: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
 
     # Full-text search vector (generated column)
     search_vector: Mapped[str | None] = mapped_column(
