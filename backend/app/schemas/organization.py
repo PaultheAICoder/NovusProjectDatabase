@@ -1,9 +1,32 @@
 """Organization Pydantic schemas."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class ProjectSummaryForOrg(BaseModel):
+    """Minimal project info for organization detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    status: str  # Use str to avoid circular import with ProjectStatus
+    start_date: date
+    end_date: date | None = None
+
+
+class ContactSummaryForOrg(BaseModel):
+    """Minimal contact info for organization detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    email: str
+    role_title: str | None = None
 
 
 class OrganizationBase(BaseModel):
@@ -40,3 +63,10 @@ class OrganizationDetail(OrganizationResponse):
     """Detailed organization response with counts."""
 
     project_count: int = 0
+
+
+class OrganizationDetailWithRelations(OrganizationDetail):
+    """Organization with nested projects and contacts."""
+
+    projects: list[ProjectSummaryForOrg] = []
+    contacts: list[ContactSummaryForOrg] = []

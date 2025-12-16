@@ -23,6 +23,23 @@ export interface OrganizationUpdate {
   notes?: string;
 }
 
+export interface ProjectSummaryForOrg {
+  id: string;
+  name: string;
+  status: string;
+  start_date: string;
+  end_date: string | null;
+}
+
+export interface ContactSummaryForOrg {
+  id: string;
+  name: string;
+  email: string;
+  role_title: string | null;
+}
+
 export interface OrganizationDetail extends Organization {
   project_count: number;
+  projects: ProjectSummaryForOrg[];
+  contacts: ContactSummaryForOrg[];
 }

@@ -34,6 +34,11 @@ const ImportPage = lazy(() =>
 const OrganizationsPage = lazy(() =>
   import("@/pages/OrganizationsPage").then((m) => ({ default: m.OrganizationsPage }))
 );
+const OrganizationDetailPage = lazy(() =>
+  import("@/pages/OrganizationDetailPage").then((m) => ({
+    default: m.OrganizationDetailPage,
+  }))
+);
 const ContactsPage = lazy(() =>
   import("@/pages/ContactsPage").then((m) => ({ default: m.ContactsPage }))
 );
@@ -201,6 +206,18 @@ function AppRoutes() {
             <MainLayout>
               <Suspense fallback={<PageLoader />}>
                 <OrganizationsPage />
+              </Suspense>
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organizations/:id"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Suspense fallback={<PageLoader />}>
+                <OrganizationDetailPage />
               </Suspense>
             </MainLayout>
           </ProtectedRoute>

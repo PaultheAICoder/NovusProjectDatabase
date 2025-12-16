@@ -8,13 +8,15 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.rate_limit import crud_limit, limiter
-from app.models import Organization, Project
+from app.models import Organization
 from app.schemas.base import PaginatedResponse
 from app.schemas.organization import (
+    ContactSummaryForOrg,
     OrganizationCreate,
-    OrganizationDetail,
+    OrganizationDetailWithRelations,
     OrganizationResponse,
     OrganizationUpdate,
+    ProjectSummaryForOrg,
 )
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
@@ -88,17 +90,24 @@ async def create_organization(
     return OrganizationResponse.model_validate(org)
 
 
-@router.get("/{organization_id}", response_model=OrganizationDetail)
+@router.get("/{organization_id}", response_model=OrganizationDetailWithRelations)
 @limiter.limit(crud_limit)
 async def get_organization(
     request: Request,
     organization_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
-) -> OrganizationDetail:
-    """Get organization details with project count."""
+) -> OrganizationDetailWithRelations:
+    """Get organization details with projects and contacts."""
+    from sqlalchemy.orm import selectinload
+
     result = await db.execute(
-        select(Organization).where(Organization.id == organization_id)
+        select(Organization)
+        .options(
+            selectinload(Organization.projects),
+            selectinload(Organization.contacts),
+        )
+        .where(Organization.id == organization_id)
     )
     org = result.scalar_one_or_none()
 
@@ -108,17 +117,38 @@ async def get_organization(
             detail="Organization not found",
         )
 
-    # Get project count
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(Project)
-        .where(Project.organization_id == organization_id)
-    )
-    project_count = count_result.scalar() or 0
+    # Build project summaries
+    projects = [
+        ProjectSummaryForOrg(
+            id=p.id,
+            name=p.name,
+            status=p.status.value,
+            start_date=p.start_date,
+            end_date=p.end_date,
+        )
+        for p in org.projects
+    ]
 
-    return OrganizationDetail(
-        **OrganizationResponse.model_validate(org).model_dump(),
-        project_count=project_count,
+    # Build contact summaries
+    contacts = [
+        ContactSummaryForOrg(
+            id=c.id,
+            name=c.name,
+            email=c.email,
+            role_title=c.role_title,
+        )
+        for c in org.contacts
+    ]
+
+    return OrganizationDetailWithRelations(
+        id=org.id,
+        name=org.name,
+        aliases=org.aliases,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+        project_count=len(projects),
+        projects=projects,
+        contacts=contacts,
     )
 
 

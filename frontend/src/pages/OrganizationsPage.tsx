@@ -3,6 +3,7 @@
  */
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   useReactTable,
   getCoreRowModel,
@@ -69,7 +70,14 @@ export function OrganizationsPage() {
   const columns = [
     columnHelper.accessor("name", {
       header: "Organization Name",
-      cell: (info) => <span className="font-medium">{info.getValue()}</span>,
+      cell: (info) => (
+        <Link
+          to={`/organizations/${info.row.original.id}`}
+          className="font-medium text-primary hover:underline"
+        >
+          {info.getValue()}
+        </Link>
+      ),
     }),
     columnHelper.accessor("notes", {
       header: "Notes",
