@@ -92,6 +92,7 @@ class Contact(Base):
     organization: Mapped["Organization"] = relationship(
         "Organization",
         back_populates="contacts",
+        foreign_keys=[organization_id],
     )
     project_contacts: Mapped[list["ProjectContact"]] = relationship(
         "ProjectContact",
