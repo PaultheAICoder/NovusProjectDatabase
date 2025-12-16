@@ -202,3 +202,39 @@ class TestSearchServiceOptimizations:
         assert project_text_called
         assert not document_text_called
         assert not vector_called
+
+    @pytest.mark.asyncio
+    async def test_document_text_ranks_uses_tsvector(self):
+        """Document text search should use tsvector ranking, not ILIKE."""
+        from sqlalchemy.dialects import postgresql
+
+        from app.services.search_service import SearchService
+
+        # Create mock db session
+        mock_db = AsyncMock()
+
+        # Mock the execute result
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = SearchService(mock_db)
+
+        # Call the method
+        result = await service._get_document_text_ranks("test query", [])
+
+        # Verify the query uses tsvector operators
+        mock_db.execute.assert_called_once()
+
+        # Get the compiled SQL statement to verify tsvector is used
+        stmt = mock_db.execute.call_args[0][0]
+        compiled_sql = str(stmt.compile(dialect=postgresql.dialect()))
+
+        # Should use ts_rank and @@ operator, NOT ILIKE
+        assert "ts_rank" in compiled_sql
+        assert "plainto_tsquery" in compiled_sql
+        assert "@@" in compiled_sql
+        assert "ILIKE" not in compiled_sql.upper()
+
+        # Should return correct data structure (empty dict for no results)
+        assert result == {}

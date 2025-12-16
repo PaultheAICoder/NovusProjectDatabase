@@ -315,19 +315,20 @@ class SearchService:
         filter_conditions: list,
     ) -> dict[UUID, int]:
         """Get project rankings from full-text search on document content."""
-        # Create a text search query for document content
-        search_pattern = f"%{query}%"
+        ts_query = func.plainto_tsquery("english", query)
 
-        # Find projects with documents containing the search text
-        # We use ILIKE for simplicity; could add tsvector to documents later
+        # Find projects with documents matching the text search
+        # Using tsvector search_vector column with GIN index for performance
         stmt = (
             select(
                 Document.project_id,
-                func.count(Document.id).label("match_count"),
+                func.sum(func.ts_rank(Document.search_vector, ts_query)).label(
+                    "total_rank"
+                ),
             )
-            .where(Document.extracted_text.ilike(search_pattern))
+            .where(Document.search_vector.op("@@")(ts_query))
             .group_by(Document.project_id)
-            .order_by(literal_column("match_count").desc())
+            .order_by(literal_column("total_rank").desc())
         )
 
         # Apply project filter conditions via a subquery
@@ -339,6 +340,12 @@ class SearchService:
 
         result = await self.db.execute(stmt)
         rows = result.all()
+
+        logger.debug(
+            "document_text_search_results",
+            query=query[:50],
+            results_count=len(rows),
+        )
 
         return {row.project_id: idx + 1 for idx, row in enumerate(rows)}
 
