@@ -3,7 +3,16 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Computed,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,6 +74,18 @@ class Contact(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    # Full-text search vector (generated column)
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('english', coalesce(name, '')), 'A') || "
+            "setweight(to_tsvector('english', coalesce(email, '')), 'B') || "
+            "setweight(to_tsvector('english', coalesce(role_title, '')), 'C')",
+            persisted=True,
+        ),
+        nullable=True,
     )
 
     # Relationships

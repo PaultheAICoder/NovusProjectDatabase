@@ -5,7 +5,17 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Computed,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -71,6 +81,18 @@ class Document(Base):
         Text,
         nullable=True,
     )
+
+    # Full-text search vector (generated column)
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('english', coalesce(display_name, '')), 'A') || "
+            "setweight(to_tsvector('english', coalesce(extracted_text, '')), 'B')",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    Computed,
     Date,
     DateTime,
     Enum,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -136,6 +138,19 @@ class Project(Base):
     )
     gitlab_url: Mapped[str | None] = mapped_column(
         String(500),
+        nullable=True,
+    )
+
+    # Full-text search vector (generated column)
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('english', coalesce(name, '')), 'A') || "
+            "setweight(to_tsvector('english', coalesce(description, '')), 'B') || "
+            "setweight(to_tsvector('english', coalesce(location, '')), 'C') || "
+            "setweight(to_tsvector('english', coalesce(pm_notes, '')), 'D')",
+            persisted=True,
+        ),
         nullable=True,
     )
 

@@ -132,7 +132,7 @@ class SearchService:
         base_query = select(Project).options(
             selectinload(Project.organization),
             selectinload(Project.owner),
-            selectinload(Project.tags),
+            selectinload(Project.project_tags),
         )
 
         if filter_conditions:
@@ -190,6 +190,14 @@ class SearchService:
         all_project_ids.update(document_text_ranks.keys())
         all_project_ids.update(vector_ranks.keys())
 
+        logger.debug(
+            "search_rankings",
+            project_text_ranks_count=len(project_text_ranks),
+            document_text_ranks_count=len(document_text_ranks),
+            vector_ranks_count=len(vector_ranks),
+            total_unique_projects=len(all_project_ids),
+        )
+
         if not all_project_ids:
             return [], 0
 
@@ -231,7 +239,7 @@ class SearchService:
             .options(
                 selectinload(Project.organization),
                 selectinload(Project.owner),
-                selectinload(Project.tags),
+                selectinload(Project.project_tags),
             )
             .where(Project.id.in_(page_ids))
         )
@@ -270,6 +278,12 @@ class SearchService:
 
         result = await self.db.execute(stmt)
         rows = result.all()
+
+        logger.debug(
+            "project_text_search_results",
+            query=query[:50],
+            results_count=len(rows),
+        )
 
         # Convert to rank positions (1-indexed)
         return {row.id: idx + 1 for idx, row in enumerate(rows)}
@@ -322,19 +336,21 @@ class SearchService:
 
         # Find most similar document chunks using cosine distance
         # pgvector uses <=> for cosine distance (lower is better)
+        # Using string format for embedding since ::vector cast conflicts with SQLAlchemy's
+        # parameter parsing. The embedding is a safe string of floats.
         embedding_literal = f"[{','.join(str(x) for x in query_embedding)}]"
 
         stmt = text(
-            """
+            f"""
             SELECT DISTINCT ON (d.project_id)
                 d.project_id,
-                dc.embedding <=> :embedding AS distance
+                dc.embedding <=> '{embedding_literal}'::vector AS distance
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
             WHERE dc.embedding IS NOT NULL
-            ORDER BY d.project_id, dc.embedding <=> :embedding
+            ORDER BY d.project_id, dc.embedding <=> '{embedding_literal}'::vector
         """
-        ).bindparams(embedding=embedding_literal)
+        )
 
         result = await self.db.execute(stmt)
         rows = result.all()
@@ -439,12 +455,14 @@ class SearchService:
         if not query_embedding:
             return []
 
+        # Using string format for embedding since ::vector cast conflicts with SQLAlchemy's
+        # parameter parsing. The embedding is a safe string of floats.
         embedding_literal = f"[{','.join(str(x) for x in query_embedding)}]"
 
         # Build query for similar chunks
         if project_id:
             stmt = text(
-                """
+                f"""
                 SELECT
                     dc.id as chunk_id,
                     dc.content,
@@ -452,22 +470,21 @@ class SearchService:
                     d.id as document_id,
                     d.display_name,
                     d.project_id,
-                    dc.embedding <=> :embedding AS distance
+                    dc.embedding <=> '{embedding_literal}'::vector AS distance
                 FROM document_chunks dc
                 JOIN documents d ON d.id = dc.document_id
                 WHERE dc.embedding IS NOT NULL
                   AND d.project_id = :project_id
-                ORDER BY dc.embedding <=> :embedding
+                ORDER BY dc.embedding <=> '{embedding_literal}'::vector
                 LIMIT :limit
             """
             ).bindparams(
-                embedding=embedding_literal,
                 project_id=project_id,
                 limit=limit,
             )
         else:
             stmt = text(
-                """
+                f"""
                 SELECT
                     dc.id as chunk_id,
                     dc.content,
@@ -475,14 +492,14 @@ class SearchService:
                     d.id as document_id,
                     d.display_name,
                     d.project_id,
-                    dc.embedding <=> :embedding AS distance
+                    dc.embedding <=> '{embedding_literal}'::vector AS distance
                 FROM document_chunks dc
                 JOIN documents d ON d.id = dc.document_id
                 WHERE dc.embedding IS NOT NULL
-                ORDER BY dc.embedding <=> :embedding
+                ORDER BY dc.embedding <=> '{embedding_literal}'::vector
                 LIMIT :limit
             """
-            ).bindparams(embedding=embedding_literal, limit=limit)
+            ).bindparams(limit=limit)
 
         result = await self.db.execute(stmt)
         rows = result.all()

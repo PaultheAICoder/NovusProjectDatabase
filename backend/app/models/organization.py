@@ -3,8 +3,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, String, func
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Computed, DateTime, String, func
+from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -41,6 +41,16 @@ class Organization(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    # Full-text search vector (generated column)
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('english', coalesce(name, '')), 'A')",
+            persisted=True,
+        ),
+        nullable=True,
     )
 
     # Relationships
