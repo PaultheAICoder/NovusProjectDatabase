@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.logging import get_logger
 from app.core.rate_limit import limiter, search_limit
 from app.models.project import ProjectStatus
 from app.models.saved_search import SavedSearch
@@ -24,7 +25,10 @@ from app.schemas.search import (
     SearchSuggestion,
     SearchSuggestionsResponse,
 )
+from app.services.search_cache import generate_cache_key, get_search_cache
 from app.services.search_service import SearchService
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -42,11 +46,14 @@ async def search_projects(
     sort_order: str = Query(default="desc"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    no_cache: bool = Query(default=False, description="Bypass cache (admin/testing)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SearchResponse:
     """
     Search projects with filters.
+
+    Results are cached for 5 minutes by default. Use no_cache=true to bypass.
 
     Supports full-text search across project fields with filters for:
     - Status (multiple values allowed)
@@ -60,6 +67,33 @@ async def search_projects(
     - start_date
     - updated_at
     """
+    cache = get_search_cache()
+
+    # Generate cache key from search parameters
+    cache_key = generate_cache_key(
+        query=q,
+        status=[s.value for s in status] if status else None,
+        organization_id=str(organization_id) if organization_id else None,
+        tag_ids=[str(t) for t in tag_ids] if tag_ids else None,
+        owner_id=str(owner_id) if owner_id else None,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        page_size=page_size,
+    )
+
+    # Check cache (unless bypassed)
+    if not no_cache:
+        cached = await cache.get(cache_key)
+        if cached:
+            logger.debug(
+                "search_cache_hit",
+                cache_key=cache_key[:16],
+                cache_stats=cache.stats,
+            )
+            return SearchResponse(**cached)
+
+    # Cache miss - perform search
     search_service = SearchService(db)
 
     projects, total = await search_service.search_projects(
@@ -77,13 +111,27 @@ async def search_projects(
     # Convert to response models
     items = [SearchResultItem.model_validate(p) for p in projects]
 
-    return SearchResponse(
+    response = SearchResponse(
         items=items,
         total=total,
         page=page,
         page_size=page_size,
         query=q,
     )
+
+    # Store in cache
+    if not no_cache:
+        # Serialize response for caching
+        response_dict = response.model_dump(mode="json")
+        await cache.set(cache_key, response_dict)
+        logger.debug(
+            "search_cache_miss",
+            cache_key=cache_key[:16],
+            results_count=len(items),
+            cache_stats=cache.stats,
+        )
+
+    return response
 
 
 @router.get("/suggest", response_model=SearchSuggestionsResponse)

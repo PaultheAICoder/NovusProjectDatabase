@@ -40,6 +40,7 @@ from app.services.antivirus import AntivirusService, ScanResult
 from app.services.document_processing_task import process_document_background
 from app.services.document_processor import DocumentProcessor
 from app.services.file_validation import FileValidationService
+from app.services.search_cache import invalidate_search_cache
 
 logger = get_logger(__name__)
 
@@ -222,6 +223,9 @@ async def upload_document(
             mime_type=document.mime_type,
             reason="Unsupported MIME type",
         )
+
+    # Invalidate search cache (new document may affect search results)
+    await invalidate_search_cache()
 
     return DocumentResponse.model_validate(document)
 
@@ -448,6 +452,9 @@ async def delete_document(
     # Delete from database (cascade will delete chunks)
     await db.delete(document)
     await db.commit()
+
+    # Invalidate search cache
+    await invalidate_search_cache()
 
 
 @router.get(

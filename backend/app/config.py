@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     embedding_cache_ttl: int = 86400  # 24 hours in seconds
     embedding_cache_maxsize: int = 10000  # Max entries (for in-memory fallback)
 
+    # Search Cache (Redis - Optional)
+    search_cache_ttl: int = 300  # 5 minutes in seconds
+    search_cache_enabled: bool = True  # Allow disabling cache
+
     # ClamAV Antivirus (optional)
     clamav_enabled: bool = False
     clamav_host: str = "localhost"

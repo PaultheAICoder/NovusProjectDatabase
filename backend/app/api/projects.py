@@ -29,6 +29,7 @@ from app.schemas.project import (
 )
 from app.schemas.tag import TagResponse
 from app.services.import_service import ImportService
+from app.services.search_cache import invalidate_search_cache
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -224,6 +225,9 @@ async def create_project(
     result = await db.execute(_build_project_query().where(Project.id == project.id))
     project = result.scalar_one()
 
+    # Invalidate search cache
+    await invalidate_search_cache()
+
     return ProjectResponse(
         id=project.id,
         name=project.name,
@@ -412,6 +416,9 @@ async def update_project(
     result = await db.execute(_build_project_query().where(Project.id == project.id))
     project = result.scalar_one()
 
+    # Invalidate search cache
+    await invalidate_search_cache()
+
     return ProjectResponse(
         id=project.id,
         name=project.name,
@@ -451,6 +458,9 @@ async def delete_project(
     project.status = ProjectStatus.CANCELLED
     project.updated_by = current_user.id
     await db.flush()
+
+    # Invalidate search cache
+    await invalidate_search_cache()
 
 
 @router.post("/autofill", response_model=AutofillResponse)
