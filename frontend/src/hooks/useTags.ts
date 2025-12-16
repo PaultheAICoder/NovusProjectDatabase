@@ -145,7 +145,7 @@ export function useMergeTags() {
 }
 
 /**
- * Get all tags as a flat array.
+ * Get all tags as a flat array, sorted alphabetically by name.
  */
 export function useAllTags() {
   const { data, ...rest } = useTags();
@@ -156,7 +156,7 @@ export function useAllTags() {
         ...data.domain,
         ...data.test_type,
         ...data.freeform,
-      ]
+      ].sort((a, b) => a.name.localeCompare(b.name))
     : [];
 
   return { data: allTags, ...rest };

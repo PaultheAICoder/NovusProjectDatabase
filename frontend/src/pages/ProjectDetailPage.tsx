@@ -254,11 +254,14 @@ export function ProjectDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {project.tags.map((tag) => (
-                    <Badge key={tag.id} variant="outline">
-                      {tag.name}
-                    </Badge>
-                  ))}
+                  {project.tags
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((tag) => (
+                      <Badge key={tag.id} variant="outline">
+                        {tag.name}
+                      </Badge>
+                    ))}
                 </div>
               </CardContent>
             </Card>

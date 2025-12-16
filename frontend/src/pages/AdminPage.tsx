@@ -98,9 +98,11 @@ export function AdminPage() {
     );
   }
 
-  // Get all tags as a flat array
+  // Get all tags as a flat array, sorted alphabetically by name
   const allTags = tags
-    ? [...tags.technology, ...tags.domain, ...tags.test_type, ...tags.freeform]
+    ? [...tags.technology, ...tags.domain, ...tags.test_type, ...tags.freeform].sort(
+        (a, b) => a.name.localeCompare(b.name)
+      )
     : [];
 
   // Create usage count map from popular tags data
