@@ -7,7 +7,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAutofill } from "@/hooks/useImport";
 import {
   Form,
@@ -62,6 +64,27 @@ const projectFormSchema = z.object({
 });
 
 export type ProjectFormValues = z.infer<typeof projectFormSchema>;
+
+const fieldLabels: Record<string, string> = {
+  name: "Project Name",
+  organization_id: "Organization",
+  description: "Description",
+  status: "Status",
+  start_date: "Start Date",
+  end_date: "End Date",
+  location: "Location",
+  primary_contact_id: "Primary Contact",
+  tag_ids: "Tags",
+  contact_ids: "Contacts",
+  billing_amount: "Billing Amount",
+  invoice_count: "Invoice Count",
+  billing_recipient: "Billing Recipient",
+  billing_notes: "Billing Notes",
+  pm_notes: "PM Notes",
+  monday_url: "Monday.com URL",
+  jira_url: "Jira URL",
+  gitlab_url: "GitLab URL",
+};
 
 interface ProjectFormProps {
   project?: ProjectDetail;
@@ -122,22 +145,35 @@ export function ProjectForm({
     }
   }, [selectedOrgId, project?.organization?.id, form]);
 
-  const handleSubmit = form.handleSubmit((data) => {
-    // Ensure primary_contact_id is included in contact_ids
-    const contactIds = data.contact_ids.includes(data.primary_contact_id)
-      ? data.contact_ids
-      : [...data.contact_ids, data.primary_contact_id];
+  const handleSubmit = form.handleSubmit(
+    (data) => {
+      // Ensure primary_contact_id is included in contact_ids
+      const contactIds = data.contact_ids.includes(data.primary_contact_id)
+        ? data.contact_ids
+        : [...data.contact_ids, data.primary_contact_id];
 
-    const cleanData = {
-      ...data,
-      contact_ids: contactIds,
-      end_date: data.end_date || undefined,
-      monday_url: data.monday_url || undefined,
-      jira_url: data.jira_url || undefined,
-      gitlab_url: data.gitlab_url || undefined,
-    };
-    onSubmit(cleanData);
-  });
+      const cleanData = {
+        ...data,
+        contact_ids: contactIds,
+        end_date: data.end_date || undefined,
+        monday_url: data.monday_url || undefined,
+        jira_url: data.jira_url || undefined,
+        gitlab_url: data.gitlab_url || undefined,
+      };
+      onSubmit(cleanData);
+    },
+    // Error handler - scroll to first error
+    (errors) => {
+      const firstErrorField = Object.keys(errors)[0];
+      if (firstErrorField) {
+        const element = document.querySelector(`[name="${firstErrorField}"]`);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+          (element as HTMLElement).focus?.();
+        }
+      }
+    },
+  );
 
   const handleAutofill = async () => {
     const name = form.getValues("name");
@@ -175,13 +211,33 @@ export function ProjectForm({
   return (
     <Form {...form}>
       <form onSubmit={handleSubmit} className="space-y-6">
+        {Object.keys(form.formState.errors).length > 0 &&
+          form.formState.isSubmitted && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Please fix the following errors</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  {Object.entries(form.formState.errors).map(
+                    ([field, error]) => (
+                      <li key={field}>
+                        {fieldLabels[field] || field}:{" "}
+                        {error?.message as string}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
         <div className="grid gap-4 md:grid-cols-2">
           <FormField
             control={form.control}
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Project Name *</FormLabel>
+                <FormLabel>Project Name <span className="text-destructive">*</span></FormLabel>
                 <FormControl>
                   <Input placeholder="Enter project name" {...field} />
                 </FormControl>
@@ -195,7 +251,7 @@ export function ProjectForm({
             name="organization_id"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Organization *</FormLabel>
+                <FormLabel>Organization <span className="text-destructive">*</span></FormLabel>
                 <Select
                   onValueChange={field.onChange}
                   defaultValue={field.value}
@@ -224,7 +280,7 @@ export function ProjectForm({
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Description *</FormLabel>
+              <FormLabel>Description <span className="text-destructive">*</span></FormLabel>
               <FormControl>
                 <Textarea
                   placeholder="Describe the project scope and objectives"
@@ -243,7 +299,7 @@ export function ProjectForm({
             name="status"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Status *</FormLabel>
+                <FormLabel>Status <span className="text-destructive">*</span></FormLabel>
                 <Select
                   onValueChange={field.onChange}
                   defaultValue={field.value}
@@ -271,7 +327,7 @@ export function ProjectForm({
             name="start_date"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Start Date *</FormLabel>
+                <FormLabel>Start Date <span className="text-destructive">*</span></FormLabel>
                 <FormControl>
                   <Input type="date" {...field} />
                 </FormControl>
@@ -300,7 +356,7 @@ export function ProjectForm({
           name="location"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Location *</FormLabel>
+              <FormLabel>Location <span className="text-destructive">*</span></FormLabel>
               <FormControl>
                 <Input placeholder="Enter project location" {...field} />
               </FormControl>
@@ -315,7 +371,7 @@ export function ProjectForm({
             name="primary_contact_id"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Primary Contact *</FormLabel>
+                <FormLabel>Primary Contact <span className="text-destructive">*</span></FormLabel>
                 <Select
                   onValueChange={field.onChange}
                   defaultValue={field.value}
@@ -344,8 +400,13 @@ export function ProjectForm({
             name="tag_ids"
             render={() => (
               <FormItem>
-                <FormLabel>Tags *</FormLabel>
-                <div className="flex flex-wrap gap-2 rounded-md border p-2 min-h-[40px]">
+                <FormLabel>Tags <span className="text-destructive">*</span></FormLabel>
+                <div
+                  className={cn(
+                    "flex flex-wrap gap-2 rounded-md border p-2 min-h-[40px]",
+                    form.formState.errors.tag_ids && "border-destructive",
+                  )}
+                >
                   {allTags?.map((tag) => {
                     const isSelected = form.watch("tag_ids").includes(tag.id);
                     return (
