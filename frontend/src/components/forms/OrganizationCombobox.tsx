@@ -8,7 +8,7 @@
  */
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Search, Check, Building2 } from "lucide-react";
+import { ChevronDown, Search, Check, Building2, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useCreateOrganization } from "@/hooks/useOrganizations";
 import type { Organization } from "@/types/organization";
 import { cn } from "@/lib/utils";
 
@@ -215,6 +225,8 @@ interface OrganizationSelectComboboxProps {
   placeholder?: string;
   disabled?: boolean;
   triggerClassName?: string;
+  allowCreate?: boolean;
+  onOrganizationCreated?: (org: Organization) => void;
 }
 
 export function OrganizationSelectCombobox({
@@ -224,12 +236,29 @@ export function OrganizationSelectCombobox({
   placeholder = "Select organization",
   disabled = false,
   triggerClassName,
+  allowCreate = false,
+  onOrganizationCreated,
 }: OrganizationSelectComboboxProps) {
   const [inputValue, setInputValue] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+
+  // State for inline organization creation
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    notes: "",
+    address_street: "",
+    address_city: "",
+    address_state: "",
+    address_zip: "",
+    address_country: "",
+    inventory_url: "",
+  });
+
+  const createMutation = useCreateOrganization();
 
   // Filter organizations by input value (case-insensitive)
   const filteredOrgs = organizations.filter((org) =>
@@ -294,11 +323,55 @@ export function OrganizationSelectCombobox({
     setIsOpen(false);
   };
 
+  const handleCreateSubmit = async () => {
+    if (!formData.name.trim()) return;
+
+    try {
+      const newOrg = await createMutation.mutateAsync(formData);
+      // Auto-select the newly created organization
+      onChange(newOrg.id);
+      // Notify parent if callback provided
+      onOrganizationCreated?.(newOrg);
+      // Reset and close
+      setFormData({
+        name: "",
+        notes: "",
+        address_street: "",
+        address_city: "",
+        address_state: "",
+        address_zip: "",
+        address_country: "",
+        inventory_url: "",
+      });
+      setShowCreateDialog(false);
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    if (!open) {
+      // Reset form when closing
+      setFormData({
+        name: "",
+        notes: "",
+        address_street: "",
+        address_city: "",
+        address_state: "",
+        address_zip: "",
+        address_country: "",
+        inventory_url: "",
+      });
+    }
+    setShowCreateDialog(open);
+  };
+
   // Get display text for trigger button
   const selectedOrg = value ? organizations.find((o) => o.id === value) : null;
   const displayText = selectedOrg?.name ?? placeholder;
 
   return (
+    <>
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
@@ -372,8 +445,128 @@ export function OrganizationSelectCombobox({
               );
             })
           )}
+          {allowCreate && (
+            <li className="border-t">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/50"
+                onClick={() => {
+                  setIsOpen(false);
+                  setShowCreateDialog(true);
+                }}
+              >
+                <Plus className="h-4 w-4 text-muted-foreground" />
+                <span>Create New Organization</span>
+              </button>
+            </li>
+          )}
         </ul>
       </PopoverContent>
     </Popover>
+
+    {allowCreate && (
+      <Dialog open={showCreateDialog} onOpenChange={handleDialogClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Organization</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-org-name">Name *</Label>
+              <Input
+                id="new-org-name"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="Enter organization name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-org-notes">Notes</Label>
+              <Textarea
+                id="new-org-notes"
+                value={formData.notes}
+                onChange={(e) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
+                placeholder="Optional notes about this organization"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Address</Label>
+              <Input
+                value={formData.address_street}
+                onChange={(e) =>
+                  setFormData({ ...formData, address_street: e.target.value })
+                }
+                placeholder="Street address"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={formData.address_city}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_city: e.target.value })
+                  }
+                  placeholder="City"
+                />
+                <Input
+                  value={formData.address_state}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_state: e.target.value })
+                  }
+                  placeholder="State"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={formData.address_zip}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_zip: e.target.value })
+                  }
+                  placeholder="ZIP Code"
+                />
+                <Input
+                  value={formData.address_country}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_country: e.target.value })
+                  }
+                  placeholder="Country"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-org-inventory-url">Inventory Link</Label>
+              <Input
+                id="new-org-inventory-url"
+                value={formData.inventory_url}
+                onChange={(e) =>
+                  setFormData({ ...formData, inventory_url: e.target.value })
+                }
+                placeholder="https://inventory.example.com/client/123"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateSubmit}
+              disabled={!formData.name.trim() || createMutation.isPending}
+            >
+              {createMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 }

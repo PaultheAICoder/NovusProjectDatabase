@@ -271,6 +271,7 @@ export function ProjectForm({
                     value={field.value}
                     onChange={field.onChange}
                     placeholder="Select organization"
+                    allowCreate={true}
                   />
                 </FormControl>
                 <FormMessage />
