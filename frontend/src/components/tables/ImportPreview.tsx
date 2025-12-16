@@ -12,13 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { OrganizationSelectCombobox } from "@/components/forms/OrganizationCombobox";
 import {
   Table,
   TableBody,
@@ -203,7 +197,8 @@ export function ImportPreview({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Select
+                      <OrganizationSelectCombobox
+                        organizations={orgsData?.items ?? []}
                         value={
                           getEditedValue(
                             row.row_number,
@@ -211,21 +206,12 @@ export function ImportPreview({
                             row.resolved_organization_id
                           ) || ""
                         }
-                        onValueChange={(v) =>
+                        onChange={(v) =>
                           updateRow(row.row_number, "organization_id", v)
                         }
-                      >
-                        <SelectTrigger className="h-8 w-[180px]">
-                          <SelectValue placeholder="Select org..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {orgsData?.items.map((org) => (
-                            <SelectItem key={org.id} value={org.id}>
-                              {org.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Select org..."
+                        triggerClassName="h-8 w-[180px]"
+                      />
                       {row.suggestions?.suggested_organization_id && (
                         <Tooltip>
                           <TooltipTrigger asChild>

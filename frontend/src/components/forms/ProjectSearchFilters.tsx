@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { TagFilterCombobox } from "@/components/forms/TagFilterCombobox";
+import { OrganizationFilterCombobox } from "@/components/forms/OrganizationCombobox";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAllTags } from "@/hooks/useTags";
 import type { ProjectStatus } from "@/types/project";
@@ -101,24 +102,13 @@ export function ProjectSearchFilters({
           </SelectContent>
         </Select>
 
-        <Select
-          value={organizationId ?? "all"}
-          onValueChange={(value) =>
-            onOrganizationChange(value === "all" ? undefined : value)
-          }
-        >
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Organization" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Organizations</SelectItem>
-            {orgsData?.items.map((org) => (
-              <SelectItem key={org.id} value={org.id}>
-                {org.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <OrganizationFilterCombobox
+          organizations={orgsData?.items ?? []}
+          selectedId={organizationId}
+          onSelect={onOrganizationChange}
+          placeholder="Organization"
+          showAllOption={true}
+        />
 
         <TagFilterCombobox
           allTags={allTags ?? []}

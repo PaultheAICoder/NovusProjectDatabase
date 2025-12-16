@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { OrganizationSelectCombobox } from "@/components/forms/OrganizationCombobox";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useContacts } from "@/hooks/useContacts";
 import { useAllTags } from "@/hooks/useTags";
@@ -252,23 +253,14 @@ export function ProjectForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Organization <span className="text-destructive">*</span></FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select organization" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {orgsData?.items.map((org) => (
-                      <SelectItem key={org.id} value={org.id}>
-                        {org.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  <OrganizationSelectCombobox
+                    organizations={orgsData?.items ?? []}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Select organization"
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

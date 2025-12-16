@@ -45,6 +45,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  OrganizationFilterCombobox,
+  OrganizationSelectCombobox,
+} from "@/components/forms/OrganizationCombobox";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -221,25 +225,16 @@ export function ContactsPage() {
       </div>
 
       <div className="flex items-center gap-4">
-        <Select
-          value={orgFilter ?? "all"}
-          onValueChange={(value) => {
-            setOrgFilter(value === "all" ? undefined : value);
+        <OrganizationFilterCombobox
+          organizations={orgsData?.items ?? []}
+          selectedId={orgFilter}
+          onSelect={(value) => {
+            setOrgFilter(value);
             setPage(1);
           }}
-        >
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Filter by organization" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Organizations</SelectItem>
-            {orgsData?.items.map((org) => (
-              <SelectItem key={org.id} value={org.id}>
-                {org.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder="Filter by organization"
+          showAllOption={true}
+        />
 
         {data && (
           <span className="text-sm text-muted-foreground">
@@ -386,23 +381,14 @@ export function ContactsPage() {
 
             <div className="space-y-2">
               <Label htmlFor="contact-org">Organization *</Label>
-              <Select
+              <OrganizationSelectCombobox
+                organizations={orgsData?.items ?? []}
                 value={formData.organization_id}
-                onValueChange={(value) =>
+                onChange={(value) =>
                   setFormData({ ...formData, organization_id: value })
                 }
-              >
-                <SelectTrigger id="contact-org">
-                  <SelectValue placeholder="Select organization" />
-                </SelectTrigger>
-                <SelectContent>
-                  {orgsData?.items.map((org) => (
-                    <SelectItem key={org.id} value={org.id}>
-                      {org.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="Select organization"
+              />
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
