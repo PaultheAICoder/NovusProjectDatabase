@@ -13,9 +13,11 @@ from app.models import Contact, Organization
 from app.schemas.base import PaginatedResponse
 from app.schemas.contact import (
     ContactCreate,
+    ContactDetail,
     ContactResponse,
     ContactUpdate,
     ContactWithOrganization,
+    ProjectSummaryForContact,
 )
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
@@ -105,18 +107,25 @@ async def create_contact(
     return ContactResponse.model_validate(contact)
 
 
-@router.get("/{contact_id}", response_model=ContactWithOrganization)
+@router.get("/{contact_id}", response_model=ContactDetail)
 @limiter.limit(crud_limit)
 async def get_contact(
     request: Request,
     contact_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
-) -> ContactWithOrganization:
-    """Get contact details."""
+) -> ContactDetail:
+    """Get contact details with associated projects."""
+    from app.models.project import Project, ProjectContact
+
     result = await db.execute(
         select(Contact)
-        .options(selectinload(Contact.organization))
+        .options(
+            selectinload(Contact.organization),
+            selectinload(Contact.project_contacts)
+            .selectinload(ProjectContact.project)
+            .selectinload(Project.organization),
+        )
         .where(Contact.id == contact_id)
     )
     contact = result.scalar_one_or_none()
@@ -127,7 +136,38 @@ async def get_contact(
             detail="Contact not found",
         )
 
-    return ContactWithOrganization.model_validate(contact)
+    # Build project summaries from project_contacts
+    projects = [
+        ProjectSummaryForContact(
+            id=pc.project.id,
+            name=pc.project.name,
+            organization_name=(
+                pc.project.organization.name if pc.project.organization else ""
+            ),
+            status=pc.project.status.value,
+            start_date=pc.project.start_date,
+            end_date=pc.project.end_date,
+            is_primary=pc.is_primary,
+        )
+        for pc in contact.project_contacts
+        if pc.project is not None
+    ]
+
+    return ContactDetail(
+        id=contact.id,
+        name=contact.name,
+        email=contact.email,
+        organization_id=contact.organization_id,
+        role_title=contact.role_title,
+        phone=contact.phone,
+        notes=contact.notes,
+        monday_url=contact.monday_url,
+        created_at=contact.created_at,
+        updated_at=contact.updated_at,
+        organization=contact.organization,
+        project_count=len(projects),
+        projects=projects,
+    )
 
 
 @router.put("/{contact_id}", response_model=ContactResponse)

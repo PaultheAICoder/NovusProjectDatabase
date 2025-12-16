@@ -1,11 +1,25 @@
 """Contact Pydantic schemas."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.schemas.organization import OrganizationResponse
+
+
+class ProjectSummaryForContact(BaseModel):
+    """Minimal project info for contact detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    organization_name: str
+    status: str  # Use str to avoid circular import with ProjectStatus
+    start_date: date
+    end_date: date | None = None
+    is_primary: bool = False
 
 
 class ContactBase(BaseModel):
@@ -56,4 +70,5 @@ class ContactWithOrganization(ContactResponse):
 class ContactDetail(ContactWithOrganization):
     """Detailed contact response with related projects."""
 
-    pass  # Will include projects list when needed
+    project_count: int = 0
+    projects: list[ProjectSummaryForContact] = []

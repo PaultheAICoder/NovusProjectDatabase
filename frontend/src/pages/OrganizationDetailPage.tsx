@@ -417,7 +417,14 @@ export function OrganizationDetailPage() {
               <TableBody>
                 {organization.contacts.map((contact) => (
                   <TableRow key={contact.id}>
-                    <TableCell className="font-medium">{contact.name}</TableCell>
+                    <TableCell>
+                      <Link
+                        to={`/contacts/${contact.id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {contact.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       <a
                         href={`mailto:${contact.email}`}

@@ -8,6 +8,7 @@ import type { PaginatedResponse } from "@/types";
 import type {
   Contact,
   ContactCreate,
+  ContactDetail,
   ContactUpdate,
   ContactWithOrganization,
 } from "@/types/contact";
@@ -44,7 +45,7 @@ export function useContacts({
 export function useContact(id: string | undefined) {
   return useQuery({
     queryKey: ["contacts", id],
-    queryFn: () => api.get<ContactWithOrganization>(`/contacts/${id}`),
+    queryFn: () => api.get<ContactDetail>(`/contacts/${id}`),
     enabled: !!id,
   });
 }

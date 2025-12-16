@@ -39,3 +39,18 @@ export interface ContactUpdate {
   notes?: string;
   monday_url?: string;
 }
+
+export interface ProjectSummaryForContact {
+  id: string;
+  name: string;
+  organization_name: string;
+  status: string;
+  start_date: string;
+  end_date: string | null;
+  is_primary: boolean;
+}
+
+export interface ContactDetail extends ContactWithOrganization {
+  project_count: number;
+  projects: ProjectSummaryForContact[];
+}

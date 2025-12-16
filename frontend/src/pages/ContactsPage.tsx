@@ -3,6 +3,7 @@
  */
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   useReactTable,
   getCoreRowModel,
@@ -98,7 +99,14 @@ export function ContactsPage() {
   const columns = [
     columnHelper.accessor("name", {
       header: "Name",
-      cell: (info) => <span className="font-medium">{info.getValue()}</span>,
+      cell: (info) => (
+        <Link
+          to={`/contacts/${info.row.original.id}`}
+          className="font-medium text-primary hover:underline"
+        >
+          {info.getValue()}
+        </Link>
+      ),
     }),
     columnHelper.accessor("email", {
       header: "Email",

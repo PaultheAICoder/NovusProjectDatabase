@@ -42,6 +42,11 @@ const OrganizationDetailPage = lazy(() =>
 const ContactsPage = lazy(() =>
   import("@/pages/ContactsPage").then((m) => ({ default: m.ContactsPage }))
 );
+const ContactDetailPage = lazy(() =>
+  import("@/pages/ContactDetailPage").then((m) => ({
+    default: m.ContactDetailPage,
+  }))
+);
 
 /**
  * Protected route wrapper.
@@ -230,6 +235,18 @@ function AppRoutes() {
             <MainLayout>
               <Suspense fallback={<PageLoader />}>
                 <ContactsPage />
+              </Suspense>
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/contacts/:id"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Suspense fallback={<PageLoader />}>
+                <ContactDetailPage />
               </Suspense>
             </MainLayout>
           </ProtectedRoute>
