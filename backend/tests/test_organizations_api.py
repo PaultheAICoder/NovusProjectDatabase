@@ -4,10 +4,13 @@ from datetime import date, datetime
 from uuid import uuid4
 
 from app.schemas.organization import (
+    BillingContactSummary,
     ContactSummaryForOrg,
+    OrganizationCreate,
     OrganizationDetail,
     OrganizationDetailWithRelations,
     OrganizationResponse,
+    OrganizationUpdate,
     ProjectSummaryForOrg,
 )
 
@@ -243,3 +246,174 @@ class TestOrganizationModelRelationships:
         from app.models import Organization
 
         assert hasattr(Organization, "contacts")
+
+
+class TestOrganizationWithNewFields:
+    """Tests for Organization schemas with new fields."""
+
+    def test_organization_response_with_address(self):
+        """OrganizationResponse should include address fields."""
+        org_id = uuid4()
+        now = datetime.now()
+
+        data = OrganizationResponse(
+            id=org_id,
+            name="Test Organization",
+            aliases=None,
+            billing_contact_id=None,
+            address_street="123 Main St",
+            address_city="Boston",
+            address_state="MA",
+            address_zip="02101",
+            address_country="USA",
+            inventory_url="https://inventory.example.com/123",
+            notes="Test notes",
+            created_at=now,
+            updated_at=now,
+        )
+
+        assert data.address_street == "123 Main St"
+        assert data.address_city == "Boston"
+        assert data.address_state == "MA"
+        assert data.address_zip == "02101"
+        assert data.address_country == "USA"
+        assert data.inventory_url == "https://inventory.example.com/123"
+        assert data.notes == "Test notes"
+
+    def test_organization_all_new_fields_optional(self):
+        """All new fields should be optional."""
+        org_id = uuid4()
+        now = datetime.now()
+
+        # Should not raise with minimal fields
+        data = OrganizationResponse(
+            id=org_id,
+            name="Minimal Org",
+            aliases=None,
+            created_at=now,
+            updated_at=now,
+        )
+
+        assert data.billing_contact_id is None
+        assert data.address_street is None
+        assert data.notes is None
+
+    def test_organization_create_with_new_fields(self):
+        """OrganizationCreate should accept new fields."""
+        data = OrganizationCreate(
+            name="New Org",
+            address_city="New York",
+            notes="Created with notes",
+        )
+
+        assert data.name == "New Org"
+        assert data.address_city == "New York"
+        assert data.notes == "Created with notes"
+
+    def test_organization_update_partial(self):
+        """OrganizationUpdate should support partial updates."""
+        data = OrganizationUpdate(notes="Updated notes only")
+        dump = data.model_dump(exclude_unset=True)
+
+        assert dump == {"notes": "Updated notes only"}
+        assert "name" not in dump
+
+
+class TestBillingContactSummary:
+    """Tests for BillingContactSummary schema."""
+
+    def test_billing_contact_summary_required_fields(self):
+        """BillingContactSummary should require id, name, email."""
+        contact_id = uuid4()
+        data = BillingContactSummary(
+            id=contact_id,
+            name="Billing Person",
+            email="billing@example.com",
+        )
+
+        assert data.id == contact_id
+        assert data.name == "Billing Person"
+        assert data.email == "billing@example.com"
+        assert data.role_title is None
+
+    def test_billing_contact_with_role(self):
+        """BillingContactSummary should allow optional role_title."""
+        data = BillingContactSummary(
+            id=uuid4(),
+            name="CFO",
+            email="cfo@example.com",
+            role_title="Chief Financial Officer",
+        )
+
+        assert data.role_title == "Chief Financial Officer"
+
+
+class TestOrganizationDetailWithBillingContact:
+    """Tests for OrganizationDetailWithRelations with billing contact."""
+
+    def test_detail_with_billing_contact(self):
+        """OrganizationDetailWithRelations should include billing_contact."""
+        org_id = uuid4()
+        billing_id = uuid4()
+        now = datetime.now()
+
+        billing = BillingContactSummary(
+            id=billing_id,
+            name="Billing Contact",
+            email="billing@example.com",
+        )
+
+        data = OrganizationDetailWithRelations(
+            id=org_id,
+            name="Test Org",
+            aliases=None,
+            billing_contact_id=billing_id,
+            address_city="Boston",
+            created_at=now,
+            updated_at=now,
+            project_count=0,
+            billing_contact=billing,
+        )
+
+        assert data.billing_contact is not None
+        assert data.billing_contact.name == "Billing Contact"
+
+    def test_detail_without_billing_contact(self):
+        """OrganizationDetailWithRelations should work without billing_contact."""
+        org_id = uuid4()
+        now = datetime.now()
+
+        data = OrganizationDetailWithRelations(
+            id=org_id,
+            name="Test Org",
+            aliases=None,
+            created_at=now,
+            updated_at=now,
+            project_count=0,
+        )
+
+        assert data.billing_contact is None
+
+
+class TestOrganizationModelNewFields:
+    """Tests for Organization model new field definitions."""
+
+    def test_organization_has_billing_contact_relationship(self):
+        """Organization model should have billing_contact relationship."""
+        from app.models import Organization
+
+        assert hasattr(Organization, "billing_contact")
+
+    def test_organization_has_new_columns(self):
+        """Organization model should have new columns."""
+        from app.models import Organization
+
+        columns = [c.name for c in Organization.__table__.columns]
+        assert "billing_contact_id" in columns
+        assert "address_street" in columns
+        assert "address_city" in columns
+        assert "address_state" in columns
+        assert "address_zip" in columns
+        assert "address_country" in columns
+        assert "inventory_url" in columns
+        assert "notes" in columns

@@ -11,6 +11,7 @@ from app.core.rate_limit import crud_limit, limiter
 from app.models import Organization
 from app.schemas.base import PaginatedResponse
 from app.schemas.organization import (
+    BillingContactSummary,
     ContactSummaryForOrg,
     OrganizationCreate,
     OrganizationDetailWithRelations,
@@ -76,6 +77,14 @@ async def create_organization(
     org = Organization(
         name=data.name,
         aliases=data.aliases,
+        billing_contact_id=data.billing_contact_id,
+        address_street=data.address_street,
+        address_city=data.address_city,
+        address_state=data.address_state,
+        address_zip=data.address_zip,
+        address_country=data.address_country,
+        inventory_url=data.inventory_url,
+        notes=data.notes,
     )
     db.add(org)
 
@@ -106,6 +115,7 @@ async def get_organization(
         .options(
             selectinload(Organization.projects),
             selectinload(Organization.contacts),
+            selectinload(Organization.billing_contact),
         )
         .where(Organization.id == organization_id)
     )
@@ -140,15 +150,34 @@ async def get_organization(
         for c in org.contacts
     ]
 
+    # Build billing contact summary if exists
+    billing_contact_summary = None
+    if org.billing_contact:
+        billing_contact_summary = BillingContactSummary(
+            id=org.billing_contact.id,
+            name=org.billing_contact.name,
+            email=org.billing_contact.email,
+            role_title=org.billing_contact.role_title,
+        )
+
     return OrganizationDetailWithRelations(
         id=org.id,
         name=org.name,
         aliases=org.aliases,
+        billing_contact_id=org.billing_contact_id,
+        address_street=org.address_street,
+        address_city=org.address_city,
+        address_state=org.address_state,
+        address_zip=org.address_zip,
+        address_country=org.address_country,
+        inventory_url=org.inventory_url,
+        notes=org.notes,
         created_at=org.created_at,
         updated_at=org.updated_at,
         project_count=len(projects),
         projects=projects,
         contacts=contacts,
+        billing_contact=billing_contact_summary,
     )
 
 

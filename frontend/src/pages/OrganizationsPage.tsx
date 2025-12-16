@@ -60,7 +60,16 @@ export function OrganizationsPage() {
   const [pageSize, setPageSize] = useState(20);
   const [showDialog, setShowDialog] = useState(false);
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
-  const [formData, setFormData] = useState({ name: "", notes: "" });
+  const [formData, setFormData] = useState({
+    name: "",
+    notes: "",
+    address_street: "",
+    address_city: "",
+    address_state: "",
+    address_zip: "",
+    address_country: "",
+    inventory_url: "",
+  });
 
   const { data, isLoading, isError } = useOrganizations({ page, pageSize });
   const createMutation = useCreateOrganization();
@@ -126,13 +135,31 @@ export function OrganizationsPage() {
 
   const handleCreate = () => {
     setEditingOrg(null);
-    setFormData({ name: "", notes: "" });
+    setFormData({
+      name: "",
+      notes: "",
+      address_street: "",
+      address_city: "",
+      address_state: "",
+      address_zip: "",
+      address_country: "",
+      inventory_url: "",
+    });
     setShowDialog(true);
   };
 
   const handleEdit = (org: Organization) => {
     setEditingOrg(org);
-    setFormData({ name: org.name, notes: org.notes || "" });
+    setFormData({
+      name: org.name,
+      notes: org.notes || "",
+      address_street: org.address_street || "",
+      address_city: org.address_city || "",
+      address_state: org.address_state || "",
+      address_zip: org.address_zip || "",
+      address_country: org.address_country || "",
+      inventory_url: org.inventory_url || "",
+    });
     setShowDialog(true);
   };
 
@@ -317,6 +344,59 @@ export function OrganizationsPage() {
                   setFormData({ ...formData, notes: e.target.value })
                 }
                 placeholder="Optional notes about this organization"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Address</Label>
+              <Input
+                value={formData.address_street}
+                onChange={(e) =>
+                  setFormData({ ...formData, address_street: e.target.value })
+                }
+                placeholder="Street address"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={formData.address_city}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_city: e.target.value })
+                  }
+                  placeholder="City"
+                />
+                <Input
+                  value={formData.address_state}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_state: e.target.value })
+                  }
+                  placeholder="State"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={formData.address_zip}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_zip: e.target.value })
+                  }
+                  placeholder="ZIP Code"
+                />
+                <Input
+                  value={formData.address_country}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address_country: e.target.value })
+                  }
+                  placeholder="Country"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="org-inventory-url">Inventory Link</Label>
+              <Input
+                id="org-inventory-url"
+                value={formData.inventory_url}
+                onChange={(e) =>
+                  setFormData({ ...formData, inventory_url: e.target.value })
+                }
+                placeholder="https://inventory.example.com/client/123"
               />
             </div>
           </div>

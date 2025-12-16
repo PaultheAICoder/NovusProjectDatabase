@@ -9,9 +9,12 @@ import {
   ArrowLeft,
   Building2,
   Edit,
+  ExternalLink,
   Plus,
   Users,
   FolderKanban,
+  MapPin,
+  Receipt,
 } from "lucide-react";
 import {
   useOrganization,
@@ -22,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -74,13 +78,30 @@ export function OrganizationDetailPage() {
   const deleteOrganization = useDeleteOrganization();
 
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editFormData, setEditFormData] = useState({ name: "", aliases: "" });
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    aliases: "",
+    notes: "",
+    address_street: "",
+    address_city: "",
+    address_state: "",
+    address_zip: "",
+    address_country: "",
+    inventory_url: "",
+  });
 
   const handleEditOpen = () => {
     if (organization) {
       setEditFormData({
         name: organization.name,
         aliases: organization.aliases?.join(", ") || "",
+        notes: organization.notes || "",
+        address_street: organization.address_street || "",
+        address_city: organization.address_city || "",
+        address_state: organization.address_state || "",
+        address_zip: organization.address_zip || "",
+        address_country: organization.address_country || "",
+        inventory_url: organization.inventory_url || "",
       });
       setShowEditDialog(true);
     }
@@ -97,6 +118,13 @@ export function OrganizationDetailPage() {
       data: {
         name: editFormData.name.trim(),
         aliases: aliasesArray.length > 0 ? aliasesArray : undefined,
+        notes: editFormData.notes || undefined,
+        address_street: editFormData.address_street || undefined,
+        address_city: editFormData.address_city || undefined,
+        address_state: editFormData.address_state || undefined,
+        address_zip: editFormData.address_zip || undefined,
+        address_country: editFormData.address_country || undefined,
+        inventory_url: editFormData.inventory_url || undefined,
       },
     });
     setShowEditDialog(false);
@@ -230,6 +258,80 @@ export function OrganizationDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Address Card */}
+      {(organization.address_street ||
+        organization.address_city ||
+        organization.address_state ||
+        organization.address_zip ||
+        organization.address_country) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5" />
+              Address
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm">
+            {organization.address_street && <div>{organization.address_street}</div>}
+            {(organization.address_city || organization.address_state || organization.address_zip) && (
+              <div>
+                {organization.address_city}
+                {organization.address_city && organization.address_state && ", "}
+                {organization.address_state} {organization.address_zip}
+              </div>
+            )}
+            {organization.address_country && <div>{organization.address_country}</div>}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Billing & Links Card */}
+      {(organization.billing_contact || organization.inventory_url || organization.notes) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Billing & Links
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {organization.billing_contact && (
+              <div>
+                <span className="text-muted-foreground">Billing Contact: </span>
+                <span className="font-medium">{organization.billing_contact.name}</span>
+                {" - "}
+                <a
+                  href={`mailto:${organization.billing_contact.email}`}
+                  className="text-primary hover:underline"
+                >
+                  {organization.billing_contact.email}
+                </a>
+              </div>
+            )}
+            {organization.inventory_url && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Inventory:</span>
+                <a
+                  href={organization.inventory_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline flex items-center gap-1"
+                >
+                  View Inventory
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            )}
+            {organization.notes && (
+              <div>
+                <span className="text-muted-foreground">Notes: </span>
+                <span>{organization.notes}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Projects Table */}
       <Card>
@@ -392,6 +494,70 @@ export function OrganizationDetailPage() {
                   setEditFormData({ ...editFormData, aliases: e.target.value })
                 }
                 placeholder="e.g. Acme, Acme Inc"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editFormData.notes}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, notes: e.target.value })
+                }
+                placeholder="Notes about this organization"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Address</Label>
+              <Input
+                value={editFormData.address_street}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, address_street: e.target.value })
+                }
+                placeholder="Street address"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={editFormData.address_city}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, address_city: e.target.value })
+                  }
+                  placeholder="City"
+                />
+                <Input
+                  value={editFormData.address_state}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, address_state: e.target.value })
+                  }
+                  placeholder="State"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  value={editFormData.address_zip}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, address_zip: e.target.value })
+                  }
+                  placeholder="ZIP Code"
+                />
+                <Input
+                  value={editFormData.address_country}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, address_country: e.target.value })
+                  }
+                  placeholder="Country"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-inventory-url">Inventory Link</Label>
+              <Input
+                id="edit-inventory-url"
+                value={editFormData.inventory_url}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, inventory_url: e.target.value })
+                }
+                placeholder="https://inventory.example.com/client/123"
               />
             </div>
           </div>

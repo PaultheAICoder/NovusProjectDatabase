@@ -29,11 +29,30 @@ class ContactSummaryForOrg(BaseModel):
     role_title: str | None = None
 
 
+class BillingContactSummary(BaseModel):
+    """Minimal billing contact info for organization detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    email: str
+    role_title: str | None = None
+
+
 class OrganizationBase(BaseModel):
     """Base organization schema."""
 
     name: str = Field(..., min_length=1, max_length=255)
     aliases: list[str] | None = None
+    billing_contact_id: UUID | None = None
+    address_street: str | None = Field(None, max_length=255)
+    address_city: str | None = Field(None, max_length=100)
+    address_state: str | None = Field(None, max_length=100)
+    address_zip: str | None = Field(None, max_length=20)
+    address_country: str | None = Field(None, max_length=100)
+    inventory_url: str | None = Field(None, max_length=500)
+    notes: str | None = None
 
 
 class OrganizationCreate(OrganizationBase):
@@ -47,6 +66,14 @@ class OrganizationUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=255)
     aliases: list[str] | None = None
+    billing_contact_id: UUID | None = None
+    address_street: str | None = Field(None, max_length=255)
+    address_city: str | None = Field(None, max_length=100)
+    address_state: str | None = Field(None, max_length=100)
+    address_zip: str | None = Field(None, max_length=20)
+    address_country: str | None = Field(None, max_length=100)
+    inventory_url: str | None = Field(None, max_length=500)
+    notes: str | None = None
 
 
 class OrganizationResponse(OrganizationBase):
@@ -70,3 +97,4 @@ class OrganizationDetailWithRelations(OrganizationDetail):
 
     projects: list[ProjectSummaryForOrg] = []
     contacts: list[ContactSummaryForOrg] = []
+    billing_contact: BillingContactSummary | None = None

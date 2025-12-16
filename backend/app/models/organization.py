@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Computed, DateTime, String, func
+from sqlalchemy import Computed, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,6 +29,40 @@ class Organization(Base):
     )
     aliases: Mapped[list[str] | None] = mapped_column(
         ARRAY(String(255)),
+        nullable=True,
+    )
+    billing_contact_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    address_street: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    address_city: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    address_state: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    address_zip: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+    address_country: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    inventory_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    notes: Mapped[str | None] = mapped_column(
+        Text,
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -58,10 +92,16 @@ class Organization(Base):
         "Contact",
         back_populates="organization",
         lazy="selectin",
+        foreign_keys="[Contact.organization_id]",
     )
     projects: Mapped[list["Project"]] = relationship(
         "Project",
         back_populates="organization",
+        lazy="selectin",
+    )
+    billing_contact: Mapped["Contact | None"] = relationship(
+        "Contact",
+        foreign_keys=[billing_contact_id],
         lazy="selectin",
     )
 
