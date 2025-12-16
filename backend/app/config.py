@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     # Cron Job Security
     cron_secret: str = ""  # Bearer token for cron endpoint authentication
 
+    # Monday.com Integration
+    monday_api_key: str = ""  # API key from Monday.com admin
+    monday_api_version: str = "2024-10"  # API version
+    monday_contacts_board_id: str = ""  # Board ID containing contacts
+    monday_organizations_board_id: str = ""  # Board ID containing organizations
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalize_log_level(cls, v: str) -> str:
@@ -197,6 +203,11 @@ class Settings(BaseSettings):
             and self.azure_ad_client_secret
             and self.feedback_email
         )
+
+    @property
+    def is_monday_configured(self) -> bool:
+        """Check if Monday.com integration is configured."""
+        return bool(self.monday_api_key)
 
 
 @lru_cache

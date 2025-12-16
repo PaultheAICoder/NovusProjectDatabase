@@ -64,6 +64,15 @@ class Contact(Base):
         String(500),
         nullable=True,
     )
+    monday_id: Mapped[str | None] = mapped_column(
+        String(50),  # Monday item IDs are numeric strings
+        nullable=True,
+        index=True,  # Not unique - same person could be in multiple orgs
+    )
+    monday_last_synced: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

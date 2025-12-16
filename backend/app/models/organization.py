@@ -65,6 +65,16 @@ class Organization(Base):
         Text,
         nullable=True,
     )
+    monday_id: Mapped[str | None] = mapped_column(
+        String(50),  # Monday item IDs are numeric strings
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+    monday_last_synced: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

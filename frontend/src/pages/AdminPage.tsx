@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { Settings, Tag as TagIcon, Trash2, Edit, Loader2, Merge } from "lucide-react";
+import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -292,6 +293,9 @@ export function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Monday.com Integration Section */}
+      <MondayConfigCard />
 
       {/* Create Tag Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>

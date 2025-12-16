@@ -3,6 +3,7 @@
 from app.models.contact import Contact
 from app.models.document import Document
 from app.models.feedback import EmailMonitorState, Feedback, FeedbackStatus
+from app.models.monday_sync import MondaySyncLog, MondaySyncStatus, MondaySyncType
 from app.models.organization import Organization
 from app.models.project import (
     STATUS_TRANSITIONS,
@@ -32,4 +33,7 @@ __all__ = [
     "Feedback",
     "FeedbackStatus",
     "EmailMonitorState",
+    "MondaySyncLog",
+    "MondaySyncStatus",
+    "MondaySyncType",
 ]

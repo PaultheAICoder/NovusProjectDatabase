@@ -1,0 +1,349 @@
+"""Tests for Monday.com service."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+import pytest
+
+from app.services.monday_service import MondayService
+
+
+class TestMondayServiceConfiguration:
+    """Tests for MondayService configuration."""
+
+    @patch("app.services.monday_service.settings")
+    def test_is_configured_true(self, mock_settings):
+        """Test is_configured returns True when API key is set."""
+        mock_settings.monday_api_key = "test-api-key"
+        mock_db = AsyncMock()
+        service = MondayService(mock_db)
+        assert service.is_configured is True
+
+    @patch("app.services.monday_service.settings")
+    def test_is_configured_false(self, mock_settings):
+        """Test is_configured returns False when API key is empty."""
+        mock_settings.monday_api_key = ""
+        mock_db = AsyncMock()
+        service = MondayService(mock_db)
+        assert service.is_configured is False
+
+    @patch("app.services.monday_service.settings")
+    def test_is_configured_false_when_none(self, mock_settings):
+        """Test is_configured returns False when API key is None."""
+        mock_settings.monday_api_key = None
+        mock_db = AsyncMock()
+        service = MondayService(mock_db)
+        assert service.is_configured is False
+
+
+class TestMondayServiceGraphQL:
+    """Tests for MondayService GraphQL operations."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_boards(self, mock_settings, monday_service):
+        """Test fetching boards from Monday API."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        # Mock the HTTP client response
+        with patch.object(monday_service, "_execute_query") as mock_query:
+            mock_query.return_value = {
+                "boards": [{"id": "123", "name": "Test Board", "columns": []}]
+            }
+
+            boards = await monday_service.get_boards()
+            assert len(boards) == 1
+            assert boards[0]["id"] == "123"
+            assert boards[0]["name"] == "Test Board"
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_board_items_first_page(self, mock_settings, monday_service):
+        """Test fetching first page of board items."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_query") as mock_query:
+            mock_query.return_value = {
+                "boards": [
+                    {
+                        "items_page": {
+                            "cursor": "next_cursor_value",
+                            "items": [
+                                {"id": "item1", "name": "Item 1", "column_values": []}
+                            ],
+                        }
+                    }
+                ]
+            }
+
+            items, cursor = await monday_service.get_board_items("123")
+            assert len(items) == 1
+            assert items[0]["id"] == "item1"
+            assert cursor == "next_cursor_value"
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_board_items_with_cursor(self, mock_settings, monday_service):
+        """Test fetching subsequent pages with cursor."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_query") as mock_query:
+            mock_query.return_value = {
+                "next_items_page": {
+                    "cursor": None,  # Last page
+                    "items": [{"id": "item2", "name": "Item 2", "column_values": []}],
+                }
+            }
+
+            items, cursor = await monday_service.get_board_items(
+                "123", cursor="prev_cursor"
+            )
+            assert len(items) == 1
+            assert items[0]["id"] == "item2"
+            assert cursor is None
+
+
+class TestMondayServiceColumnExtraction:
+    """Tests for column value extraction."""
+
+    @pytest.fixture
+    def monday_service(self):
+        """Create MondayService instance."""
+        return MondayService(AsyncMock())
+
+    def test_get_column_value(self, monday_service):
+        """Test extracting column value from item."""
+        item = {
+            "column_values": [
+                {"id": "email", "text": "test@example.com"},
+                {"id": "phone", "text": "123-456-7890"},
+            ]
+        }
+
+        assert monday_service._get_column_value(item, "email") == "test@example.com"
+        assert monday_service._get_column_value(item, "phone") == "123-456-7890"
+        assert monday_service._get_column_value(item, "missing") == ""
+
+    def test_get_column_value_empty_column_id(self, monday_service):
+        """Test _get_column_value returns empty string for empty column_id."""
+        item = {"column_values": [{"id": "test", "text": "value"}]}
+
+        assert monday_service._get_column_value(item, "") == ""
+
+    def test_get_column_value_null_text(self, monday_service):
+        """Test _get_column_value handles null text values."""
+        item = {
+            "column_values": [
+                {"id": "nullable", "text": None},
+            ]
+        }
+
+        assert monday_service._get_column_value(item, "nullable") == ""
+
+
+class TestMondayServiceOrganizationSync:
+    """Tests for organization sync operations."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        db = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    async def test_find_organization_by_monday_id(self, monday_service, mock_db):
+        """Test finding organization by Monday ID."""
+        mock_org = MagicMock()
+        mock_org.id = uuid4()
+        mock_org.name = "Test Org"
+        mock_org.monday_id = "12345"
+
+        # Setup mock query result - make scalar_one_or_none return the org directly
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_org
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        result = await monday_service._find_organization("12345", "Test Org")
+        assert result == mock_org
+
+    @pytest.mark.asyncio
+    async def test_find_organization_by_name_fallback(self, monday_service, mock_db):
+        """Test finding organization by name when monday_id not found."""
+        mock_org = MagicMock()
+        mock_org.id = uuid4()
+        mock_org.name = "Test Org"
+        mock_org.monday_id = None
+
+        # First query (by monday_id) returns None, second (by name) returns org
+        mock_result_none = MagicMock()
+        mock_result_none.scalar_one_or_none.return_value = None
+
+        mock_result_org = MagicMock()
+        mock_result_org.scalar_one_or_none.return_value = mock_org
+
+        mock_db.execute = AsyncMock(side_effect=[mock_result_none, mock_result_org])
+
+        result = await monday_service._find_organization("99999", "Test Org")
+        assert result == mock_org
+
+
+class TestMondayServiceContactSync:
+    """Tests for contact sync operations."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        db = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    async def test_find_contact_by_monday_id(self, monday_service, mock_db):
+        """Test finding contact by Monday ID."""
+        mock_contact = MagicMock()
+        mock_contact.id = uuid4()
+        mock_contact.name = "John Doe"
+        mock_contact.monday_id = "12345"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_contact
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        result = await monday_service._find_contact(
+            "12345", "john@example.com", uuid4()
+        )
+        assert result == mock_contact
+
+    @pytest.mark.asyncio
+    async def test_find_or_create_organization_creates_new(
+        self, monday_service, mock_db
+    ):
+        """Test _find_or_create_organization creates new org if not found."""
+        # First query returns None (org not found)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.add = MagicMock()
+        mock_db.flush = AsyncMock()
+
+        await monday_service._find_or_create_organization("New Org")
+
+        # Should have added a new organization
+        assert mock_db.add.called
+        assert mock_db.flush.called
+
+    @pytest.mark.asyncio
+    async def test_find_or_create_organization_returns_none_for_empty_name(
+        self, monday_service
+    ):
+        """Test _find_or_create_organization returns None for empty name."""
+        result = await monday_service._find_or_create_organization("")
+        assert result is None
+
+
+class TestMondayServiceFieldMapping:
+    """Tests for field mapping application."""
+
+    @pytest.fixture
+    def monday_service(self):
+        """Create MondayService instance."""
+        return MondayService(AsyncMock())
+
+    def test_apply_field_mapping_notes(self, monday_service):
+        """Test applying notes field mapping to organization."""
+        from app.models.organization import Organization
+
+        org = Organization(name="Test Org")
+        item = {
+            "column_values": [
+                {"id": "notes_col", "text": "Test notes content"},
+            ]
+        }
+        mapping = {"notes": "notes_col"}
+
+        monday_service._apply_field_mapping(org, item, mapping)
+        assert org.notes == "Test notes content"
+
+    def test_apply_contact_field_mapping(self, monday_service):
+        """Test applying field mapping to contact."""
+        from app.models.contact import Contact
+
+        contact = Contact(
+            name="John Doe",
+            email="john@example.com",
+            organization_id=uuid4(),
+        )
+        item = {
+            "column_values": [
+                {"id": "role_col", "text": "Manager"},
+                {"id": "phone_col", "text": "555-1234"},
+                {"id": "notes_col", "text": "Contact notes"},
+            ]
+        }
+        mapping = {
+            "role_title": "role_col",
+            "phone": "phone_col",
+            "notes": "notes_col",
+        }
+
+        monday_service._apply_contact_field_mapping(contact, item, mapping)
+        assert contact.role_title == "Manager"
+        assert contact.phone == "555-1234"
+        assert contact.notes == "Contact notes"
+
+
+class TestMondayServiceSyncStatus:
+    """Tests for sync status operations."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_sync_status(self, mock_settings, monday_service, mock_db):
+        """Test getting sync status."""
+        mock_settings.monday_api_key = "test-key"
+
+        # Mock the scalar calls to return None (no logs yet)
+        mock_db.scalar = AsyncMock(return_value=None)
+
+        # Mock the scalars call for recent logs
+        mock_scalars_result = MagicMock()
+        mock_scalars_result.all.return_value = []
+        mock_db.scalars = AsyncMock(return_value=mock_scalars_result)
+
+        status = await monday_service.get_sync_status()
+
+        assert status["is_configured"] is True
+        assert status["last_org_sync"] is None
+        assert status["last_contact_sync"] is None
+        assert status["recent_logs"] == []

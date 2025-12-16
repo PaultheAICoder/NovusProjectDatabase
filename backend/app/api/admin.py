@@ -10,6 +10,7 @@ from app.api.deps import AdminUser, DbSession
 from app.core.rate_limit import admin_limit, limiter
 from app.models import Tag, TagType
 from app.models.document import Document
+from app.models.monday_sync import MondaySyncLog, MondaySyncType
 from app.models.organization import Organization
 from app.models.project import Project, ProjectStatus
 from app.models.saved_search import SavedSearch
@@ -18,6 +19,14 @@ from app.schemas.import_ import (
     ImportCommitRequest,
     ImportCommitResponse,
     ImportPreviewResponse,
+)
+from app.schemas.monday import (
+    MondayBoardInfo,
+    MondayBoardsResponse,
+    MondayConfigResponse,
+    MondaySyncLogResponse,
+    MondaySyncStatusResponse,
+    MondaySyncTriggerRequest,
 )
 from app.schemas.search import SavedSearchResponse
 from app.schemas.tag import (
@@ -28,6 +37,7 @@ from app.schemas.tag import (
     TagUpdate,
 )
 from app.services.import_service import ImportService
+from app.services.monday_service import MondayService
 from app.services.tag_suggester import TagSuggester
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -398,3 +408,171 @@ async def toggle_saved_search_global(
     await db.flush()
 
     return SavedSearchResponse.model_validate(saved_search)
+
+
+# ============== Monday.com Integration (Admin Only) ==============
+
+
+@router.get("/monday/status", response_model=MondaySyncStatusResponse)
+@limiter.limit(admin_limit)
+async def get_monday_sync_status(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> MondaySyncStatusResponse:
+    """Get Monday.com sync status and recent logs. Admin only."""
+    service = MondayService(db)
+    status_data = await service.get_sync_status()
+
+    return MondaySyncStatusResponse(
+        is_configured=status_data["is_configured"],
+        last_org_sync=(
+            MondaySyncLogResponse.model_validate(status_data["last_org_sync"])
+            if status_data["last_org_sync"]
+            else None
+        ),
+        last_contact_sync=(
+            MondaySyncLogResponse.model_validate(status_data["last_contact_sync"])
+            if status_data["last_contact_sync"]
+            else None
+        ),
+        recent_logs=[
+            MondaySyncLogResponse.model_validate(log)
+            for log in status_data["recent_logs"]
+        ],
+    )
+
+
+@router.get("/monday/config", response_model=MondayConfigResponse)
+@limiter.limit(admin_limit)
+async def get_monday_config(
+    request: Request,
+    admin_user: AdminUser,
+) -> MondayConfigResponse:
+    """Get Monday.com configuration status. Admin only."""
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    return MondayConfigResponse(
+        is_configured=settings.is_monday_configured,
+        organizations_board_id=settings.monday_organizations_board_id or None,
+        contacts_board_id=settings.monday_contacts_board_id or None,
+    )
+
+
+@router.get("/monday/boards", response_model=MondayBoardsResponse)
+@limiter.limit(admin_limit)
+async def get_monday_boards(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> MondayBoardsResponse:
+    """Get list of accessible Monday.com boards. Admin only."""
+    service = MondayService(db)
+
+    if not service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Monday.com API key not configured",
+        )
+
+    try:
+        boards = await service.get_boards()
+        return MondayBoardsResponse(
+            boards=[
+                MondayBoardInfo(
+                    id=b["id"],
+                    name=b["name"],
+                    columns=b.get("columns", []),
+                )
+                for b in boards
+            ]
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch Monday boards: {str(e)}",
+        )
+    finally:
+        await service.close()
+
+
+@router.post("/monday/sync", response_model=MondaySyncLogResponse)
+@limiter.limit(admin_limit)
+async def trigger_monday_sync(
+    request: Request,
+    data: MondaySyncTriggerRequest,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> MondaySyncLogResponse:
+    """Trigger a Monday.com sync operation. Admin only."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    service = MondayService(db)
+
+    if not service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Monday.com API key not configured",
+        )
+
+    # Determine board ID
+    if data.board_id:
+        board_id = data.board_id
+    elif data.sync_type == MondaySyncType.ORGANIZATIONS:
+        board_id = settings.monday_organizations_board_id
+    else:
+        board_id = settings.monday_contacts_board_id
+
+    if not board_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No board ID configured for {data.sync_type.value} sync",
+        )
+
+    try:
+        # Default field mappings - can be enhanced later
+        if data.sync_type == MondaySyncType.ORGANIZATIONS:
+            # TODO: Make field mapping configurable via UI
+            field_mapping: dict[str, str] = {}
+            sync_log = await service.sync_organizations(
+                board_id=board_id,
+                field_mapping=field_mapping,
+                triggered_by=admin_user.id,
+            )
+        else:
+            # TODO: Make field mapping configurable via UI
+            field_mapping = {}
+            sync_log = await service.sync_contacts(
+                board_id=board_id,
+                field_mapping=field_mapping,
+                triggered_by=admin_user.id,
+            )
+
+        return MondaySyncLogResponse.model_validate(sync_log)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Sync failed: {str(e)}",
+        )
+    finally:
+        await service.close()
+
+
+@router.get("/monday/logs", response_model=list[MondaySyncLogResponse])
+@limiter.limit(admin_limit)
+async def get_monday_sync_logs(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    limit: int = Query(20, ge=1, le=100),
+) -> list[MondaySyncLogResponse]:
+    """Get Monday.com sync logs. Admin only."""
+    result = await db.scalars(
+        select(MondaySyncLog).order_by(MondaySyncLog.started_at.desc()).limit(limit)
+    )
+
+    return [MondaySyncLogResponse.model_validate(log) for log in result.all()]

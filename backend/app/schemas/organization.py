@@ -84,6 +84,8 @@ class OrganizationResponse(OrganizationBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    monday_id: str | None = None
+    monday_last_synced: datetime | None = None
 
 
 class OrganizationDetail(OrganizationResponse):

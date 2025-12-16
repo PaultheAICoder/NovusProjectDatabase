@@ -15,6 +15,8 @@ export interface Contact {
   monday_url: string | null;
   created_at: string;
   updated_at: string;
+  monday_id: string | null;
+  monday_last_synced: string | null;
 }
 
 export interface ContactWithOrganization extends Contact {
