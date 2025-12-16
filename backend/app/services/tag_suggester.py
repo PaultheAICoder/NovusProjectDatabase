@@ -151,6 +151,47 @@ class TagSuggester:
 
         return [(row[0], row[1]) for row in rows]
 
+    async def get_cooccurrence_suggestions(
+        self,
+        selected_tag_ids: list[UUID],
+        limit: int = 5,
+    ) -> list[tuple[Tag, int]]:
+        """
+        Get tag suggestions based on co-occurrence with selected tags.
+
+        Returns tags that frequently appear alongside the selected tags,
+        ordered by co-occurrence frequency.
+
+        Returns list of tuples: (tag, co_occurrence_count)
+        """
+        if not selected_tag_ids:
+            return []
+
+        from sqlalchemy.orm import aliased
+
+        from app.models.project import ProjectTag
+
+        # Create aliases for the self-join
+        pt1 = aliased(ProjectTag)  # For selected tags
+        pt2 = aliased(ProjectTag)  # For co-occurring tags
+
+        # Query: Find tags that appear in the same projects as selected tags
+        stmt = (
+            select(Tag, func.count(pt1.project_id.distinct()).label("co_count"))
+            .join(pt2, pt2.tag_id == Tag.id)  # Join tags to pt2
+            .join(pt1, (pt1.project_id == pt2.project_id) & (pt1.tag_id != pt2.tag_id))
+            .where(pt1.tag_id.in_(selected_tag_ids))
+            .where(~Tag.id.in_(selected_tag_ids))  # Exclude already selected
+            .group_by(Tag.id)
+            .order_by(func.count(pt1.project_id.distinct()).desc())
+            .limit(limit)
+        )
+
+        result = await self.db.execute(stmt)
+        rows = result.all()
+
+        return [(row[0], row[1]) for row in rows]
+
     async def merge_tags(
         self,
         source_tag_id: UUID,

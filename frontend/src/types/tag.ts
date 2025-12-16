@@ -50,6 +50,16 @@ export interface PopularTag {
   usage_count: number;
 }
 
+export interface CooccurrenceTagSuggestion {
+  tag: Tag;
+  co_occurrence_count: number;
+}
+
+export interface CooccurrenceTagsResponse {
+  suggestions: CooccurrenceTagSuggestion[];
+  selected_tag_ids: string[];
+}
+
 export interface TagMergeRequest {
   source_tag_id: string;
   target_tag_id: string;

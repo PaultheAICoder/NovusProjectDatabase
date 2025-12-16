@@ -93,3 +93,21 @@ class PopularTagResponse(BaseModel):
 
     tag: TagResponse
     usage_count: int
+
+
+class CooccurrenceTagSuggestion(BaseModel):
+    """Tag suggestion based on co-occurrence with selected tags."""
+
+    tag: TagResponse
+    co_occurrence_count: int = Field(
+        ..., description="Number of projects where this tag appears with selected tags"
+    )
+
+
+class CooccurrenceTagsResponse(BaseModel):
+    """Response for tag co-occurrence suggestions."""
+
+    suggestions: list[CooccurrenceTagSuggestion]
+    selected_tag_ids: list[UUID] = Field(
+        ..., description="The tag IDs used as input for suggestions"
+    )

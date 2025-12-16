@@ -3,10 +3,10 @@
  */
 
 import { useState, useRef, useEffect } from "react";
-import { X, Plus, Tag as TagIcon, Loader2, AlertCircle } from "lucide-react";
+import { X, Plus, Tag as TagIcon, Loader2, AlertCircle, Lightbulb } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useTagSuggestions, useCreateTag } from "@/hooks/useTags";
+import { useTagSuggestions, useCreateTag, useCooccurrenceSuggestions } from "@/hooks/useTags";
 import type { Tag, TagType } from "@/types/tag";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +54,17 @@ export function TagSelector({
   });
 
   const createTagMutation = useCreateTag();
+
+  // Get co-occurrence suggestions based on selected tags
+  const { data: cooccurrenceData, isLoading: isLoadingCooccurrence } = useCooccurrenceSuggestions(
+    selectedTags.map(t => t.id),
+    5
+  );
+
+  // Filter out already selected tags from co-occurrence suggestions
+  const cooccurrenceSuggestions = cooccurrenceData?.suggestions.filter(
+    s => !selectedTags.some(t => t.id === s.tag.id)
+  ) ?? [];
 
   // Filter out already selected tags from suggestions
   const filteredSuggestions =
@@ -166,6 +177,36 @@ export function TagSelector({
               )}
             </Badge>
           ))}
+        </div>
+      )}
+
+      {/* Co-occurrence suggestions - "You might also want" */}
+      {selectedTags.length > 0 && cooccurrenceSuggestions.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lightbulb className="h-3 w-3" />
+            <span>You might also want:</span>
+            {isLoadingCooccurrence && <Loader2 className="h-3 w-3 animate-spin" />}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {cooccurrenceSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.tag.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => handleSelectTag(suggestion.tag)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
+                  "border-dashed border-muted-foreground/50 bg-background hover:bg-accent hover:border-accent",
+                  disabled && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <Plus className="h-3 w-3" />
+                <span>{suggestion.tag.name}</span>
+                <span className="text-muted-foreground">({suggestion.co_occurrence_count})</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

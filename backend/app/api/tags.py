@@ -10,6 +10,8 @@ from app.api.deps import CurrentUser, DbSession
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Tag, TagType
 from app.schemas.tag import (
+    CooccurrenceTagsResponse,
+    CooccurrenceTagSuggestion,
     PopularTagResponse,
     TagCreate,
     TagListResponse,
@@ -155,6 +157,60 @@ async def get_popular_tags(
         )
         for tag, count in results
     ]
+
+
+@router.get("/cooccurrence", response_model=CooccurrenceTagsResponse)
+@limiter.limit(crud_limit)
+async def get_cooccurrence_suggestions(
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    tag_ids: str = Query(
+        ...,
+        description="Comma-separated list of selected tag UUIDs",
+        examples=[
+            "550e8400-e29b-41d4-a716-446655440000,550e8400-e29b-41d4-a716-446655440001"
+        ],
+    ),
+    limit: int = Query(default=5, ge=1, le=20),
+) -> CooccurrenceTagsResponse:
+    """
+    Get tag suggestions based on co-occurrence with selected tags.
+
+    Returns tags that frequently appear in the same projects as the
+    selected tags, ordered by co-occurrence frequency. Use this to
+    implement "You might also want:" suggestions.
+    """
+    # Parse comma-separated UUIDs
+    try:
+        parsed_ids = [UUID(tid.strip()) for tid in tag_ids.split(",") if tid.strip()]
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid UUID format in tag_ids",
+        )
+
+    if not parsed_ids:
+        return CooccurrenceTagsResponse(suggestions=[], selected_tag_ids=[])
+
+    suggester = TagSuggester(db)
+    results = await suggester.get_cooccurrence_suggestions(
+        selected_tag_ids=parsed_ids,
+        limit=limit,
+    )
+
+    suggestions = [
+        CooccurrenceTagSuggestion(
+            tag=TagResponse.model_validate(tag),
+            co_occurrence_count=count,
+        )
+        for tag, count in results
+    ]
+
+    return CooccurrenceTagsResponse(
+        suggestions=suggestions,
+        selected_tag_ids=parsed_ids,
+    )
 
 
 @router.get("/{tag_id}", response_model=TagResponse)

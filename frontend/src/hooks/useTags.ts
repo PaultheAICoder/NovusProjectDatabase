@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+  CooccurrenceTagsResponse,
   PopularTag,
   StructuredTagCreate,
   Tag,
@@ -71,6 +72,24 @@ export function usePopularTags(type?: TagType, limit = 10) {
   return useQuery({
     queryKey: ["tags", "popular", { type, limit }],
     queryFn: () => api.get<PopularTag[]>(`/tags/popular?${params.toString()}`),
+  });
+}
+
+/**
+ * Get tag suggestions based on co-occurrence with selected tags.
+ * Returns tags that frequently appear together with the selected tags.
+ */
+export function useCooccurrenceSuggestions(selectedTagIds: string[], limit = 5) {
+  const tagIdsParam = selectedTagIds.join(",");
+
+  return useQuery({
+    queryKey: ["tags", "cooccurrence", { tagIds: selectedTagIds, limit }],
+    queryFn: () =>
+      api.get<CooccurrenceTagsResponse>(
+        `/tags/cooccurrence?tag_ids=${encodeURIComponent(tagIdsParam)}&limit=${limit}`
+      ),
+    enabled: selectedTagIds.length > 0, // Only fetch when tags are selected
+    staleTime: 1000 * 60, // 1 minute - co-occurrence data doesn't change frequently
   });
 }
 
