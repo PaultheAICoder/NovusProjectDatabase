@@ -47,6 +47,21 @@ services:
       retries: 3
       start_period: 120s  # ClamAV needs time to load signatures
 
+  redis:
+    image: redis:7-alpine
+    container_name: npd-redis
+    restart: unless-stopped
+    ports:
+      - "6705:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --save 60 1 --loglevel warning
+
   backend:
     build:
       context: ./backend
@@ -62,6 +77,8 @@ services:
       # ClamAV connection (disabled by default)
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
+      # Redis for embedding cache
+      REDIS_URL: redis://redis:6379/0
       # Development defaults - override in production!
       ENVIRONMENT: development
       DEBUG: "true"
@@ -76,6 +93,8 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+      redis:
+        condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 6701 --reload
 
   frontend:
@@ -100,3 +119,4 @@ volumes:
   ollama_data:
   uploads_data:
   clamav_data:
+  redis_data:

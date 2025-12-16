@@ -1,125 +1,368 @@
 """Tests for embedding service and embedding cache."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.embedding_service import EmbeddingCache, EmbeddingService
+from app.services.embedding_service import (
+    EmbeddingCache,
+    EmbeddingService,
+    FallbackEmbeddingCache,
+    InMemoryEmbeddingCache,
+    RedisEmbeddingCache,
+)
 
 
-class TestEmbeddingCache:
-    """Tests for the EmbeddingCache class."""
+class TestInMemoryEmbeddingCache:
+    """Tests for the InMemoryEmbeddingCache class."""
 
-    def test_cache_set_and_get(self):
+    @pytest.mark.asyncio
+    async def test_cache_set_and_get(self):
         """Cache should store and retrieve embeddings correctly."""
-        cache = EmbeddingCache(maxsize=10)
+        cache = InMemoryEmbeddingCache(maxsize=10)
         embedding = [0.1, 0.2, 0.3, 0.4, 0.5]
 
-        cache.set("test query", embedding)
-        result = cache.get("test query")
+        await cache.set("test query", embedding)
+        result = await cache.get("test query")
 
         assert result == embedding
 
-    def test_cache_returns_none_for_missing_key(self):
+    @pytest.mark.asyncio
+    async def test_cache_returns_none_for_missing_key(self):
         """Cache should return None for keys not in cache."""
-        cache = EmbeddingCache(maxsize=10)
+        cache = InMemoryEmbeddingCache(maxsize=10)
 
-        result = cache.get("nonexistent query")
+        result = await cache.get("nonexistent query")
 
         assert result is None
 
-    def test_cache_normalized_keys(self):
+    @pytest.mark.asyncio
+    async def test_cache_normalized_keys(self):
         """Cache should normalize keys (lowercase, stripped whitespace)."""
-        cache = EmbeddingCache(maxsize=10)
+        cache = InMemoryEmbeddingCache(maxsize=10)
         embedding = [0.1, 0.2, 0.3]
 
         # Set with lowercase
-        cache.set("test", embedding)
+        await cache.set("test", embedding)
 
         # Get with various cases and whitespace - should all match
-        assert cache.get("TEST") == embedding
-        assert cache.get("Test") == embedding
-        assert cache.get("  test  ") == embedding
-        assert cache.get("  TEST  ") == embedding
+        assert await cache.get("TEST") == embedding
+        assert await cache.get("Test") == embedding
+        assert await cache.get("  test  ") == embedding
+        assert await cache.get("  TEST  ") == embedding
 
-    def test_cache_different_queries_different_embeddings(self):
+    @pytest.mark.asyncio
+    async def test_cache_different_queries_different_embeddings(self):
         """Different queries should have different embeddings."""
-        cache = EmbeddingCache(maxsize=10)
+        cache = InMemoryEmbeddingCache(maxsize=10)
         embedding1 = [0.1, 0.2, 0.3]
         embedding2 = [0.4, 0.5, 0.6]
 
-        cache.set("query one", embedding1)
-        cache.set("query two", embedding2)
+        await cache.set("query one", embedding1)
+        await cache.set("query two", embedding2)
 
-        assert cache.get("query one") == embedding1
-        assert cache.get("query two") == embedding2
-        assert cache.get("query one") != cache.get("query two")
+        assert await cache.get("query one") == embedding1
+        assert await cache.get("query two") == embedding2
+        result_one = await cache.get("query one")
+        result_two = await cache.get("query two")
+        assert result_one != result_two
 
-    def test_cache_lru_eviction(self):
+    @pytest.mark.asyncio
+    async def test_cache_lru_eviction(self):
         """Cache should evict oldest entries when maxsize is reached."""
-        cache = EmbeddingCache(maxsize=2)
+        cache = InMemoryEmbeddingCache(maxsize=2)
 
-        cache.set("first", [0.1])
-        cache.set("second", [0.2])
-        cache.set("third", [0.3])  # Should evict "first"
+        await cache.set("first", [0.1])
+        await cache.set("second", [0.2])
+        await cache.set("third", [0.3])  # Should evict "first"
 
-        assert cache.get("first") is None
-        assert cache.get("second") == [0.2]
-        assert cache.get("third") == [0.3]
+        assert await cache.get("first") is None
+        assert await cache.get("second") == [0.2]
+        assert await cache.get("third") == [0.3]
 
-    def test_cache_access_updates_lru_order(self):
+    @pytest.mark.asyncio
+    async def test_cache_access_updates_lru_order(self):
         """Accessing a cache entry should move it to the end of the LRU queue."""
-        cache = EmbeddingCache(maxsize=2)
+        cache = InMemoryEmbeddingCache(maxsize=2)
 
-        cache.set("first", [0.1])
-        cache.set("second", [0.2])
+        await cache.set("first", [0.1])
+        await cache.set("second", [0.2])
 
         # Access "first" to move it to the end
-        cache.get("first")
+        await cache.get("first")
 
         # Add "third" - should evict "second" (now oldest)
-        cache.set("third", [0.3])
+        await cache.set("third", [0.3])
 
-        assert cache.get("first") == [0.1]
-        assert cache.get("second") is None
-        assert cache.get("third") == [0.3]
+        assert await cache.get("first") == [0.1]
+        assert await cache.get("second") is None
+        assert await cache.get("third") == [0.3]
 
-    def test_cache_stats(self):
+    @pytest.mark.asyncio
+    async def test_cache_stats(self):
         """Cache should track hits and misses correctly."""
-        cache = EmbeddingCache(maxsize=10)
+        cache = InMemoryEmbeddingCache(maxsize=10)
 
         # Initial stats
         stats = cache.stats
         assert stats["hits"] == 0
         assert stats["misses"] == 0
         assert stats["size"] == 0
+        assert stats["type"] == "in_memory"
 
         # Add an entry
-        cache.set("test", [0.1, 0.2])
+        await cache.set("test", [0.1, 0.2])
         assert cache.stats["size"] == 1
 
         # Miss
-        cache.get("nonexistent")
+        await cache.get("nonexistent")
         assert cache.stats["misses"] == 1
         assert cache.stats["hits"] == 0
 
         # Hit
-        cache.get("test")
+        await cache.get("test")
         assert cache.stats["hits"] == 1
         assert cache.stats["misses"] == 1
 
         # Check hit rate
         assert cache.stats["hit_rate_percent"] == 50.0
 
-    def test_cache_update_existing_key(self):
+    @pytest.mark.asyncio
+    async def test_cache_update_existing_key(self):
         """Updating an existing key should replace the value."""
-        cache = EmbeddingCache(maxsize=10)
+        cache = InMemoryEmbeddingCache(maxsize=10)
 
-        cache.set("test", [0.1, 0.2])
-        cache.set("test", [0.3, 0.4])
+        await cache.set("test", [0.1, 0.2])
+        await cache.set("test", [0.3, 0.4])
 
-        assert cache.get("test") == [0.3, 0.4]
+        assert await cache.get("test") == [0.3, 0.4]
         assert cache.stats["size"] == 1  # Still only one entry
+
+
+class TestRedisEmbeddingCache:
+    """Tests for RedisEmbeddingCache class."""
+
+    @pytest.fixture
+    def mock_redis(self):
+        """Create mock Redis client."""
+        mock = AsyncMock()
+        mock.get = AsyncMock(return_value=None)
+        mock.setex = AsyncMock()
+        mock.ping = AsyncMock()
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_redis_cache_get_miss(self, mock_redis):
+        """Redis cache should return None on miss."""
+        cache = RedisEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            ttl_seconds=3600,
+        )
+        cache._client = mock_redis
+        mock_redis.get.return_value = None
+
+        result = await cache.get("test query")
+
+        assert result is None
+        assert cache.stats["misses"] == 1
+        assert cache.stats["hits"] == 0
+
+    @pytest.mark.asyncio
+    async def test_redis_cache_get_hit(self, mock_redis):
+        """Redis cache should return embedding on hit."""
+        cache = RedisEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            ttl_seconds=3600,
+        )
+        cache._client = mock_redis
+        embedding = [0.1, 0.2, 0.3]
+        mock_redis.get.return_value = json.dumps(embedding)
+
+        result = await cache.get("test query")
+
+        assert result == embedding
+        assert cache.stats["hits"] == 1
+        assert cache.stats["misses"] == 0
+
+    @pytest.mark.asyncio
+    async def test_redis_cache_set_with_ttl(self, mock_redis):
+        """Redis cache should set with TTL."""
+        ttl = 7200
+        cache = RedisEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            ttl_seconds=ttl,
+        )
+        cache._client = mock_redis
+        embedding = [0.1, 0.2, 0.3]
+
+        await cache.set("test query", embedding)
+
+        mock_redis.setex.assert_called_once()
+        call_args = mock_redis.setex.call_args
+        assert call_args[0][1] == ttl  # TTL argument
+        assert json.loads(call_args[0][2]) == embedding
+
+    @pytest.mark.asyncio
+    async def test_redis_cache_error_handling(self, mock_redis):
+        """Redis cache should handle errors gracefully."""
+        from redis.exceptions import RedisError
+
+        cache = RedisEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            ttl_seconds=3600,
+        )
+        cache._client = mock_redis
+        mock_redis.get.side_effect = RedisError("Connection failed")
+
+        result = await cache.get("test query")
+
+        assert result is None
+        assert cache.stats["misses"] == 1
+
+    @pytest.mark.asyncio
+    async def test_redis_cache_stats(self, mock_redis):
+        """Redis cache should track stats correctly."""
+        cache = RedisEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            ttl_seconds=3600,
+        )
+        cache._client = mock_redis
+        mock_redis.get.return_value = json.dumps([0.1, 0.2])
+
+        # Get a hit
+        await cache.get("test")
+
+        stats = cache.stats
+        assert stats["type"] == "redis"
+        assert stats["hits"] == 1
+        assert stats["ttl_seconds"] == 3600
+
+    @pytest.mark.asyncio
+    async def test_redis_cache_key_normalization(self, mock_redis):
+        """Redis cache should normalize and prefix keys."""
+        cache = RedisEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            ttl_seconds=3600,
+            prefix="test:",
+        )
+        cache._client = mock_redis
+        mock_redis.get.return_value = None
+
+        await cache.get("  TEST Query  ")
+
+        # Should be called with normalized, prefixed key
+        mock_redis.get.assert_called_with("test:test query")
+
+
+class TestFallbackEmbeddingCache:
+    """Tests for FallbackEmbeddingCache class."""
+
+    @pytest.mark.asyncio
+    async def test_fallback_uses_redis_when_available(self):
+        """Should use Redis when available."""
+        cache = FallbackEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            maxsize=100,
+        )
+
+        # Mock the redis cache
+        mock_redis_cache = AsyncMock()
+        mock_redis_cache.get = AsyncMock(return_value=[0.1, 0.2, 0.3])
+        mock_redis_cache.stats = {"type": "redis", "hits": 1, "misses": 0}
+        cache._redis_cache = mock_redis_cache
+
+        result = await cache.get("test")
+
+        assert result == [0.1, 0.2, 0.3]
+        mock_redis_cache.get.assert_called_once_with("test")
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_memory_on_redis_error(self):
+        """Should fall back to memory cache on Redis error."""
+        cache = FallbackEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            maxsize=100,
+        )
+
+        # Mock redis cache to raise an error
+        mock_redis_cache = AsyncMock()
+        mock_redis_cache.get = AsyncMock(side_effect=Exception("Redis down"))
+        cache._redis_cache = mock_redis_cache
+
+        # Pre-populate memory cache
+        await cache._memory_cache.set("test", [0.4, 0.5, 0.6])
+
+        result = await cache.get("test")
+
+        assert result == [0.4, 0.5, 0.6]
+        assert cache._using_fallback is True
+
+    @pytest.mark.asyncio
+    async def test_fallback_stats_show_fallback_status(self):
+        """Stats should indicate when fallback is active."""
+        cache = FallbackEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            maxsize=100,
+        )
+
+        # Initially, fallback should not be active
+        cache._redis_cache = AsyncMock()
+        cache._redis_cache.stats = {
+            "type": "redis",
+            "hits": 0,
+            "misses": 0,
+            "hit_rate_percent": 0,
+            "ttl_seconds": 86400,
+        }
+        stats = cache.stats
+        assert stats["fallback_active"] is False
+
+        # After triggering fallback
+        cache._using_fallback = True
+        stats = cache.stats
+        assert stats["fallback_active"] is True
+        assert stats["redis_configured"] is True
+
+    @pytest.mark.asyncio
+    async def test_memory_cache_used_when_no_redis(self):
+        """Memory cache should be used when no Redis is configured."""
+        cache = FallbackEmbeddingCache(
+            redis_url=None,
+            maxsize=100,
+        )
+
+        # Should have no Redis cache
+        assert cache._redis_cache is None
+
+        # Should use memory cache
+        embedding = [0.1, 0.2, 0.3]
+        await cache.set("test", embedding)
+        result = await cache.get("test")
+
+        assert result == embedding
+
+    @pytest.mark.asyncio
+    async def test_set_stores_in_both_caches(self):
+        """Set should store in both Redis and memory caches."""
+        cache = FallbackEmbeddingCache(
+            redis_url="redis://localhost:6379/0",
+            maxsize=100,
+        )
+
+        # Mock redis cache
+        mock_redis_cache = AsyncMock()
+        mock_redis_cache.set = AsyncMock()
+        cache._redis_cache = mock_redis_cache
+
+        embedding = [0.1, 0.2, 0.3]
+        await cache.set("test", embedding)
+
+        # Both should have been called
+        mock_redis_cache.set.assert_called_once_with("test", embedding)
+        # Memory cache should also have the value
+        result = await cache._memory_cache.get("test")
+        assert result == embedding
 
 
 class TestEmbeddingServiceCaching:
@@ -142,7 +385,9 @@ class TestEmbeddingServiceCaching:
         from app.services import embedding_service
 
         # Reset the cache for this test
-        embedding_service._embedding_cache = EmbeddingCache(maxsize=1000)
+        embedding_service._embedding_cache = FallbackEmbeddingCache(
+            redis_url=None, maxsize=1000
+        )
 
         with patch("httpx.AsyncClient") as MockClient:
             mock_context = AsyncMock()
@@ -169,7 +414,9 @@ class TestEmbeddingServiceCaching:
         from app.services import embedding_service
 
         # Reset the cache for this test
-        embedding_service._embedding_cache = EmbeddingCache(maxsize=1000)
+        embedding_service._embedding_cache = FallbackEmbeddingCache(
+            redis_url=None, maxsize=1000
+        )
 
         with patch("httpx.AsyncClient") as MockClient:
             mock_context = AsyncMock()
@@ -204,3 +451,20 @@ class TestEmbeddingServiceCaching:
 
         result = await service.generate_embedding(None)  # type: ignore
         assert result is None
+
+
+# Backward compatibility test for EmbeddingCache alias
+class TestBackwardCompatibility:
+    """Tests to ensure backward compatibility with EmbeddingCache alias."""
+
+    def test_embedding_cache_alias_exists(self):
+        """EmbeddingCache should be an alias for InMemoryEmbeddingCache."""
+        assert EmbeddingCache is InMemoryEmbeddingCache
+
+    @pytest.mark.asyncio
+    async def test_embedding_cache_alias_works(self):
+        """EmbeddingCache alias should work the same as InMemoryEmbeddingCache."""
+        cache = EmbeddingCache(maxsize=10)
+        await cache.set("test", [0.1, 0.2])
+        result = await cache.get("test")
+        assert result == [0.1, 0.2]

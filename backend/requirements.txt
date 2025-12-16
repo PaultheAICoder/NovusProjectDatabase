@@ -43,3 +43,6 @@ structlog>=24.1.0,<25.0.0
 
 # Rate Limiting
 slowapi>=0.1.9,<0.2.0
+
+# Caching
+redis>=5.0.0,<6.0.0

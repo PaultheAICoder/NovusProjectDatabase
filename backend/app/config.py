@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     rate_limit_default: str = "60/minute"
     rate_limit_feedback: str = "5/hour"  # Feedback submission limit
 
+    # Embedding Cache (Redis - Optional)
+    redis_url: str = ""  # Optional - falls back to in-memory if not set
+    embedding_cache_ttl: int = 86400  # 24 hours in seconds
+    embedding_cache_maxsize: int = 10000  # Max entries (for in-memory fallback)
+
     # ClamAV Antivirus (optional)
     clamav_enabled: bool = False
     clamav_host: str = "localhost"
@@ -208,6 +213,11 @@ class Settings(BaseSettings):
     def is_monday_configured(self) -> bool:
         """Check if Monday.com integration is configured."""
         return bool(self.monday_api_key)
+
+    @property
+    def is_redis_configured(self) -> bool:
+        """Check if Redis is configured for embedding cache."""
+        return bool(self.redis_url)
 
 
 @lru_cache
