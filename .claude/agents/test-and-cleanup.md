@@ -462,6 +462,66 @@ EOF
 git push
 ```
 
+## B8. Production Sync (MANDATORY)
+
+**Purpose**: Ensure production database stays in sync with committed changes
+
+**IMPORTANT**: This step is MANDATORY after every successful push. Skipping this step causes production outages.
+
+### B8.1 Apply Migrations to Production
+
+```bash
+cd /home/pbrown/Novus-db
+
+# Check if there are pending migrations
+LATEST_MIGRATION=$(ls -1 backend/alembic/versions/*.py 2>/dev/null | \
+    grep -v __pycache__ | sort -t_ -k1 -n | tail -1 | xargs basename | cut -d_ -f1)
+
+CURRENT_MIGRATION=$(docker exec npd-db psql -U npd -d npd -t -c \
+    "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | xargs | grep -oE '^[0-9]+' || echo "0")
+
+echo "Latest migration: $LATEST_MIGRATION"
+echo "Production version: $CURRENT_MIGRATION"
+
+if [ "$CURRENT_MIGRATION" != "$LATEST_MIGRATION" ]; then
+    echo "Applying migrations to production..."
+    docker exec npd-backend alembic upgrade head
+    echo "Migrations applied successfully"
+else
+    echo "Production is up to date"
+fi
+```
+
+### B8.2 Rebuild and Restart Containers (if model changes)
+
+**Only required if**: SQLAlchemy models were modified in this workflow
+
+```bash
+# Rebuild backend to pick up model changes
+docker compose build backend
+docker compose up -d backend
+
+# Wait for container to be healthy
+sleep 5
+docker compose ps
+```
+
+### B8.3 Verify Production Health
+
+```bash
+# Run comprehensive health check
+bash scripts/verify-production-health.sh
+
+# If health check fails, STOP and report
+# DO NOT continue to next issue
+```
+
+**Completion Criteria for B8**:
+- [ ] Migrations applied to production (if any)
+- [ ] Containers rebuilt (if models changed)
+- [ ] Production health check passes
+- [ ] Document sync status in completion report
+
 ---
 
 # OUTPUT FORMAT
@@ -531,6 +591,11 @@ $ npm run test:e2e - [X] E2E tests passed
 **Files Changed**: [count]
 **Push Status**: [SUCCESS/FAILED]
 
+### Production Sync
+**Migrations Applied**: YES/NO
+**Containers Rebuilt**: YES/NO
+**Health Check**: PASS/FAIL
+
 ## Next Steps
 1. Review completion report
 2. Test locally with docker compose
@@ -574,7 +639,8 @@ $ npm run test:e2e - [X] E2E tests passed
 7. Track ALL deferred work before closing issues
 8. **SECURITY ELEVATION** - ALWAYS create issues for deferred security work
 9. **NO WORK WITHOUT USER** - Stop after pushing
+10. **PRODUCTION SYNC** - ALWAYS run B8 steps after pushing. Production outages are unacceptable.
 
-**Success**: Blockers resolved, tests pass, zero warnings, deferred work tracked, git committed, comprehensive report.
+**Success**: Blockers resolved, tests pass, zero warnings, deferred work tracked, git committed, production synced, comprehensive report.
 
 End with: `AGENT_RETURN: cleanup-[ISSUE]-[MMDDYY]`

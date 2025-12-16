@@ -114,20 +114,26 @@ Your ONLY job is to call agents via the Task tool and report their results. Noth
 
 **After Test-and-Cleanup agent completes, BEFORE final report**:
 
-1. Report to user: "Verifying production database integrity..."
+1. Report to user: "Verifying production database integrity and health..."
 
-2. Execute verification:
+2. Execute record count verification (existing):
    ```bash
    bash scripts/verify-production-integrity.sh "$BASELINE_PROJECTS" "$BASELINE_DOCUMENTS" "$BASELINE_ORGS" "$BASELINE_USERS"
    ```
 
-3. **If verification PASSES**:
-   ```
-   Production database integrity verified
-      No data was modified during orchestrate3 cycle
+3. Execute comprehensive health check (NEW):
+   ```bash
+   bash scripts/verify-production-health.sh --quick
    ```
 
-4. **If verification FAILS**:
+4. **If BOTH verifications PASS**:
+   ```
+   Production verification complete:
+      - Database integrity: VERIFIED (record counts unchanged)
+      - Production health: VERIFIED (migrations current, API responding)
+   ```
+
+5. **If integrity check FAILS** (record counts changed):
    ```
    CRITICAL: Production database may have been modified!
       DO NOT commit or push until investigated.
@@ -136,6 +142,18 @@ Your ONLY job is to call agents via the Task tool and report their results. Noth
    ```
 
    **STOP workflow immediately** - do not proceed to final report or git operations.
+
+6. **If health check FAILS** (migrations behind or API errors):
+   ```
+   WARNING: Production health check failed.
+
+   [Show specific issues]
+
+   Action: Test-and-Cleanup agent should have run production sync.
+   Investigating why production is unhealthy...
+   ```
+
+   Report the issue but continue to final report (this indicates a process failure, not data corruption).
 
 ## Usage
 
@@ -394,6 +412,11 @@ Scout-and-Plan -> Build -> Test-and-Cleanup
 
 ## Future Work Detected
 [If any issues created, list them]
+
+## Production Status
+- **Integrity Check**: [PASS/FAIL]
+- **Health Check**: [PASS/FAIL]
+- **Migration Version**: [current version]
 
 ## Git Status
 - Commit: [hash]
