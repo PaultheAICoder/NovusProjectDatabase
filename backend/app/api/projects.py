@@ -194,6 +194,8 @@ async def create_project(
         monday_url=data.monday_url,
         jira_url=data.jira_url,
         gitlab_url=data.gitlab_url,
+        milestone_version=data.milestone_version,
+        run_number=data.run_number,
         created_by=current_user.id,
         updated_by=current_user.id,
     )
@@ -294,6 +296,8 @@ async def get_project(
         monday_url=project.monday_url,
         jira_url=project.jira_url,
         gitlab_url=project.gitlab_url,
+        milestone_version=project.milestone_version,
+        run_number=project.run_number,
         created_at=project.created_at,
         updated_at=project.updated_at,
         created_by=project.creator,
@@ -534,6 +538,8 @@ async def export_projects_csv(
             "Monday URL",
             "Jira URL",
             "GitLab URL",
+            "Milestone/Version",
+            "Run Number",
             "Created At",
             "Updated At",
         ]
@@ -576,6 +582,8 @@ async def export_projects_csv(
                 project.monday_url or "",
                 project.jira_url or "",
                 project.gitlab_url or "",
+                project.milestone_version or "",
+                project.run_number or "",
                 project.created_at.isoformat() if project.created_at else "",
                 project.updated_at.isoformat() if project.updated_at else "",
             ]

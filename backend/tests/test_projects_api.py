@@ -147,3 +147,15 @@ class TestProjectFilterIntegration:
         tag_ids = [uuid4()]
         should_filter = bool(tag_ids)
         assert should_filter
+
+
+class TestProjectMilestoneFields:
+    """Tests for milestone_version and run_number fields."""
+
+    def test_project_has_milestone_version_attribute(self):
+        """Project model should have milestone_version attribute."""
+        assert hasattr(Project, "milestone_version")
+
+    def test_project_has_run_number_attribute(self):
+        """Project model should have run_number attribute."""
+        assert hasattr(Project, "run_number")

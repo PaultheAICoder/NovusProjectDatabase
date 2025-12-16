@@ -72,6 +72,8 @@ const projectFormSchema = z.object({
   monday_url: z.string().url().optional().or(z.literal("")),
   jira_url: z.string().url().optional().or(z.literal("")),
   gitlab_url: z.string().url().optional().or(z.literal("")),
+  milestone_version: z.string().max(255).optional().or(z.literal("")),
+  run_number: z.string().max(100).optional().or(z.literal("")),
 });
 
 export type ProjectFormValues = z.infer<typeof projectFormSchema>;
@@ -96,6 +98,8 @@ const fieldLabels: Record<string, string> = {
   monday_url: "Monday.com URL",
   jira_url: "Jira URL",
   gitlab_url: "GitLab URL",
+  milestone_version: "Milestone/Version",
+  run_number: "Run Number",
 };
 
 interface ProjectFormProps {
@@ -142,6 +146,8 @@ export function ProjectForm({
       monday_url: project?.monday_url ?? "",
       jira_url: project?.jira_url ?? "",
       gitlab_url: project?.gitlab_url ?? "",
+      milestone_version: project?.milestone_version ?? "",
+      run_number: project?.run_number ?? "",
     },
   });
 
@@ -173,6 +179,8 @@ export function ProjectForm({
         monday_url: data.monday_url || undefined,
         jira_url: data.jira_url || undefined,
         gitlab_url: data.gitlab_url || undefined,
+        milestone_version: data.milestone_version || undefined,
+        run_number: data.run_number || undefined,
       };
       onSubmit(cleanData);
     },
@@ -603,6 +611,39 @@ export function ProjectForm({
                       placeholder="https://gitlab.com/..."
                       {...field}
                     />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+
+        <div className="border-t pt-4">
+          <h3 className="mb-4 text-sm font-medium">Project Tracking</h3>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="milestone_version"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Milestone/Version</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., v1.2.0, Phase 3" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="run_number"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Run Number</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., R-001, Build 42" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

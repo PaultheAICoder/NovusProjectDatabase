@@ -29,6 +29,8 @@ class ImportRowBase(BaseModel):
     monday_url: str | None = None
     jira_url: str | None = None
     gitlab_url: str | None = None
+    milestone_version: str | None = None
+    run_number: str | None = None
 
 
 class ImportRowValidation(BaseModel):
@@ -105,6 +107,8 @@ class ImportRowUpdate(BaseModel):
     monday_url: str | None = None
     jira_url: str | None = None
     gitlab_url: str | None = None
+    milestone_version: str | None = None
+    run_number: str | None = None
 
 
 class ImportCommitRequest(BaseModel):

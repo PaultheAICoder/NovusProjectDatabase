@@ -95,6 +95,16 @@ COLUMN_MAPPINGS = {
     "jira": "jira_url",
     "gitlab_url": "gitlab_url",
     "gitlab": "gitlab_url",
+    # Milestone/Version variations
+    "milestone_version": "milestone_version",
+    "milestone": "milestone_version",
+    "version": "milestone_version",
+    "release": "milestone_version",
+    # Run number variations
+    "run_number": "run_number",
+    "run": "run_number",
+    "iteration": "run_number",
+    "build_number": "run_number",
 }
 
 # Status value mappings
@@ -318,6 +328,8 @@ class ImportService:
                 monday_url=row.get("monday_url"),
                 jira_url=row.get("jira_url"),
                 gitlab_url=row.get("gitlab_url"),
+                milestone_version=row.get("milestone_version"),
+                run_number=row.get("run_number"),
                 validation=validation,
                 suggestions=suggestions,
                 resolved_organization_id=org_id,
@@ -382,6 +394,8 @@ class ImportService:
                     monday_url=row.monday_url,
                     jira_url=row.jira_url,
                     gitlab_url=row.gitlab_url,
+                    milestone_version=row.milestone_version,
+                    run_number=row.run_number,
                     created_by=user_id,
                     updated_by=user_id,
                 )

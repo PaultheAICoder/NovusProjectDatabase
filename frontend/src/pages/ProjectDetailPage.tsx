@@ -241,6 +241,28 @@ export function ProjectDetailPage() {
             </Card>
           )}
 
+          {(project.milestone_version || project.run_number) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Project Tracking</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {project.milestone_version && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Milestone/Version</span>
+                    <span className="font-medium">{project.milestone_version}</span>
+                  </div>
+                )}
+                {project.run_number && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Run Number</span>
+                    <span className="font-medium">{project.run_number}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {project.pm_notes && (
             <Card>
               <CardHeader>

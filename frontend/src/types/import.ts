@@ -36,6 +36,8 @@ export interface ImportRowPreview {
   monday_url?: string;
   jira_url?: string;
   gitlab_url?: string;
+  milestone_version?: string;
+  run_number?: string;
   validation: ImportRowValidation;
   suggestions?: ImportRowSuggestion;
   resolved_organization_id?: string;
@@ -71,6 +73,8 @@ export interface ImportRowUpdate {
   monday_url?: string;
   jira_url?: string;
   gitlab_url?: string;
+  milestone_version?: string;
+  run_number?: string;
 }
 
 export interface ImportCommitRequest {

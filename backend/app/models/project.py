@@ -162,6 +162,16 @@ class Project(Base):
         nullable=True,
     )
 
+    # Project tracking fields
+    milestone_version: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    run_number: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
     # Full-text search vector (generated column)
     search_vector: Mapped[str | None] = mapped_column(
         TSVECTOR,

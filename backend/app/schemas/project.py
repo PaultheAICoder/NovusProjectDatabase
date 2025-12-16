@@ -31,6 +31,8 @@ class ProjectBase(BaseModel):
     monday_url: str | None = None
     jira_url: str | None = None
     gitlab_url: str | None = None
+    milestone_version: str | None = Field(None, max_length=255)
+    run_number: str | None = Field(None, max_length=100)
 
     @field_validator("end_date")
     @classmethod
@@ -90,6 +92,8 @@ class ProjectUpdate(BaseModel):
     monday_url: str | None = None
     jira_url: str | None = None
     gitlab_url: str | None = None
+    milestone_version: str | None = Field(None, max_length=255)
+    run_number: str | None = Field(None, max_length=100)
 
 
 class ProjectContactResponse(ContactResponse):
@@ -142,5 +146,7 @@ class ProjectDetail(ProjectResponse):
     monday_url: str | None = None
     jira_url: str | None = None
     gitlab_url: str | None = None
+    milestone_version: str | None = None
+    run_number: str | None = None
     created_by: UserResponse
     updated_by: UserResponse
