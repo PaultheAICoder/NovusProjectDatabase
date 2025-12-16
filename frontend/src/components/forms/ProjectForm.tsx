@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { OrganizationSelectCombobox } from "@/components/forms/OrganizationCombobox";
+import { ContactSelectCombobox } from "@/components/forms/ContactSelectCombobox";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useContacts } from "@/hooks/useContacts";
 import { useAllTags } from "@/hooks/useTags";
@@ -409,24 +410,17 @@ export function ProjectForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Primary Contact <span className="text-destructive">*</span></FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                  disabled={!selectedOrgId}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select primary contact" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {contactsData?.items.map((contact) => (
-                      <SelectItem key={contact.id} value={contact.id}>
-                        {contact.name} ({contact.email})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  <ContactSelectCombobox
+                    contacts={contactsData?.items ?? []}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Select primary contact"
+                    disabled={!selectedOrgId}
+                    allowCreate={true}
+                    defaultOrganizationId={selectedOrgId}
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
