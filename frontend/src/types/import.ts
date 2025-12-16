@@ -2,7 +2,7 @@
  * Import types for bulk import functionality.
  */
 
-import type { ProjectStatus } from "./project";
+import type { ProjectLocation, ProjectStatus } from "./project";
 
 export interface ImportRowValidation {
   is_valid: boolean;
@@ -61,7 +61,8 @@ export interface ImportRowUpdate {
   status?: ProjectStatus;
   start_date?: string;
   end_date?: string;
-  location?: string;
+  location?: ProjectLocation;
+  location_other?: string;
   tag_ids?: string[];
   billing_amount?: number;
   billing_recipient?: string;

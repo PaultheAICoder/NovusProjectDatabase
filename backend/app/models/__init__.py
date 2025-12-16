@@ -8,6 +8,7 @@ from app.models.project import (
     STATUS_TRANSITIONS,
     Project,
     ProjectContact,
+    ProjectLocation,
     ProjectStatus,
     ProjectTag,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "Project",
     "ProjectContact",
     "ProjectTag",
+    "ProjectLocation",
     "ProjectStatus",
     "STATUS_TRANSITIONS",
     "Document",

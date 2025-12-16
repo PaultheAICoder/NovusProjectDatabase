@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from app.models.project import Project, ProjectStatus, ProjectTag
+from app.models.project import Project, ProjectLocation, ProjectStatus, ProjectTag
 
 
 class TestProjectsSearchVectorModel:
@@ -32,6 +32,34 @@ class TestProjectStatusEnum:
         """ProjectStatus should be a string enum for API compatibility."""
         assert isinstance(ProjectStatus.ACTIVE.value, str)
         assert ProjectStatus.ACTIVE.value == "active"
+
+
+class TestProjectLocationEnum:
+    """Tests for ProjectLocation enum values."""
+
+    def test_all_location_values_exist(self):
+        """All expected location values should be defined."""
+        expected = ["headquarters", "test_house", "remote", "client_site", "other"]
+        actual = [loc.value for loc in ProjectLocation]
+        for location in expected:
+            assert location in actual
+
+    def test_location_enum_is_string_enum(self):
+        """ProjectLocation should be a string enum for API compatibility."""
+        assert isinstance(ProjectLocation.HEADQUARTERS.value, str)
+        assert ProjectLocation.HEADQUARTERS.value == "headquarters"
+
+    def test_location_enum_count(self):
+        """ProjectLocation should have exactly 5 values."""
+        assert len(ProjectLocation) == 5
+
+    def test_project_has_location_attribute(self):
+        """Project model should have location attribute."""
+        assert hasattr(Project, "location")
+
+    def test_project_has_location_other_attribute(self):
+        """Project model should have location_other attribute for custom locations."""
+        assert hasattr(Project, "location_other")
 
 
 class TestProjectSearchFiltering:

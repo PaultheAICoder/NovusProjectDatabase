@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.project import ProjectStatus
+from app.models.project import ProjectLocation, ProjectStatus
 from app.schemas.contact import ContactResponse
 from app.schemas.organization import OrganizationResponse
 from app.schemas.tag import TagResponse
@@ -21,7 +21,8 @@ class ProjectBase(BaseModel):
     status: ProjectStatus = ProjectStatus.APPROVED
     start_date: date
     end_date: date | None = None
-    location: str = Field(..., min_length=1, max_length=255)
+    location: ProjectLocation = ProjectLocation.HEADQUARTERS
+    location_other: str | None = Field(None, max_length=255)
     billing_amount: Decimal | None = Field(None, ge=0)
     invoice_count: int | None = Field(None, ge=0)
     billing_recipient: str | None = None
@@ -39,6 +40,14 @@ class ProjectBase(BaseModel):
             start = info.data["start_date"]
             if start and v < start:
                 raise ValueError("end_date must be after start_date")
+        return v
+
+    @field_validator("location_other", mode="before")
+    @classmethod
+    def validate_location_other(cls, v: str | None, info) -> str | None:
+        """Clear location_other if location is not 'other'."""
+        if "location" in info.data and info.data["location"] != ProjectLocation.OTHER:
+            return None
         return v
 
 
@@ -68,7 +77,8 @@ class ProjectUpdate(BaseModel):
     status: ProjectStatus | None = None
     start_date: date | None = None
     end_date: date | None = None
-    location: str | None = None
+    location: ProjectLocation | None = None
+    location_other: str | None = None
     contact_ids: list[UUID] | None = Field(None, min_length=1)
     primary_contact_id: UUID | None = None
     tag_ids: list[UUID] | None = Field(None, min_length=1)
@@ -113,7 +123,8 @@ class ProjectResponse(BaseModel):
     status: ProjectStatus
     start_date: date
     end_date: date | None = None
-    location: str
+    location: ProjectLocation
+    location_other: str | None = None
     tags: list[TagResponse] = []
     created_at: datetime
     updated_at: datetime

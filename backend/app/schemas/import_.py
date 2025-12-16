@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.project import ProjectStatus
+from app.models.project import ProjectLocation, ProjectStatus
 
 
 class ImportRowBase(BaseModel):
@@ -95,7 +95,8 @@ class ImportRowUpdate(BaseModel):
     status: ProjectStatus | None = None
     start_date: date | None = None
     end_date: date | None = None
-    location: str | None = None
+    location: ProjectLocation | None = None
+    location_other: str | None = None
     tag_ids: list[UUID] | None = None
     billing_amount: Decimal | None = None
     billing_recipient: str | None = None

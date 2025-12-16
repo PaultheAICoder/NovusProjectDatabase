@@ -14,6 +14,13 @@ export type ProjectStatus =
   | "completed"
   | "cancelled";
 
+export type ProjectLocation =
+  | "headquarters"
+  | "test_house"
+  | "remote"
+  | "client_site"
+  | "other";
+
 export interface ProjectSummary {
   id: string;
   name: string;
@@ -31,7 +38,8 @@ export interface Project {
   status: ProjectStatus;
   start_date: string;
   end_date: string | null;
-  location: string;
+  location: ProjectLocation;
+  location_other: string | null;
   tags: Tag[];
   created_at: string;
   updated_at: string;
@@ -63,7 +71,8 @@ export interface ProjectCreate {
   status: ProjectStatus;
   start_date: string;
   end_date?: string;
-  location: string;
+  location: ProjectLocation;
+  location_other?: string;
   contact_ids?: string[];
   primary_contact_id?: string;
   tag_ids?: string[];
@@ -84,7 +93,8 @@ export interface ProjectUpdate {
   status?: ProjectStatus;
   start_date?: string;
   end_date?: string;
-  location?: string;
+  location?: ProjectLocation;
+  location_other?: string;
   contact_ids?: string[];
   primary_contact_id?: string;
   tag_ids?: string[];

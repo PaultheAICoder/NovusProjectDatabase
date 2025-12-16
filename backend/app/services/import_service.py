@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.models.organization import Organization
-from app.models.project import Project, ProjectStatus
+from app.models.project import Project, ProjectLocation, ProjectStatus
 from app.models.tag import Tag
 from app.models.user import User
 from app.schemas.import_ import (
@@ -115,6 +115,24 @@ STATUS_MAPPINGS = {
     "dropped": ProjectStatus.CANCELLED,
 }
 
+# Location value mappings
+LOCATION_MAPPINGS = {
+    "hq": ProjectLocation.HEADQUARTERS,
+    "headquarters": ProjectLocation.HEADQUARTERS,
+    "head quarters": ProjectLocation.HEADQUARTERS,
+    "test house": ProjectLocation.TEST_HOUSE,
+    "test_house": ProjectLocation.TEST_HOUSE,
+    "testhouse": ProjectLocation.TEST_HOUSE,
+    "remote": ProjectLocation.REMOTE,
+    "wfh": ProjectLocation.REMOTE,
+    "work from home": ProjectLocation.REMOTE,
+    "client site": ProjectLocation.CLIENT_SITE,
+    "client_site": ProjectLocation.CLIENT_SITE,
+    "on-site": ProjectLocation.CLIENT_SITE,
+    "onsite": ProjectLocation.CLIENT_SITE,
+    "other": ProjectLocation.OTHER,
+}
+
 
 class ImportService:
     """Service for parsing and importing projects from CSV."""
@@ -214,9 +232,15 @@ class ImportService:
                 f"Unknown status '{row['status']}', will default to 'approved'"
             )
 
-        # Location (required but can suggest)
+        # Location validation
         if not row.get("location"):
             warnings.append("Location is missing, will need to be provided")
+        else:
+            location_lower = row["location"].lower().strip()
+            if location_lower not in LOCATION_MAPPINGS:
+                warnings.append(
+                    f"Unknown location '{row['location']}', will map to 'Other'"
+                )
 
         # Billing amount validation
         if row.get("billing_amount"):
@@ -335,6 +359,11 @@ class ImportService:
                 if not row.location:
                     raise ValueError("Location is required")
 
+                # Handle location_other for "other" location type
+                location_other = None
+                if row.location == ProjectLocation.OTHER:
+                    location_other = row.location_other
+
                 # Create project
                 project = Project(
                     name=row.name,
@@ -345,6 +374,7 @@ class ImportService:
                     start_date=row.start_date,
                     end_date=row.end_date,
                     location=row.location,
+                    location_other=location_other,
                     billing_amount=row.billing_amount,
                     billing_recipient=row.billing_recipient,
                     billing_notes=row.billing_notes,

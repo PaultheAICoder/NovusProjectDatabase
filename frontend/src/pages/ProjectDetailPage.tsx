@@ -34,7 +34,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { ProjectStatus } from "@/types/project";
+import type { ProjectLocation, ProjectStatus } from "@/types/project";
 
 const statusVariants: Record<
   ProjectStatus,
@@ -53,6 +53,24 @@ const statusLabels: Record<ProjectStatus, string> = {
   on_hold: "On Hold",
   completed: "Completed",
   cancelled: "Cancelled",
+};
+
+const locationLabels: Record<ProjectLocation, string> = {
+  headquarters: "Headquarters/HQ",
+  test_house: "Test House",
+  remote: "Remote",
+  client_site: "Client Site",
+  other: "Other",
+};
+
+const formatLocation = (
+  location: ProjectLocation,
+  locationOther: string | null
+): string => {
+  if (location === "other" && locationOther) {
+    return `Other (${locationOther})`;
+  }
+  return locationLabels[location] || location;
 };
 
 export function ProjectDetailPage() {
@@ -181,7 +199,9 @@ export function ProjectDetailPage() {
               )}
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{project.location}</span>
+                <span className="text-sm">
+                  {formatLocation(project.location, project.location_other)}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />

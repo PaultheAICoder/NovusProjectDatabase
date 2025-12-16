@@ -12,6 +12,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { OrganizationSelectCombobox } from "@/components/forms/OrganizationCombobox";
 import {
   Table,
@@ -31,8 +38,40 @@ import {
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAllTags } from "@/hooks/useTags";
 import type { ImportRowPreview, ImportRowUpdate } from "@/types/import";
-import type { ProjectStatus } from "@/types/project";
+import type { ProjectLocation, ProjectStatus } from "@/types/project";
 import { cn } from "@/lib/utils";
+
+const projectLocations: { value: ProjectLocation; label: string }[] = [
+  { value: "headquarters", label: "Headquarters/HQ" },
+  { value: "test_house", label: "Test House" },
+  { value: "remote", label: "Remote" },
+  { value: "client_site", label: "Client Site" },
+  { value: "other", label: "Other" },
+];
+
+// Mapping of CSV location strings to enum values
+const LOCATION_MAPPINGS: Record<string, ProjectLocation> = {
+  "hq": "headquarters",
+  "headquarters": "headquarters",
+  "head quarters": "headquarters",
+  "test house": "test_house",
+  "test_house": "test_house",
+  "testhouse": "test_house",
+  "remote": "remote",
+  "wfh": "remote",
+  "work from home": "remote",
+  "client site": "client_site",
+  "client_site": "client_site",
+  "on-site": "client_site",
+  "onsite": "client_site",
+  "other": "other",
+};
+
+const mapLocation = (loc: string | undefined): ProjectLocation | undefined => {
+  if (!loc) return undefined;
+  const normalized = loc.toLowerCase().trim();
+  return LOCATION_MAPPINGS[normalized] || "other";
+};
 
 interface ImportPreviewProps {
   rows: ImportRowPreview[];
@@ -95,6 +134,15 @@ export function ImportPreview({
       .filter((row) => row.validation.is_valid || editedRows.has(row.row_number))
       .map((row) => {
         const edited = editedRows.get(row.row_number) || {};
+        // Map location - if edited, use directly; otherwise map from CSV string
+        const mappedLocation = edited.location
+          ? edited.location as ProjectLocation
+          : mapLocation(row.location);
+        // Preserve original location value as location_other if mapped to "other"
+        const locationOther = mappedLocation === "other" && row.location
+          ? row.location
+          : undefined;
+
         return {
           row_number: row.row_number,
           name: edited.name ?? row.name,
@@ -105,7 +153,8 @@ export function ImportPreview({
           status: (edited.status ?? row.status?.toLowerCase()) as ProjectStatus,
           start_date: edited.start_date ?? row.start_date,
           end_date: edited.end_date ?? row.end_date,
-          location: edited.location ?? row.location,
+          location: mappedLocation,
+          location_other: locationOther,
           tag_ids: edited.tag_ids ?? row.resolved_tag_ids,
           billing_amount: edited.billing_amount,
           billing_recipient: edited.billing_recipient ?? row.billing_recipient,
@@ -243,16 +292,23 @@ export function ImportPreview({
                     />
                   </TableCell>
                   <TableCell>
-                    <Input
+                    <Select
                       value={
-                        getEditedValue(row.row_number, "location", row.location) || ""
+                        getEditedValue(row.row_number, "location", mapLocation(row.location)) || ""
                       }
-                      onChange={(e) =>
-                        updateRow(row.row_number, "location", e.target.value)
-                      }
-                      className="h-8"
-                      placeholder="Required"
-                    />
+                      onValueChange={(v) => updateRow(row.row_number, "location", v)}
+                    >
+                      <SelectTrigger className="h-8 w-[160px]">
+                        <SelectValue placeholder="Select location" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projectLocations.map((loc) => (
+                          <SelectItem key={loc.value} value={loc.value}>
+                            {loc.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">

@@ -35,6 +35,16 @@ class ProjectStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class ProjectLocation(str, enum.Enum):
+    """Project location enum."""
+
+    HEADQUARTERS = "headquarters"
+    TEST_HOUSE = "test_house"
+    REMOTE = "remote"
+    CLIENT_SITE = "client_site"
+    OTHER = "other"
+
+
 # Valid status transitions
 STATUS_TRANSITIONS: dict[ProjectStatus, set[ProjectStatus]] = {
     ProjectStatus.APPROVED: {ProjectStatus.ACTIVE, ProjectStatus.CANCELLED},
@@ -100,9 +110,20 @@ class Project(Base):
         Date,
         nullable=True,
     )
-    location: Mapped[str] = mapped_column(
-        String(255),
+    location: Mapped[ProjectLocation] = mapped_column(
+        Enum(
+            ProjectLocation,
+            values_callable=lambda x: [e.value for e in x],
+            name="projectlocation",
+            create_type=False,  # Enum will be created in migration
+        ),
         nullable=False,
+        default=ProjectLocation.HEADQUARTERS,
+        index=True,
+    )
+    location_other: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
     )
 
     # Billing fields
@@ -147,7 +168,7 @@ class Project(Base):
         Computed(
             "setweight(to_tsvector('english', coalesce(name, '')), 'A') || "
             "setweight(to_tsvector('english', coalesce(description, '')), 'B') || "
-            "setweight(to_tsvector('english', coalesce(location, '')), 'C') || "
+            "setweight(to_tsvector('english', coalesce(location_other, '')), 'C') || "
             "setweight(to_tsvector('english', coalesce(pm_notes, '')), 'D')",
             persisted=True,
         ),

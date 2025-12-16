@@ -33,7 +33,7 @@ import { OrganizationSelectCombobox } from "@/components/forms/OrganizationCombo
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useContacts } from "@/hooks/useContacts";
 import { useAllTags } from "@/hooks/useTags";
-import type { ProjectDetail, ProjectStatus } from "@/types/project";
+import type { ProjectDetail, ProjectLocation, ProjectStatus } from "@/types/project";
 
 const projectStatuses: { value: ProjectStatus; label: string }[] = [
   { value: "approved", label: "Approved" },
@@ -43,6 +43,14 @@ const projectStatuses: { value: ProjectStatus; label: string }[] = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+const projectLocations: { value: ProjectLocation; label: string }[] = [
+  { value: "headquarters", label: "Headquarters/HQ" },
+  { value: "test_house", label: "Test House" },
+  { value: "remote", label: "Remote" },
+  { value: "client_site", label: "Client Site" },
+  { value: "other", label: "Other" },
+];
+
 const projectFormSchema = z.object({
   name: z.string().min(1, "Project name is required").max(255),
   organization_id: z.string().min(1, "Organization is required"),
@@ -50,7 +58,8 @@ const projectFormSchema = z.object({
   status: z.enum(["approved", "active", "on_hold", "completed", "cancelled"]),
   start_date: z.string().min(1, "Start date is required"),
   end_date: z.string().optional(),
-  location: z.string().min(1, "Location is required").max(255),
+  location: z.enum(["headquarters", "test_house", "remote", "client_site", "other"]),
+  location_other: z.string().max(255).optional(),
   contact_ids: z.array(z.string()).default([]),
   primary_contact_id: z.string().min(1, "Primary contact is required"),
   tag_ids: z.array(z.string()).min(1, "At least one tag is required"),
@@ -74,6 +83,7 @@ const fieldLabels: Record<string, string> = {
   start_date: "Start Date",
   end_date: "End Date",
   location: "Location",
+  location_other: "Location (Other)",
   primary_contact_id: "Primary Contact",
   tag_ids: "Tags",
   contact_ids: "Contacts",
@@ -117,7 +127,8 @@ export function ProjectForm({
       end_date: project?.end_date
         ? format(new Date(project.end_date), "yyyy-MM-dd")
         : "",
-      location: project?.location ?? "",
+      location: project?.location ?? "headquarters",
+      location_other: project?.location_other ?? "",
       contact_ids: project?.contacts?.map((c) => c.id) ?? [],
       primary_contact_id:
         project?.contacts?.find((c) => c.is_primary)?.id ?? "",
@@ -156,6 +167,7 @@ export function ProjectForm({
       const cleanData = {
         ...data,
         contact_ids: contactIds,
+        location_other: data.location === "other" ? data.location_other : undefined,
         end_date: data.end_date || undefined,
         monday_url: data.monday_url || undefined,
         jira_url: data.jira_url || undefined,
@@ -343,19 +355,51 @@ export function ProjectForm({
           />
         </div>
 
-        <FormField
-          control={form.control}
-          name="location"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Location <span className="text-destructive">*</span></FormLabel>
-              <FormControl>
-                <Input placeholder="Enter project location" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="location"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Location <span className="text-destructive">*</span></FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select location" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {projectLocations.map((loc) => (
+                      <SelectItem key={loc.value} value={loc.value}>
+                        {loc.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {form.watch("location") === "other" && (
+            <FormField
+              control={form.control}
+              name="location_other"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Specify Location</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter custom location" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           )}
-        />
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField

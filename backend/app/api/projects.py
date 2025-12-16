@@ -13,6 +13,7 @@ from app.models import (
     Organization,
     Project,
     ProjectContact,
+    ProjectLocation,
     ProjectStatus,
     ProjectTag,
     Tag,
@@ -117,6 +118,7 @@ async def list_projects(
             start_date=project.start_date,
             end_date=project.end_date,
             location=project.location,
+            location_other=project.location_other,
             tags=tags,
             created_at=project.created_at,
             updated_at=project.updated_at,
@@ -181,6 +183,9 @@ async def create_project(
         start_date=data.start_date,
         end_date=data.end_date,
         location=data.location,
+        location_other=(
+            data.location_other if data.location == ProjectLocation.OTHER else None
+        ),
         billing_amount=data.billing_amount,
         invoice_count=data.invoice_count,
         billing_recipient=data.billing_recipient,
@@ -225,6 +230,7 @@ async def create_project(
         start_date=project.start_date,
         end_date=project.end_date,
         location=project.location,
+        location_other=project.location_other,
         tags=[pt.tag for pt in project.project_tags],
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -277,6 +283,7 @@ async def get_project(
         start_date=project.start_date,
         end_date=project.end_date,
         location=project.location,
+        location_other=project.location_other,
         tags=[pt.tag for pt in project.project_tags],
         contacts=contacts,
         billing_amount=project.billing_amount,
@@ -331,6 +338,12 @@ async def update_project(
     )
     for field, value in update_data.items():
         setattr(project, field, value)
+
+    # Clear location_other if location is not "other"
+    if data.location is not None and data.location != ProjectLocation.OTHER:
+        project.location_other = None
+    elif data.location == ProjectLocation.OTHER and data.location_other:
+        project.location_other = data.location_other
 
     project.updated_by = current_user.id
 
@@ -403,6 +416,7 @@ async def update_project(
         start_date=project.start_date,
         end_date=project.end_date,
         location=project.location,
+        location_other=project.location_other,
         tags=[pt.tag for pt in project.project_tags],
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -525,9 +539,24 @@ async def export_projects_csv(
         ]
     )
 
+    # Location labels for CSV export
+    location_labels = {
+        ProjectLocation.HEADQUARTERS: "Headquarters",
+        ProjectLocation.TEST_HOUSE: "Test House",
+        ProjectLocation.REMOTE: "Remote",
+        ProjectLocation.CLIENT_SITE: "Client Site",
+        ProjectLocation.OTHER: "Other",
+    }
+
     # Data rows
     for project in projects:
         tags = ", ".join(sorted(pt.tag.name for pt in project.project_tags))
+        # Format location display
+        location_display = location_labels.get(
+            project.location, str(project.location.value)
+        )
+        if project.location == ProjectLocation.OTHER and project.location_other:
+            location_display = f"Other ({project.location_other})"
         writer.writerow(
             [
                 project.name,
@@ -536,7 +565,7 @@ async def export_projects_csv(
                 project.status.value,
                 project.start_date.isoformat() if project.start_date else "",
                 project.end_date.isoformat() if project.end_date else "",
-                project.location,
+                location_display,
                 project.description,
                 tags,
                 str(project.billing_amount) if project.billing_amount else "",
