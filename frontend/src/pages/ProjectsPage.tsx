@@ -1,9 +1,9 @@
 /**
- * Projects list page with TanStack Table.
+ * Projects list page with TanStack Table, search, and filters.
  */
 
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,11 +11,21 @@ import {
   createColumnHelper,
 } from "@tanstack/react-table";
 import { format } from "date-fns";
-import { Plus, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Loader2,
+  Search,
+  X,
+} from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useExportProjects } from "@/hooks/useExport";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -31,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ProjectSearchFilters } from "@/components/forms/ProjectSearchFilters";
 import type { Project, ProjectStatus } from "@/types/project";
 
 const columnHelper = createColumnHelper<Project>();
@@ -94,16 +105,60 @@ const columns = [
 ];
 
 export function ProjectsPage() {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Parse initial state from URL
+  const initialQuery = searchParams.get("q") ?? "";
+  const initialStatus = searchParams.getAll("status") as ProjectStatus[];
+  const initialOrgId = searchParams.get("organization_id") ?? undefined;
+  const initialTagIds = searchParams.getAll("tag_ids");
+  const initialPage = parseInt(searchParams.get("page") ?? "1", 10);
+  const initialPageSize = parseInt(searchParams.get("page_size") ?? "20", 10);
+
+  // Local state
+  const [inputValue, setInputValue] = useState(initialQuery);
+  const [query, setQuery] = useState(initialQuery);
+  const [statusFilter, setStatusFilter] =
+    useState<ProjectStatus[]>(initialStatus);
+  const [organizationId, setOrganizationId] = useState<string | undefined>(
+    initialOrgId
+  );
+  const [tagIds, setTagIds] = useState<string[]>(initialTagIds);
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+
   const { exportProjects, isExporting } = useExportProjects();
+
+  // Debounce filter values to prevent excessive API calls
+  const debouncedQuery = useDebounce(query, 300);
+  const debouncedStatus = useDebounce(statusFilter, 300);
+  const debouncedOrgId = useDebounce(organizationId, 300);
+  const debouncedTagIds = useDebounce(tagIds, 300);
 
   const { data, isLoading, isError } = useProjects({
     page,
     pageSize,
-    status: statusFilter.length > 0 ? statusFilter : undefined,
+    q: debouncedQuery || undefined,
+    status: debouncedStatus.length > 0 ? debouncedStatus : undefined,
+    organizationId: debouncedOrgId,
+    tagIds: debouncedTagIds.length > 0 ? debouncedTagIds : undefined,
   });
+
+  // Update URL when filters change
+  const updateURL = useCallback(() => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    statusFilter.forEach((s) => params.append("status", s));
+    if (organizationId) params.set("organization_id", organizationId);
+    tagIds.forEach((id) => params.append("tag_ids", id));
+    if (page > 1) params.set("page", String(page));
+    if (pageSize !== 20) params.set("page_size", String(pageSize));
+    setSearchParams(params);
+  }, [query, statusFilter, organizationId, tagIds, page, pageSize, setSearchParams]);
+
+  useEffect(() => {
+    updateURL();
+  }, [updateURL]);
 
   const table = useReactTable({
     data: data?.items ?? [],
@@ -113,14 +168,26 @@ export function ProjectsPage() {
     pageCount: data ? Math.ceil(data.total / pageSize) : 0,
   });
 
-  const handleStatusFilterChange = (value: string) => {
-    if (value === "all") {
-      setStatusFilter([]);
-    } else {
-      setStatusFilter([value as ProjectStatus]);
-    }
+  const handleClearAll = () => {
+    setInputValue("");
+    setQuery("");
+    setStatusFilter([]);
+    setOrganizationId(undefined);
+    setTagIds([]);
     setPage(1);
   };
+
+  const handleClearSearch = () => {
+    setInputValue("");
+    setQuery("");
+    setPage(1);
+  };
+
+  const hasActiveFilters =
+    query ||
+    statusFilter.length > 0 ||
+    organizationId !== undefined ||
+    tagIds.length > 0;
 
   if (isError) {
     return (
@@ -145,6 +212,8 @@ export function ProjectsPage() {
             onClick={() =>
               exportProjects({
                 status: statusFilter.length > 0 ? statusFilter : undefined,
+                organizationId,
+                tagIds: tagIds.length > 0 ? tagIds : undefined,
               })
             }
             disabled={isExporting}
@@ -165,27 +234,59 @@ export function ProjectsPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <Select
-          value={statusFilter[0] ?? "all"}
-          onValueChange={handleStatusFilterChange}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="on_hold">On Hold</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="cancelled">Cancelled</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Search bar */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search projects by name, description, location..."
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+            className="pl-9 pr-9"
+          />
+          {inputValue && (
+            <button
+              onClick={handleClearSearch}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
 
+      {/* Filters */}
+      <ProjectSearchFilters
+        status={statusFilter}
+        organizationId={organizationId}
+        tagIds={tagIds}
+        onStatusChange={(newStatus) => {
+          setStatusFilter(newStatus);
+          setPage(1);
+        }}
+        onOrganizationChange={(orgId) => {
+          setOrganizationId(orgId);
+          setPage(1);
+        }}
+        onTagsChange={(newTagIds) => {
+          setTagIds(newTagIds);
+          setPage(1);
+        }}
+        onClearAll={handleClearAll}
+      />
+
+      {/* Result count */}
+      <div className="flex items-center gap-4">
         {data && (
           <span className="text-sm text-muted-foreground">
-            {data.total} project{data.total !== 1 ? "s" : ""} total
+            {data.total} project{data.total !== 1 ? "s" : ""}
+            {hasActiveFilters ? " found" : " total"}
+            {query && ` for "${query}"`}
           </span>
         )}
       </div>
@@ -201,7 +302,7 @@ export function ProjectsPage() {
                       ? null
                       : flexRender(
                           header.column.columnDef.header,
-                          header.getContext(),
+                          header.getContext()
                         )}
                   </TableHead>
                 ))}
@@ -234,7 +335,7 @@ export function ProjectsPage() {
                     <TableCell key={cell.id}>
                       {flexRender(
                         cell.column.columnDef.cell,
-                        cell.getContext(),
+                        cell.getContext()
                       )}
                     </TableCell>
                   ))}

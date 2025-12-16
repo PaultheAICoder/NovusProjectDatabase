@@ -50,14 +50,23 @@ async def list_projects(
     current_user: CurrentUser,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    q: str = Query(default="", description="Search query for text search"),
     status: list[ProjectStatus] | None = Query(None),
     organization_id: UUID | None = None,
     owner_id: UUID | None = None,
+    tag_ids: list[UUID] | None = Query(
+        None, description="Filter by tag IDs (projects must have ALL specified tags)"
+    ),
     sort_by: str = Query("updated_at", enum=["name", "start_date", "updated_at"]),
     sort_order: str = Query("desc", enum=["asc", "desc"]),
 ) -> PaginatedResponse[ProjectResponse]:
     """List projects with optional filters."""
     query = _build_project_query()
+
+    # Text search filter using PostgreSQL full-text search
+    if q and q.strip():
+        ts_query = func.plainto_tsquery("english", q.strip())
+        query = query.where(Project.search_vector.op("@@")(ts_query))
 
     if status:
         query = query.where(Project.status.in_(status))
@@ -65,6 +74,15 @@ async def list_projects(
         query = query.where(Project.organization_id == organization_id)
     if owner_id:
         query = query.where(Project.owner_id == owner_id)
+
+    # Tag filter - projects must have ALL specified tags
+    if tag_ids:
+        for tag_id in tag_ids:
+            query = query.where(
+                Project.id.in_(
+                    select(ProjectTag.project_id).where(ProjectTag.tag_id == tag_id)
+                )
+            )
 
     # Get total count
     count_query = select(func.count()).select_from(

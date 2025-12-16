@@ -16,8 +16,10 @@ import type {
 interface UseProjectsParams {
   page?: number;
   pageSize?: number;
+  q?: string;
   status?: ProjectStatus[];
   organizationId?: string;
+  tagIds?: string[];
   ownerId?: string;
   sortBy?: "name" | "start_date" | "updated_at";
   sortOrder?: "asc" | "desc";
@@ -26,8 +28,10 @@ interface UseProjectsParams {
 export function useProjects({
   page = 1,
   pageSize = 20,
+  q,
   status,
   organizationId,
+  tagIds,
   ownerId,
   sortBy = "updated_at",
   sortOrder = "desc",
@@ -39,16 +43,20 @@ export function useProjects({
     sort_order: sortOrder,
   });
 
+  if (q) params.append("q", q);
   if (status?.length) {
     status.forEach((s) => params.append("status", s));
   }
   if (organizationId) params.append("organization_id", organizationId);
+  if (tagIds?.length) {
+    tagIds.forEach((id) => params.append("tag_ids", id));
+  }
   if (ownerId) params.append("owner_id", ownerId);
 
   return useQuery({
     queryKey: [
       "projects",
-      { page, pageSize, status, organizationId, ownerId, sortBy, sortOrder },
+      { page, pageSize, q, status, organizationId, tagIds, ownerId, sortBy, sortOrder },
     ],
     queryFn: () =>
       api.get<PaginatedResponse<Project>>(`/projects?${params.toString()}`),
