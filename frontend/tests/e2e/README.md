@@ -7,12 +7,14 @@ End-to-end tests using Playwright for the Novus Project Database frontend.
 1. Install Playwright browsers:
 
    ```bash
-   # Install all browsers (chromium, firefox, webkit)
-   npx playwright install
-
-   # Or install only chromium for faster setup
+   # Install chromium only (fastest, matches CI)
    npx playwright install chromium
+
+   # Or install all browsers (chromium, firefox, webkit)
+   npx playwright install
    ```
+
+   > **Note**: The CI pipeline only runs chromium tests. Firefox and WebKit are optional for local development.
 
 2. Start test environment:
 
@@ -25,6 +27,23 @@ End-to-end tests using Playwright for the Novus Project Database frontend.
    ```bash
    docker compose -f docker-compose.test.yml ps
    ```
+
+### Verify Services Before Running Tests
+
+Quick check that all test services are running:
+
+```bash
+# Check container status
+docker compose -f docker-compose.test.yml ps
+
+# Test backend health
+curl -s http://localhost:6711/api/v1/auth/me
+# Should return {"detail":"Not authenticated"} (401 is expected)
+
+# Test frontend
+curl -s http://localhost:6710 | head -5
+# Should return HTML
+```
 
 ## Running Tests
 
@@ -129,6 +148,29 @@ Run:
 ```bash
 npx playwright install
 ```
+
+### Tests fail waiting for app to load (stuck on "Loading...")
+
+The backend container may have crashed or failed to start. Check logs:
+
+```bash
+docker compose -f docker-compose.test.yml logs backend-test --tail=50
+```
+
+If you see import errors (e.g., `ModuleNotFoundError`), the Docker image needs to be rebuilt:
+
+```bash
+# Rebuild backend image with latest dependencies
+docker compose -f docker-compose.test.yml build --no-cache backend-test
+
+# Restart the container
+docker compose -f docker-compose.test.yml up -d backend-test
+```
+
+**When to rebuild**: Always rebuild Docker images after:
+- Pulling new changes from main
+- Modifying `backend/requirements.txt`
+- Adding new Python dependencies
 
 ### Tests pass locally but fail in CI
 
