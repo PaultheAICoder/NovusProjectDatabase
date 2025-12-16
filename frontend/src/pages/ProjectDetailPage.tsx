@@ -16,6 +16,7 @@ import {
 import { useProject, useDeleteProject } from "@/hooks/useProjects";
 import { DocumentUpload } from "@/components/forms/DocumentUpload";
 import { DocumentList } from "@/components/tables/DocumentList";
+import { DocumentTagSuggestions } from "@/components/features/DocumentTagSuggestions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -295,6 +296,12 @@ export function ProjectDetailPage() {
         </div>
 
         <div className="space-y-6">
+          {/* Document Tag Suggestions - show above Tags card */}
+          <DocumentTagSuggestions
+            projectId={id!}
+            currentTagIds={project.tags?.map((t) => t.id) || []}
+          />
+
           {project.tags && project.tags.length > 0 && (
             <Card>
               <CardHeader>

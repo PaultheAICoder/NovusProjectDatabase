@@ -15,6 +15,7 @@ from app.core.storage import StorageService
 from app.database import async_session_maker
 from app.models.document import Document, DocumentChunk
 from app.services.document_processor import DocumentProcessor
+from app.services.document_tag_suggester import DocumentTagSuggester
 from app.services.embedding_service import EmbeddingService
 
 logger = get_logger(__name__)
@@ -165,6 +166,27 @@ async def _process_document_content(
             db.add(chunk)
 
         document.processing_status = "completed"
+
+        # Generate tag suggestions from extracted text
+        if extracted_text and len(extracted_text) > 100:
+            try:
+                tag_suggester = DocumentTagSuggester(db)
+                suggestions = await tag_suggester.suggest_tags_from_text(extracted_text)
+                if suggestions:
+                    document.suggested_tag_ids = [tag.id for tag, _ in suggestions]
+                    logger.info(
+                        "document_tags_suggested",
+                        document_id=str(document.id),
+                        suggested_count=len(suggestions),
+                    )
+            except Exception as e:
+                # Tag suggestion is non-critical, log and continue
+                logger.warning(
+                    "tag_suggestion_failed",
+                    document_id=str(document.id),
+                    error=str(e),
+                )
+
         await db.commit()
 
         logger.info(

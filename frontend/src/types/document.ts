@@ -2,6 +2,7 @@
  * Document types.
  */
 
+import type { Tag } from "./tag";
 import type { User } from "./index";
 
 export type ProcessingStatus = "pending" | "completed" | "failed" | "skipped";
@@ -17,6 +18,8 @@ export interface Document {
   uploaded_at: string;
   processing_status: ProcessingStatus;
   processing_error: string | null;
+  suggested_tag_ids: string[] | null;
+  dismissed_tag_ids: string[] | null;
   created_at: string;
 }
 
@@ -28,4 +31,10 @@ export interface DocumentDetail extends Document {
 export interface DocumentListResponse {
   items: Document[];
   total: number;
+}
+
+export interface DocumentTagSuggestionsResponse {
+  document_id: string;
+  suggested_tags: Tag[];
+  has_suggestions: boolean;
 }

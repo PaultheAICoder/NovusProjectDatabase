@@ -15,7 +15,7 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -80,6 +80,18 @@ class Document(Base):
     processing_error: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
+    )
+
+    # Tag suggestions from document content analysis
+    suggested_tag_ids: Mapped[list[UUID] | None] = mapped_column(
+        ARRAY(PGUUID(as_uuid=True)),
+        nullable=True,
+        default=None,
+    )
+    dismissed_tag_ids: Mapped[list[UUID] | None] = mapped_column(
+        ARRAY(PGUUID(as_uuid=True)),
+        nullable=True,
+        default=None,
     )
 
     # Full-text search vector (generated column)

@@ -9,6 +9,7 @@ import type {
   DocumentDetail,
   DocumentListResponse,
 } from "@/types/document";
+import type { Tag } from "@/types/tag";
 
 export function useDocuments(projectId: string | undefined) {
   return useQuery({
@@ -93,4 +94,31 @@ export function useReprocessDocument(projectId: string) {
 export function getDocumentDownloadUrl(projectId: string, documentId: string): string {
   const baseUrl = import.meta.env.VITE_API_URL || "/api/v1";
   return `${baseUrl}/projects/${projectId}/documents/${documentId}/download`;
+}
+
+export function useProjectTagSuggestions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["projects", projectId, "document-tag-suggestions"],
+    queryFn: () =>
+      api.get<Tag[]>(`/projects/${projectId}/document-tag-suggestions`),
+    enabled: !!projectId,
+    staleTime: 1000 * 30, // 30 seconds - suggestions don't change often
+  });
+}
+
+export function useDismissTagSuggestion(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ documentId, tagId }: { documentId: string; tagId: string }) =>
+      api.post(`/projects/${projectId}/documents/${documentId}/dismiss-tag`, {
+        tag_id: tagId,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "document-tag-suggestions"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
+    },
+  });
 }

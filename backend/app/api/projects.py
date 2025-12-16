@@ -18,6 +18,7 @@ from app.models import (
     ProjectTag,
     Tag,
 )
+from app.models.document import Document
 from app.schemas.base import PaginatedResponse
 from app.schemas.import_ import AutofillRequest, AutofillResponse
 from app.schemas.project import (
@@ -26,6 +27,7 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
 )
+from app.schemas.tag import TagResponse
 from app.services.import_service import ImportService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -470,6 +472,61 @@ async def autofill_project(
         existing_description=data.existing_description,
         organization_id=data.organization_id,
     )
+
+
+@router.get("/{project_id}/document-tag-suggestions", response_model=list[TagResponse])
+@limiter.limit(crud_limit)
+async def get_project_document_tag_suggestions(
+    request: Request,
+    project_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[TagResponse]:
+    """
+    Get aggregated tag suggestions from all project documents.
+
+    Returns tags suggested by document analysis that are not already
+    assigned to the project and have not been dismissed.
+    """
+    # Get project with current tags
+    project = await db.scalar(
+        select(Project)
+        .options(selectinload(Project.project_tags))
+        .where(Project.id == project_id)
+    )
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    current_tag_ids = {pt.tag_id for pt in project.project_tags}
+
+    # Get all documents with suggestions
+    doc_result = await db.execute(
+        select(Document).where(
+            Document.project_id == project_id,
+            Document.suggested_tag_ids.isnot(None),
+        )
+    )
+    documents = doc_result.scalars().all()
+
+    # Collect all suggested tag IDs (excluding dismissed and current)
+    suggested_ids: set[UUID] = set()
+    for doc in documents:
+        dismissed = set(doc.dismissed_tag_ids or [])
+        for tag_id in doc.suggested_tag_ids or []:
+            if tag_id not in dismissed and tag_id not in current_tag_ids:
+                suggested_ids.add(tag_id)
+
+    if not suggested_ids:
+        return []
+
+    # Fetch tag details
+    tag_result = await db.execute(select(Tag).where(Tag.id.in_(suggested_ids)))
+    tags = tag_result.scalars().all()
+
+    return [TagResponse.model_validate(t) for t in tags]
 
 
 @router.get("/export/csv")

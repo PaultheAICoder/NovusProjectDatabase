@@ -25,13 +25,17 @@ from app.core.rate_limit import crud_limit, limiter, upload_limit
 from app.core.storage import StorageService
 from app.models.document import Document
 from app.models.project import Project
+from app.models.tag import Tag
 from app.models.user import User
 from app.schemas.document import (
+    DismissTagSuggestionRequest,
     DocumentDetail,
     DocumentListResponse,
     DocumentResponse,
     DocumentStatusResponse,
+    DocumentTagSuggestionsResponse,
 )
+from app.schemas.tag import TagResponse
 from app.services.antivirus import AntivirusService, ScanResult
 from app.services.document_processing_task import process_document_background
 from app.services.document_processor import DocumentProcessor
@@ -444,3 +448,90 @@ async def delete_document(
     # Delete from database (cascade will delete chunks)
     await db.delete(document)
     await db.commit()
+
+
+@router.get(
+    "/{document_id}/tag-suggestions", response_model=DocumentTagSuggestionsResponse
+)
+@limiter.limit(crud_limit)
+async def get_document_tag_suggestions(
+    request: Request,
+    project_id: UUID,
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DocumentTagSuggestionsResponse:
+    """
+    Get tag suggestions based on document content.
+
+    Returns tags that were suggested by document content analysis,
+    excluding any tags that have been dismissed by the user.
+    """
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id, Document.project_id == project_id
+        )
+    )
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    # Filter out dismissed tags
+    suggested_ids = document.suggested_tag_ids or []
+    dismissed_ids = set(document.dismissed_tag_ids or [])
+    active_ids = [tid for tid in suggested_ids if tid not in dismissed_ids]
+
+    if not active_ids:
+        return DocumentTagSuggestionsResponse(
+            document_id=document_id,
+            suggested_tags=[],
+            has_suggestions=False,
+        )
+
+    # Fetch tag details
+    tag_result = await db.execute(select(Tag).where(Tag.id.in_(active_ids)))
+    tags = tag_result.scalars().all()
+
+    return DocumentTagSuggestionsResponse(
+        document_id=document_id,
+        suggested_tags=[TagResponse.model_validate(t) for t in tags],
+        has_suggestions=len(tags) > 0,
+    )
+
+
+@router.post("/{document_id}/dismiss-tag", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(crud_limit)
+async def dismiss_tag_suggestion(
+    request: Request,
+    project_id: UUID,
+    document_id: UUID,
+    data: DismissTagSuggestionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """
+    Dismiss a tag suggestion for a document.
+
+    The dismissed tag will no longer appear in suggestions for this document.
+    """
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id, Document.project_id == project_id
+        )
+    )
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    dismissed = document.dismissed_tag_ids or []
+    if data.tag_id not in dismissed:
+        document.dismissed_tag_ids = dismissed + [data.tag_id]
+        await db.commit()

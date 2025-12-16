@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.tag import TagResponse
 from app.schemas.user import UserResponse
 
 
@@ -26,6 +27,8 @@ class DocumentResponse(DocumentBase):
     uploaded_at: datetime
     processing_status: str
     processing_error: str | None = None
+    suggested_tag_ids: list[UUID] | None = None
+    dismissed_tag_ids: list[UUID] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -55,3 +58,17 @@ class DocumentStatusResponse(BaseModel):
     processing_error: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class DocumentTagSuggestionsResponse(BaseModel):
+    """Tag suggestions for a document."""
+
+    document_id: UUID
+    suggested_tags: list[TagResponse] = []
+    has_suggestions: bool = False
+
+
+class DismissTagSuggestionRequest(BaseModel):
+    """Request to dismiss a tag suggestion."""
+
+    tag_id: UUID
