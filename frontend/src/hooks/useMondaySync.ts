@@ -5,11 +5,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+  ConflictListResponse,
+  ConflictResolveRequest,
+  ConflictStats,
   MondayBoardsResponse,
   MondayConfigResponse,
   MondaySyncLog,
   MondaySyncStatusResponse,
   MondaySyncTriggerRequest,
+  SyncConflict,
 } from "@/types/monday";
 
 export function useMondaySyncStatus() {
@@ -54,5 +58,65 @@ export function useMondaySyncLogs(limit: number = 20) {
     queryKey: ["monday", "logs", limit],
     queryFn: () =>
       api.get<MondaySyncLog[]>(`/admin/monday/logs?limit=${limit}`),
+  });
+}
+
+// ============== Sync Conflict Hooks ==============
+
+interface SyncConflictParams {
+  page?: number;
+  pageSize?: number;
+  entityType?: "contact" | "organization" | null;
+}
+
+export function useSyncConflicts(params: SyncConflictParams = {}) {
+  return useQuery({
+    queryKey: ["sync", "conflicts", params],
+    queryFn: () => {
+      const searchParams = new URLSearchParams();
+      if (params.page) searchParams.set("page", String(params.page));
+      if (params.pageSize) searchParams.set("page_size", String(params.pageSize));
+      if (params.entityType) searchParams.set("entity_type", params.entityType);
+      const queryString = searchParams.toString();
+      return api.get<ConflictListResponse>(
+        `/admin/sync/conflicts${queryString ? `?${queryString}` : ""}`
+      );
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+}
+
+export function useSyncConflictStats() {
+  return useQuery({
+    queryKey: ["sync", "conflicts", "stats"],
+    queryFn: () => api.get<ConflictStats>("/admin/sync/conflicts/stats"),
+    refetchInterval: 30000,
+  });
+}
+
+export function useSyncConflict(conflictId: string | null) {
+  return useQuery({
+    queryKey: ["sync", "conflicts", conflictId],
+    queryFn: () => api.get<SyncConflict>(`/admin/sync/conflicts/${conflictId}`),
+    enabled: !!conflictId,
+  });
+}
+
+export function useResolveSyncConflict() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      conflictId,
+      data,
+    }: {
+      conflictId: string;
+      data: ConflictResolveRequest;
+    }) => api.post<SyncConflict>(`/admin/sync/conflicts/${conflictId}/resolve`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync", "conflicts"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
   });
 }

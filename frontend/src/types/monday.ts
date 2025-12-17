@@ -58,3 +58,45 @@ export interface MondaySyncTriggerRequest {
   sync_type: MondaySyncType;
   board_id?: string;
 }
+
+// ============== Conflict Resolution Types ==============
+
+/** Resolution type for sync conflicts. */
+export type ConflictResolutionType = "keep_npd" | "keep_monday" | "merge";
+
+/** Sync conflict details from backend. */
+export interface SyncConflict {
+  id: string;
+  entity_type: "contact" | "organization";
+  entity_id: string;
+  monday_item_id: string;
+  npd_data: Record<string, unknown>;
+  monday_data: Record<string, unknown>;
+  conflict_fields: string[];
+  detected_at: string;
+  resolved_at: string | null;
+  resolution_type: string | null;
+  resolved_by_id: string | null;
+}
+
+/** Paginated list of conflicts response. */
+export interface ConflictListResponse {
+  items: SyncConflict[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+/** Request to resolve a sync conflict. */
+export interface ConflictResolveRequest {
+  resolution_type: ConflictResolutionType;
+  merge_selections?: Record<string, "npd" | "monday">;
+}
+
+/** Conflict statistics. */
+export interface ConflictStats {
+  unresolved: number;
+  resolved: number;
+  total: number;
+}

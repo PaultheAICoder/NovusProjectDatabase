@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { Settings, Tag as TagIcon, Trash2, Edit, Loader2, Merge } from "lucide-react";
+import { ConflictCard } from "@/components/admin/ConflictCard";
 import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -293,6 +294,9 @@ export function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Sync Conflicts Section */}
+      <ConflictCard />
 
       {/* Monday.com Integration Section */}
       <MondayConfigCard />
