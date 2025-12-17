@@ -10,39 +10,140 @@ import { QueryClient } from "@tanstack/react-query";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 /**
+ * Error context for debugging.
+ */
+export interface ApiErrorContext {
+  contentType?: string;
+  responseText?: string;
+  url?: string;
+  method?: string;
+}
+
+/**
  * Custom error class for API errors.
  */
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
-    public data?: unknown
+    public data?: unknown,
+    public context?: ApiErrorContext
   ) {
     super(message);
     this.name = "ApiError";
   }
+
+  /**
+   * Get a detailed error message for debugging.
+   */
+  getDebugInfo(): string {
+    const parts = [`Status: ${this.status}`, `Message: ${this.message}`];
+    if (this.context?.url) parts.push(`URL: ${this.context.url}`);
+    if (this.context?.method) parts.push(`Method: ${this.context.method}`);
+    if (this.context?.contentType)
+      parts.push(`Content-Type: ${this.context.contentType}`);
+    if (this.context?.responseText) {
+      parts.push(`Response Preview: ${this.context.responseText}`);
+    }
+    return parts.join("\n");
+  }
+}
+
+/**
+ * Detect if content type indicates HTML.
+ */
+function isHtmlContentType(contentType: string | null): boolean {
+  return contentType?.toLowerCase().includes("text/html") ?? false;
+}
+
+/**
+ * Detect if content type indicates JSON.
+ */
+function isJsonContentType(contentType: string | null): boolean {
+  if (!contentType) return false;
+  const lower = contentType.toLowerCase();
+  return lower.includes("application/json") || lower.includes("+json");
+}
+
+/**
+ * Truncate text for error display.
+ */
+function truncateText(text: string, maxLength: number = 500): string {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + "... [truncated]";
 }
 
 /**
  * Handle API response and throw on error.
  */
-async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T>(
+  response: Response,
+  requestContext?: { url: string; method: string }
+): Promise<T> {
   if (!response.ok) {
+    const contentType = response.headers.get("Content-Type");
     let errorData: unknown;
+    let rawText: string | undefined;
+
     try {
-      errorData = await response.json();
+      // Get raw text first (we can always do this)
+      rawText = await response.text();
+
+      // Try to parse as JSON if content type suggests it or if no content type
+      if (isJsonContentType(contentType) || !contentType) {
+        try {
+          errorData = JSON.parse(rawText);
+        } catch {
+          // JSON parse failed, errorData stays undefined
+        }
+      }
     } catch {
-      errorData = await response.text();
+      // Could not read response body at all
+      rawText = "[Unable to read response body]";
     }
 
-    const message =
+    // Build informative error message
+    let message: string;
+
+    if (
       typeof errorData === "object" &&
       errorData !== null &&
       "detail" in errorData
-        ? String((errorData as { detail: unknown }).detail)
-        : `HTTP ${response.status}: ${response.statusText}`;
+    ) {
+      // FastAPI-style error with detail field
+      message = String((errorData as { detail: unknown }).detail);
+    } else if (isHtmlContentType(contentType)) {
+      // HTML response (likely proxy error, nginx error page, etc.)
+      message = `HTTP ${response.status}: Server returned HTML instead of JSON (possible proxy/server error)`;
+    } else if (rawText && !errorData) {
+      // Non-JSON text response
+      message = `HTTP ${response.status}: ${response.statusText || "Error"}`;
+    } else {
+      // Fallback
+      message = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
+    }
 
-    throw new ApiError(response.status, message, errorData);
+    // Build error context for debugging
+    const context: ApiErrorContext = {
+      contentType: contentType || undefined,
+      responseText: rawText ? truncateText(rawText) : undefined,
+      url: requestContext?.url,
+      method: requestContext?.method,
+    };
+
+    // Log in development mode for easier debugging
+    if (import.meta.env.DEV) {
+      console.error("[API Error]", {
+        status: response.status,
+        statusText: response.statusText,
+        url: requestContext?.url || response.url,
+        method: requestContext?.method,
+        contentType,
+        responsePreview: rawText ? truncateText(rawText, 1000) : undefined,
+      });
+    }
+
+    throw new ApiError(response.status, message, errorData, context);
   }
 
   // Handle 204 No Content
@@ -61,21 +162,23 @@ export const api = {
    * GET request.
    */
   async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       method: "GET",
       credentials: "include",
       headers: {
         Accept: "application/json",
       },
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, { url, method: "GET" });
   },
 
   /**
    * POST request.
    */
   async post<T>(endpoint: string, data?: unknown): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       method: "POST",
       credentials: "include",
       headers: {
@@ -84,14 +187,15 @@ export const api = {
       },
       body: data ? JSON.stringify(data) : undefined,
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, { url, method: "POST" });
   },
 
   /**
    * PUT request.
    */
   async put<T>(endpoint: string, data: unknown): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       method: "PUT",
       credentials: "include",
       headers: {
@@ -100,14 +204,15 @@ export const api = {
       },
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, { url, method: "PUT" });
   },
 
   /**
    * PATCH request.
    */
   async patch<T>(endpoint: string, data: unknown): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       method: "PATCH",
       credentials: "include",
       headers: {
@@ -116,60 +221,90 @@ export const api = {
       },
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, { url, method: "PATCH" });
   },
 
   /**
    * DELETE request.
    */
   async delete<T = void>(endpoint: string): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       method: "DELETE",
       credentials: "include",
       headers: {
         Accept: "application/json",
       },
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, { url, method: "DELETE" });
   },
 
   /**
    * Upload file with multipart/form-data.
    */
   async upload<T>(endpoint: string, formData: FormData): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       method: "POST",
       credentials: "include",
       body: formData,
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, { url, method: "POST" });
   },
 
   /**
    * Download file and trigger browser download.
    */
   async download(endpoint: string, filename: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       method: "GET",
       credentials: "include",
     });
 
     if (!response.ok) {
+      const contentType = response.headers.get("Content-Type");
+      let rawText: string | undefined;
+
+      try {
+        rawText = await response.text();
+      } catch {
+        rawText = "[Unable to read response body]";
+      }
+
+      const context: ApiErrorContext = {
+        contentType: contentType || undefined,
+        responseText: rawText ? truncateText(rawText) : undefined,
+        url,
+        method: "GET",
+      };
+
+      if (import.meta.env.DEV) {
+        console.error("[API Download Error]", {
+          status: response.status,
+          url,
+          contentType,
+          responsePreview: rawText ? truncateText(rawText, 1000) : undefined,
+        });
+      }
+
       throw new ApiError(
         response.status,
-        `HTTP ${response.status}: ${response.statusText}`
+        `Download failed: HTTP ${response.status}: ${response.statusText}`,
+        undefined,
+        context
       );
     }
 
     const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
+    const blobUrl = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
+    link.href = blobUrl;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    window.URL.revokeObjectURL(blobUrl);
   },
 };
 
