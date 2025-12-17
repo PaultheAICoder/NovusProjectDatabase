@@ -91,6 +91,24 @@ E2E tests support authenticated flows using a backend test endpoint.
 3. Playwright's `authenticatedPage` fixture calls this endpoint before each test
 4. The session cookie persists for the test duration
 
+### Security Model
+
+The test token endpoint has multiple layers of security (defense-in-depth):
+
+1. **Production Hard Block**: The endpoint returns 404 in production environment, regardless of any configuration
+2. **E2E_TEST_MODE Guard**: Must be explicitly enabled (defaults to false)
+3. **Secret Requirement**: In non-development environments (e.g., staging, CI), a valid `E2E_TEST_SECRET` header must be provided
+4. **Rate Limiting**: Subject to standard auth rate limits
+
+This defense-in-depth approach ensures that accidental misconfiguration cannot expose authentication bypass in production.
+
+### Environment Variables
+
+| Variable | Development | Staging/CI | Production |
+|----------|-------------|------------|------------|
+| E2E_TEST_MODE | Optional | Required | BLOCKED |
+| E2E_TEST_SECRET | Not required | Required | N/A |
+
 ### Using Authenticated Tests
 
 Import from the auth fixture:
@@ -126,8 +144,11 @@ unauthTest('login page shows button', async ({ page }) => {
 
 ### CI Environment
 
-The test Docker environment (`docker-compose.test.yml`) has `E2E_TEST_MODE=true` set,
-so authenticated tests work automatically in CI.
+The test Docker environment (`docker-compose.test.yml`) has both `E2E_TEST_MODE=true` and
+`E2E_TEST_SECRET` set, so authenticated tests work automatically in CI.
+
+The CI workflow (`.github/workflows/e2e.yml`) also passes the `E2E_TEST_SECRET` environment
+variable to Playwright when running tests.
 
 ### Local Development
 

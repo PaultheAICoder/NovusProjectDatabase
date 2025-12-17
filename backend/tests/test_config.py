@@ -137,3 +137,78 @@ class TestConfigSecurity:
                     "*"
                 ], "CORS allow_headers should not be wildcard"
                 break
+
+
+class TestE2ETestModeConfigSecurity:
+    """Tests for E2E test mode configuration security validation."""
+
+    def test_production_rejects_e2e_test_mode(self):
+        """Production environment must reject e2e_test_mode=true."""
+        env = {
+            "ENVIRONMENT": "production",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "AZURE_AD_TENANT_ID": "test-tenant",
+            "AZURE_AD_CLIENT_ID": "test-client",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+            "E2E_TEST_MODE": "true",
+        }
+        with (
+            patch.dict(os.environ, env, clear=True),
+            pytest.raises(
+                ValueError, match="E2E_TEST_MODE cannot be enabled in production"
+            ),
+        ):
+            Settings(_env_file=None)
+
+    def test_staging_requires_e2e_test_secret(self):
+        """Staging environment requires E2E_TEST_SECRET when E2E_TEST_MODE is true."""
+        env = {
+            "ENVIRONMENT": "staging",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "E2E_TEST_MODE": "true",
+            "E2E_TEST_SECRET": "",
+        }
+        with (
+            patch.dict(os.environ, env, clear=True),
+            pytest.raises(ValueError, match="E2E_TEST_SECRET is required"),
+        ):
+            Settings(_env_file=None)
+
+    def test_staging_allows_e2e_mode_with_secret(self):
+        """Staging environment allows E2E_TEST_MODE with a secret."""
+        env = {
+            "ENVIRONMENT": "staging",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "E2E_TEST_MODE": "true",
+            "E2E_TEST_SECRET": "valid-test-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.e2e_test_mode is True
+            assert settings.e2e_test_secret == "valid-test-secret"
+
+    def test_development_allows_e2e_mode_without_secret(self):
+        """Development environment allows E2E_TEST_MODE without secret."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "E2E_TEST_MODE": "true",
+            "E2E_TEST_SECRET": "",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.e2e_test_mode is True
+            assert settings.e2e_test_secret == ""
+
+    def test_e2e_test_mode_defaults_to_false(self):
+        """E2E test mode should default to False."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.e2e_test_mode is False

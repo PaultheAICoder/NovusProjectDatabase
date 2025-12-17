@@ -341,14 +341,57 @@ async def create_test_token(
 ) -> JSONResponse:
     """Create a test session token for E2E testing.
 
-    SECURITY: Only available when E2E_TEST_MODE=true.
+    SECURITY: Only available when E2E_TEST_MODE=true AND:
+    - Environment is not production (hard block)
+    - Valid E2E_TEST_SECRET header is provided (except in development)
+
     This endpoint is for Playwright E2E tests only.
     """
+    # Layer 1: Hard block in production - defense in depth
+    # This blocks even if e2e_test_mode is accidentally enabled
+    if settings.environment == "production":
+        logger.warning(
+            "e2e_test_token_blocked_production",
+            reason="Production environment blocks E2E test endpoint regardless of config",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
+        )
+
+    # Layer 2: Check if E2E test mode is enabled
     if not settings.e2e_test_mode:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Not found",
         )
+
+    # Layer 3: Validate secret in non-development environments
+    if settings.environment != "development":
+        provided_secret = request.headers.get("X-E2E-Test-Secret", "")
+        if not settings.e2e_test_secret:
+            logger.error(
+                "e2e_test_token_no_secret_configured",
+                environment=settings.environment,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="E2E test mode misconfigured",
+            )
+        if not hmac.compare_digest(provided_secret, settings.e2e_test_secret):
+            logger.warning(
+                "e2e_test_token_invalid_secret",
+                client_ip=request.client.host if request.client else "unknown",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid test secret",
+            )
+
+    logger.info(
+        "e2e_test_token_created",
+        environment=settings.environment,
+    )
 
     # Create or get test user
     test_azure_id = "e2e-test-user-00000000-0000-0000-0000-000000000000"

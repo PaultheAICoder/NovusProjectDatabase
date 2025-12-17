@@ -120,7 +120,11 @@ class Settings(BaseSettings):
     monday_webhook_enabled: bool = True  # Enable/disable webhook processing
 
     # E2E Testing (only enable in test environment)
+    # SECURITY: These settings have defense-in-depth protections:
+    # 1. e2e_test_mode is blocked in production environment (validated below)
+    # 2. e2e_test_secret is required in non-development environments
     e2e_test_mode: bool = False
+    e2e_test_secret: str = ""  # Required when e2e_test_mode is True (except in dev)
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -202,6 +206,25 @@ class Settings(BaseSettings):
                     "Production configuration errors:\n"
                     + "\n".join(f"  - {e}" for e in errors)
                 )
+
+        # E2E test mode security validation (defense-in-depth)
+        # Layer 1: Block E2E test mode in production entirely
+        if self.environment == "production" and self.e2e_test_mode:
+            raise ValueError(
+                "E2E_TEST_MODE cannot be enabled in production environment. "
+                "This is a security protection against accidental misconfiguration."
+            )
+
+        # Layer 2: Require secret in non-development environments
+        if (
+            self.e2e_test_mode
+            and not self.e2e_test_secret
+            and self.environment != "development"
+        ):
+            raise ValueError(
+                "E2E_TEST_SECRET is required when E2E_TEST_MODE is enabled "
+                "outside of development environment."
+            )
 
         # Development/staging: provide sensible defaults and warnings
         if self.environment == "development" and not self.database_url:

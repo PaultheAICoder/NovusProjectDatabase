@@ -26,6 +26,9 @@ export type AuthFixtures = {
 
 /**
  * Authenticate a page by calling the test-token endpoint.
+ *
+ * Security: The endpoint requires X-E2E-Test-Secret header in non-development
+ * environments. The secret is read from E2E_TEST_SECRET environment variable.
  */
 async function authenticate(page: Page): Promise<void> {
   // Get base URL from Playwright config or use default test URL
@@ -39,14 +42,26 @@ async function authenticate(page: Page): Promise<void> {
     }
   }
 
+  // Get test secret from environment (optional in development)
+  const testSecret = process.env.E2E_TEST_SECRET || '';
+
   // Call test-token endpoint to get session cookie
-  const response = await page.request.post(`${baseURL}/api/v1/auth/test-token`);
+  const response = await page.request.post(`${baseURL}/api/v1/auth/test-token`, {
+    headers: {
+      'X-E2E-Test-Secret': testSecret,
+    },
+  });
 
   if (!response.ok()) {
     const status = response.status();
     if (status === 404) {
       throw new Error(
         'Test token endpoint not found. Ensure E2E_TEST_MODE=true in backend environment.'
+      );
+    }
+    if (status === 401) {
+      throw new Error(
+        'Test token authentication failed. Ensure E2E_TEST_SECRET is set correctly in environment.'
       );
     }
     throw new Error(`Failed to authenticate: ${status} ${response.statusText()}`);
