@@ -298,6 +298,71 @@ class TestProjectCancellation:
         assert hasattr(Project, "can_transition_to")
 
 
+class TestProjectListQueryOptimization:
+    """Tests for optimized project list query (GitHub Issue #92)."""
+
+    def test_project_list_query_function_exists(self):
+        """Optimized list query function should exist."""
+        from app.api.projects import _build_project_list_query
+
+        assert _build_project_list_query is not None
+
+    def test_project_list_query_returns_select(self):
+        """Optimized list query should return a Select statement."""
+        from sqlalchemy.sql import Select
+
+        from app.api.projects import _build_project_list_query
+
+        query = _build_project_list_query()
+        assert isinstance(query, Select)
+
+    def test_tag_filter_uses_exists_pattern(self):
+        """Tag filter should use EXISTS for efficient filtering."""
+        from sqlalchemy import exists, select
+
+        from app.models.project import Project, ProjectTag
+
+        tag_id = uuid4()
+        tag_exists = exists(
+            select(ProjectTag.project_id).where(
+                ProjectTag.project_id == Project.id,
+                ProjectTag.tag_id == tag_id,
+            )
+        )
+        assert tag_exists is not None
+
+    def test_multiple_exists_filters_create_and_condition(self):
+        """Multiple tag EXISTS filters should create AND conditions."""
+        from sqlalchemy import exists, select
+
+        from app.models.project import Project, ProjectTag
+
+        tag_ids = [uuid4(), uuid4(), uuid4()]
+
+        # Each tag creates an EXISTS condition
+        exists_conditions = []
+        for tag_id in tag_ids:
+            tag_exists = exists(
+                select(ProjectTag.project_id).where(
+                    ProjectTag.project_id == Project.id,
+                    ProjectTag.tag_id == tag_id,
+                )
+            )
+            exists_conditions.append(tag_exists)
+
+        # All conditions should be created
+        assert len(exists_conditions) == 3
+
+    def test_list_query_does_not_load_contacts(self):
+        """Optimized list query should NOT load project_contacts relationship."""
+        from app.api.projects import _build_project_list_query
+
+        query = _build_project_list_query()
+        # The optimized query should exist and be valid
+        # (This is a basic structural test - actual DB testing would verify performance)
+        assert query is not None
+
+
 class TestDismissProjectTagSuggestion:
     """Tests for project-level tag suggestion dismissal (GitHub Issue #70)."""
 

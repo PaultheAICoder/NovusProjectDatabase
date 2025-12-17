@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -52,6 +52,15 @@ def _build_project_query():
     )
 
 
+def _build_project_list_query():
+    """Build optimized query for list operations (excludes contacts/creator/updater)."""
+    return select(Project).options(
+        selectinload(Project.organization),
+        selectinload(Project.owner),
+        selectinload(Project.project_tags).selectinload(ProjectTag.tag),
+    )
+
+
 @router.get("", response_model=PaginatedResponse[ProjectResponse])
 @limiter.limit(crud_limit)
 async def list_projects(
@@ -71,7 +80,7 @@ async def list_projects(
     sort_order: str = Query("desc", enum=["asc", "desc"]),
 ) -> PaginatedResponse[ProjectResponse]:
     """List projects with optional filters."""
-    query = _build_project_query()
+    query = _build_project_list_query()
 
     # Text search filter using PostgreSQL full-text search
     if q and q.strip():
@@ -85,14 +94,16 @@ async def list_projects(
     if owner_id:
         query = query.where(Project.owner_id == owner_id)
 
-    # Tag filter - projects must have ALL specified tags
+    # Tag filter - projects must have ALL specified tags (using EXISTS for efficiency)
     if tag_ids:
         for tag_id in tag_ids:
-            query = query.where(
-                Project.id.in_(
-                    select(ProjectTag.project_id).where(ProjectTag.tag_id == tag_id)
+            tag_exists = exists(
+                select(ProjectTag.project_id).where(
+                    ProjectTag.project_id == Project.id,
+                    ProjectTag.tag_id == tag_id,
                 )
             )
+            query = query.where(tag_exists)
 
     # Get total count
     count_query = select(func.count()).select_from(
@@ -745,7 +756,8 @@ async def export_projects_csv(
     Uses streaming to handle large datasets without memory exhaustion (Issue #90).
     """
     # Build query with same filters as list (but NO pagination)
-    query = _build_project_query()
+    # Uses optimized list query that only loads organization, owner, and tags
+    query = _build_project_list_query()
 
     if status:
         query = query.where(Project.status.in_(status))
