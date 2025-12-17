@@ -5,16 +5,10 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { TagFilterCombobox } from "@/components/forms/TagFilterCombobox";
 import { OrganizationFilterCombobox } from "@/components/forms/OrganizationCombobox";
+import { StatusFilterMultiSelect } from "@/components/forms/StatusFilterMultiSelect";
 import { useAllTags } from "@/hooks/useTags";
 import type { Organization } from "@/types/organization";
 import type { ProjectStatus } from "@/types/project";
@@ -64,19 +58,6 @@ export function SearchFilters({
   const hasFilters =
     status.length > 0 || organizationId !== undefined || tagIds.length > 0;
 
-  const handleStatusChange = (value: string) => {
-    if (value === "all") {
-      onStatusChange([]);
-    } else {
-      const statusValue = value as ProjectStatus;
-      if (status.includes(statusValue)) {
-        onStatusChange(status.filter((s) => s !== statusValue));
-      } else {
-        onStatusChange([...status, statusValue]);
-      }
-    }
-  };
-
   const handleTagToggle = (tagId: string) => {
     if (tagIds.includes(tagId)) {
       onTagsChange(tagIds.filter((id) => id !== tagId));
@@ -96,23 +77,17 @@ export function SearchFilters({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4">
-        <Select value="" onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            {statusOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                <span className="flex items-center gap-2">
-                  {status.includes(option.value) && (
-                    <span className="text-primary">✓</span>
-                  )}
-                  {option.label}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <StatusFilterMultiSelect
+          selectedStatuses={status}
+          onStatusToggle={(statusValue) => {
+            if (status.includes(statusValue)) {
+              onStatusChange(status.filter((s) => s !== statusValue));
+            } else {
+              onStatusChange([...status, statusValue]);
+            }
+          }}
+          placeholder="Status"
+        />
 
         <OrganizationFilterCombobox
           selectedId={organizationId}
