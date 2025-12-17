@@ -2,6 +2,7 @@
 
 import csv
 import io
+from collections.abc import AsyncGenerator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -156,6 +157,101 @@ async def get_search_suggestions(
     return SearchSuggestionsResponse(suggestions=suggestions)
 
 
+async def _generate_search_csv_rows(
+    search_service: SearchService,
+    query: str,
+    status: list[ProjectStatus] | None,
+    organization_id: UUID | None,
+    tag_ids: list[UUID] | None,
+    owner_id: UUID | None,
+    sort_by: str,
+    sort_order: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Generate CSV rows for search results using streaming.
+
+    Uses batched fetching via pagination to avoid loading all records
+    into memory at once. This fixes memory exhaustion issues when
+    exporting large datasets (Issue #90).
+    """
+    BATCH_SIZE = 100
+
+    # Yield header row
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "Name",
+            "Organization",
+            "Owner",
+            "Status",
+            "Start Date",
+            "End Date",
+            "Location",
+            "Description",
+            "Tags",
+            "Milestone/Version",
+            "Run Number",
+            "Engagement Period",
+            "Created At",
+            "Updated At",
+        ]
+    )
+    yield output.getvalue()
+
+    # Stream results in batches
+    page = 1
+
+    while True:
+        projects, total = await search_service.search_projects(
+            query=query,
+            status=status,
+            organization_id=organization_id,
+            tag_ids=tag_ids,
+            owner_id=owner_id,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            page_size=BATCH_SIZE,
+        )
+
+        if not projects:
+            break
+
+        for project in projects:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            tags = (
+                ", ".join(sorted(pt.tag.name for pt in project.project_tags))
+                if project.project_tags
+                else ""
+            )
+            writer.writerow(
+                [
+                    project.name,
+                    project.organization.name if project.organization else "",
+                    project.owner.display_name if project.owner else "",
+                    project.status.value if project.status else "",
+                    project.start_date.isoformat() if project.start_date else "",
+                    project.end_date.isoformat() if project.end_date else "",
+                    project.location or "",
+                    project.description or "",
+                    tags,
+                    project.milestone_version or "",
+                    project.run_number or "",
+                    project.engagement_period or "",
+                    project.created_at.isoformat() if project.created_at else "",
+                    project.updated_at.isoformat() if project.updated_at else "",
+                ]
+            )
+            yield output.getvalue()
+
+        # Check if we've fetched all results
+        if page * BATCH_SIZE >= total:
+            break
+        page += 1
+
+
 @router.get("/export/csv")
 @limiter.limit(search_limit)
 async def export_search_results_csv(
@@ -175,76 +271,21 @@ async def export_search_results_csv(
 
     Uses the same filters as the search endpoint but returns all matching
     results as a downloadable CSV file.
+    Uses streaming to handle large datasets without memory exhaustion (Issue #90).
     """
     search_service = SearchService(db)
 
-    # Get all results (no pagination for export)
-    projects, total = await search_service.search_projects(
-        query=q,
-        status=status,
-        organization_id=organization_id,
-        tag_ids=tag_ids,
-        owner_id=owner_id,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        page=1,
-        page_size=10000,  # Reasonable max for export
-    )
-
-    # Create CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
-
-    # Header row
-    writer.writerow(
-        [
-            "Name",
-            "Organization",
-            "Owner",
-            "Status",
-            "Start Date",
-            "End Date",
-            "Location",
-            "Description",
-            "Tags",
-            "Milestone/Version",
-            "Run Number",
-            "Engagement Period",
-            "Created At",
-            "Updated At",
-        ]
-    )
-
-    # Data rows
-    for project in projects:
-        tags = (
-            ", ".join(sorted(pt.tag.name for pt in project.project_tags))
-            if project.project_tags
-            else ""
-        )
-        writer.writerow(
-            [
-                project.name,
-                project.organization.name if project.organization else "",
-                project.owner.display_name if project.owner else "",
-                project.status.value if project.status else "",
-                project.start_date.isoformat() if project.start_date else "",
-                project.end_date.isoformat() if project.end_date else "",
-                project.location or "",
-                project.description or "",
-                tags,
-                project.milestone_version or "",
-                project.run_number or "",
-                project.engagement_period or "",
-                project.created_at.isoformat() if project.created_at else "",
-                project.updated_at.isoformat() if project.updated_at else "",
-            ]
-        )
-
-    output.seek(0)
-
     return StreamingResponse(
-        iter([output.getvalue()]),
+        _generate_search_csv_rows(
+            search_service=search_service,
+            query=q,
+            status=status,
+            organization_id=organization_id,
+            tag_ids=tag_ids,
+            owner_id=owner_id,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        ),
         media_type="text/csv",
         headers={
             "Content-Disposition": "attachment; filename=search_results_export.csv"

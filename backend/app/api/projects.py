@@ -1,9 +1,14 @@
 """Project CRUD API endpoints."""
 
+import csv
+import io
+from collections.abc import AsyncGenerator
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
@@ -622,53 +627,22 @@ async def dismiss_project_tag_suggestion(
     await db.commit()
 
 
-@router.get("/export/csv")
-@limiter.limit(crud_limit)
-async def export_projects_csv(
-    request: Request,
-    db: DbSession,
-    current_user: CurrentUser,
-    status: list[ProjectStatus] | None = Query(None),
-    organization_id: UUID | None = None,
-    owner_id: UUID | None = None,
-    tag_ids: list[UUID] | None = Query(None),
-):
+async def _generate_projects_csv_rows(
+    db: AsyncSession,
+    query,
+    location_labels: dict[ProjectLocation, str],
+) -> AsyncGenerator[str, None]:
     """
-    Export filtered projects to CSV.
+    Generate CSV rows one at a time for streaming export.
 
-    Returns a downloadable CSV file with all project fields.
+    Uses batched fetching to avoid loading all records into memory at once.
+    This fixes memory exhaustion issues when exporting large datasets (Issue #90).
     """
-    import csv
-    import io
+    BATCH_SIZE = 100
 
-    from fastapi.responses import StreamingResponse
-
-    # Build query with same filters as list
-    query = _build_project_query()
-
-    if status:
-        query = query.where(Project.status.in_(status))
-    if organization_id:
-        query = query.where(Project.organization_id == organization_id)
-    if owner_id:
-        query = query.where(Project.owner_id == owner_id)
-    if tag_ids:
-        # Filter by tags - projects must have at least one of the specified tags
-        query = query.where(
-            Project.id.in_(
-                select(ProjectTag.project_id).where(ProjectTag.tag_id.in_(tag_ids))
-            )
-        )
-
-    query = query.order_by(Project.name)
-    result = await db.execute(query)
-    projects = result.scalars().unique().all()
-
-    # Create CSV
+    # Yield header row
     output = io.StringIO()
     writer = csv.writer(output)
-
-    # Header row
     writer.writerow(
         [
             "Name",
@@ -694,6 +668,100 @@ async def export_projects_csv(
             "Updated At",
         ]
     )
+    yield output.getvalue()
+
+    # Stream data rows in batches to handle relationships
+    offset = 0
+
+    while True:
+        batch_query = query.offset(offset).limit(BATCH_SIZE)
+        result = await db.execute(batch_query)
+        projects = result.scalars().unique().all()
+
+        if not projects:
+            break
+
+        for project in projects:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            tags = ", ".join(sorted(pt.tag.name for pt in project.project_tags))
+
+            # Format location display
+            location_display = location_labels.get(
+                project.location, str(project.location.value)
+            )
+            if project.location == ProjectLocation.OTHER and project.location_other:
+                location_display = f"Other ({project.location_other})"
+
+            writer.writerow(
+                [
+                    project.name,
+                    project.organization.name,
+                    project.owner.display_name,
+                    project.status.value,
+                    project.start_date.isoformat() if project.start_date else "",
+                    project.end_date.isoformat() if project.end_date else "",
+                    location_display,
+                    project.description,
+                    tags,
+                    str(project.billing_amount) if project.billing_amount else "",
+                    str(project.invoice_count) if project.invoice_count else "",
+                    project.billing_recipient or "",
+                    project.billing_notes or "",
+                    project.pm_notes or "",
+                    project.monday_url or "",
+                    project.jira_url or "",
+                    project.gitlab_url or "",
+                    project.milestone_version or "",
+                    project.run_number or "",
+                    project.created_at.isoformat() if project.created_at else "",
+                    project.updated_at.isoformat() if project.updated_at else "",
+                ]
+            )
+            yield output.getvalue()
+
+        offset += BATCH_SIZE
+
+        # Exit early if we got fewer than batch size (no more records)
+        if len(projects) < BATCH_SIZE:
+            break
+
+
+@router.get("/export/csv")
+@limiter.limit(crud_limit)
+async def export_projects_csv(
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    status: list[ProjectStatus] | None = Query(None),
+    organization_id: UUID | None = None,
+    owner_id: UUID | None = None,
+    tag_ids: list[UUID] | None = Query(None),
+):
+    """
+    Export filtered projects to CSV.
+
+    Returns a downloadable CSV file with all project fields.
+    Uses streaming to handle large datasets without memory exhaustion (Issue #90).
+    """
+    # Build query with same filters as list (but NO pagination)
+    query = _build_project_query()
+
+    if status:
+        query = query.where(Project.status.in_(status))
+    if organization_id:
+        query = query.where(Project.organization_id == organization_id)
+    if owner_id:
+        query = query.where(Project.owner_id == owner_id)
+    if tag_ids:
+        # Filter by tags - projects must have at least one of the specified tags
+        query = query.where(
+            Project.id.in_(
+                select(ProjectTag.project_id).where(ProjectTag.tag_id.in_(tag_ids))
+            )
+        )
+
+    query = query.order_by(Project.name)
 
     # Location labels for CSV export
     location_labels = {
@@ -704,45 +772,8 @@ async def export_projects_csv(
         ProjectLocation.OTHER: "Other",
     }
 
-    # Data rows
-    for project in projects:
-        tags = ", ".join(sorted(pt.tag.name for pt in project.project_tags))
-        # Format location display
-        location_display = location_labels.get(
-            project.location, str(project.location.value)
-        )
-        if project.location == ProjectLocation.OTHER and project.location_other:
-            location_display = f"Other ({project.location_other})"
-        writer.writerow(
-            [
-                project.name,
-                project.organization.name,
-                project.owner.display_name,
-                project.status.value,
-                project.start_date.isoformat() if project.start_date else "",
-                project.end_date.isoformat() if project.end_date else "",
-                location_display,
-                project.description,
-                tags,
-                str(project.billing_amount) if project.billing_amount else "",
-                str(project.invoice_count) if project.invoice_count else "",
-                project.billing_recipient or "",
-                project.billing_notes or "",
-                project.pm_notes or "",
-                project.monday_url or "",
-                project.jira_url or "",
-                project.gitlab_url or "",
-                project.milestone_version or "",
-                project.run_number or "",
-                project.created_at.isoformat() if project.created_at else "",
-                project.updated_at.isoformat() if project.updated_at else "",
-            ]
-        )
-
-    output.seek(0)
-
     return StreamingResponse(
-        iter([output.getvalue()]),
+        _generate_projects_csv_rows(db, query, location_labels),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=projects_export.csv"},
     )
