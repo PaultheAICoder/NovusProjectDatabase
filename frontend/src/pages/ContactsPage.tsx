@@ -56,6 +56,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge";
 import type { Contact } from "@/types/contact";
 
 const columnHelper = createColumnHelper<Contact>();
@@ -119,6 +120,10 @@ export function ContactsPage() {
     columnHelper.accessor("phone", {
       header: "Phone",
       cell: (info) => info.getValue() || "-",
+    }),
+    columnHelper.accessor("sync_status", {
+      header: "Sync",
+      cell: (info) => <SyncStatusBadge status={info.getValue()} />,
     }),
     columnHelper.accessor("created_at", {
       header: "Created",

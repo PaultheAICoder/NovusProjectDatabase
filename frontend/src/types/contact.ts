@@ -3,6 +3,7 @@
  */
 
 import type { Organization } from "./organization";
+import type { RecordSyncStatus, SyncDirection } from "./monday";
 
 export interface Contact {
   id: string;
@@ -17,6 +18,9 @@ export interface Contact {
   updated_at: string;
   monday_id: string | null;
   monday_last_synced: string | null;
+  sync_status: RecordSyncStatus;
+  sync_enabled: boolean;
+  sync_direction: SyncDirection;
 }
 
 export interface ContactWithOrganization extends Contact {
@@ -40,6 +44,7 @@ export interface ContactUpdate {
   phone?: string;
   notes?: string;
   monday_url?: string;
+  sync_enabled?: boolean;
 }
 
 export interface ProjectSummaryForContact {

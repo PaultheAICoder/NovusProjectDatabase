@@ -48,6 +48,7 @@ class ContactUpdate(BaseModel):
     phone: str | None = None
     notes: str | None = None
     monday_url: str | None = None
+    sync_enabled: bool | None = None
 
 
 class ContactResponse(ContactBase):
@@ -61,6 +62,9 @@ class ContactResponse(ContactBase):
     updated_at: datetime
     monday_id: str | None = None
     monday_last_synced: datetime | None = None
+    sync_status: str = "disabled"
+    sync_enabled: bool = False
+    sync_direction: str = "none"
 
 
 class ContactWithOrganization(ContactResponse):

@@ -74,6 +74,7 @@ class OrganizationUpdate(BaseModel):
     address_country: str | None = Field(None, max_length=100)
     inventory_url: str | None = Field(None, max_length=500)
     notes: str | None = None
+    sync_enabled: bool | None = None
 
 
 class OrganizationResponse(OrganizationBase):
@@ -86,6 +87,9 @@ class OrganizationResponse(OrganizationBase):
     updated_at: datetime
     monday_id: str | None = None
     monday_last_synced: datetime | None = None
+    sync_status: str = "disabled"
+    sync_enabled: bool = False
+    sync_direction: str = "none"
 
 
 class OrganizationDetail(OrganizationResponse):

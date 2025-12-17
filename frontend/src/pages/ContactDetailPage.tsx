@@ -14,6 +14,7 @@ import {
   Mail,
   Phone,
   Plus,
+  RefreshCw,
   User,
 } from "lucide-react";
 import {
@@ -50,6 +51,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge";
+import { SyncToggle } from "@/components/sync/SyncToggle";
 
 const statusVariants: Record<
   string,
@@ -125,6 +128,14 @@ export function ContactDetailPage() {
     } catch {
       // Error handled by mutation
     }
+  };
+
+  const handleSyncToggle = async (enabled: boolean) => {
+    if (!id) return;
+    await updateContact.mutateAsync({
+      id,
+      data: { sync_enabled: enabled },
+    });
   };
 
   if (isLoading) {
@@ -277,6 +288,39 @@ export function ContactDetailPage() {
             <div>
               <span className="text-muted-foreground">Notes: </span>
               <span>{contact.notes}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Monday.com Sync Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" />
+            Monday.com Sync
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Status</span>
+            <SyncStatusBadge status={contact.sync_status} />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Sync Enabled</span>
+            <SyncToggle
+              enabled={contact.sync_enabled}
+              onToggle={handleSyncToggle}
+              disabled={updateContact.isPending}
+              label=""
+            />
+          </div>
+          {contact.monday_last_synced && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Last Synced</span>
+              <span className="text-sm">
+                {format(new Date(contact.monday_last_synced), "MMM d, yyyy h:mm a")}
+              </span>
             </div>
           )}
         </CardContent>

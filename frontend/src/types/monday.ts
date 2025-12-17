@@ -5,6 +5,12 @@
 export type MondaySyncStatus = "pending" | "in_progress" | "completed" | "failed";
 export type MondaySyncType = "organizations" | "contacts";
 
+/** Sync status for individual records (contacts, organizations). */
+export type RecordSyncStatus = "synced" | "pending" | "conflict" | "disabled";
+
+/** Sync direction for records. */
+export type SyncDirection = "bidirectional" | "npd_to_monday" | "monday_to_npd" | "none";
+
 export interface MondaySyncLog {
   id: string;
   sync_type: MondaySyncType;

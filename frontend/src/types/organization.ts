@@ -2,6 +2,8 @@
  * Organization types.
  */
 
+import type { RecordSyncStatus, SyncDirection } from "./monday";
+
 export interface BillingContactSummary {
   id: string;
   name: string;
@@ -25,6 +27,9 @@ export interface Organization {
   updated_at: string;
   monday_id: string | null;
   monday_last_synced: string | null;
+  sync_status: RecordSyncStatus;
+  sync_enabled: boolean;
+  sync_direction: SyncDirection;
 }
 
 export interface OrganizationCreate {
@@ -51,6 +56,7 @@ export interface OrganizationUpdate {
   address_country?: string | null;
   inventory_url?: string | null;
   notes?: string | null;
+  sync_enabled?: boolean;
 }
 
 export interface ProjectSummaryForOrg {

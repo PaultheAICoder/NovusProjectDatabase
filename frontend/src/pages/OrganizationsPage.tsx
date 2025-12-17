@@ -51,6 +51,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge";
 import type { Organization } from "@/types/organization";
 
 const columnHelper = createColumnHelper<Organization>();
@@ -95,6 +96,10 @@ export function OrganizationsPage() {
           {info.getValue() || "-"}
         </span>
       ),
+    }),
+    columnHelper.accessor("sync_status", {
+      header: "Sync",
+      cell: (info) => <SyncStatusBadge status={info.getValue()} />,
     }),
     columnHelper.accessor("created_at", {
       header: "Created",

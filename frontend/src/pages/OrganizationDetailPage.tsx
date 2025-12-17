@@ -11,6 +11,7 @@ import {
   Edit,
   ExternalLink,
   Plus,
+  RefreshCw,
   Users,
   FolderKanban,
   MapPin,
@@ -50,6 +51,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge";
+import { SyncToggle } from "@/components/sync/SyncToggle";
 
 const statusVariants: Record<
   string,
@@ -138,6 +141,14 @@ export function OrganizationDetailPage() {
     } catch {
       // Error handled by mutation
     }
+  };
+
+  const handleSyncToggle = async (enabled: boolean) => {
+    if (!id) return;
+    await updateOrganization.mutateAsync({
+      id,
+      data: { sync_enabled: enabled },
+    });
   };
 
   if (isLoading) {
@@ -332,6 +343,39 @@ export function OrganizationDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Monday.com Sync Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" />
+            Monday.com Sync
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Status</span>
+            <SyncStatusBadge status={organization.sync_status} />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Sync Enabled</span>
+            <SyncToggle
+              enabled={organization.sync_enabled}
+              onToggle={handleSyncToggle}
+              disabled={updateOrganization.isPending}
+              label=""
+            />
+          </div>
+          {organization.monday_last_synced && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Last Synced</span>
+              <span className="text-sm">
+                {format(new Date(organization.monday_last_synced), "MMM d, yyyy h:mm a")}
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Projects Table */}
       <Card>
