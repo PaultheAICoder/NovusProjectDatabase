@@ -41,6 +41,24 @@ azure_scheme = SingleTenantAzureAuthorizationCodeBearer(
 )
 
 
+def _map_azure_roles_to_user_role(azure_roles: list[str]) -> UserRole:
+    """Map Azure AD roles to internal UserRole.
+
+    Performs case-insensitive matching against the configured admin role name.
+
+    Args:
+        azure_roles: List of role names from Azure AD token claims.
+
+    Returns:
+        UserRole.ADMIN if admin role is present, UserRole.USER otherwise.
+    """
+    admin_role = settings.azure_ad_admin_role.lower()
+    for role in azure_roles:
+        if role.lower() == admin_role:
+            return UserRole.ADMIN
+    return UserRole.USER
+
+
 async def get_or_create_user(
     db: AsyncSession,
     azure_id: str,
@@ -53,7 +71,7 @@ async def get_or_create_user(
     user = result.scalar_one_or_none()
 
     # Determine role from Azure AD app roles
-    role = UserRole.ADMIN if "admin" in roles else UserRole.USER
+    role = _map_azure_roles_to_user_role(roles)
 
     if user is None:
         # Create new user

@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     azure_ad_client_secret: str = ""
     azure_ad_redirect_uri: str = "http://localhost:6701/api/v1/auth/callback"
 
+    # Azure AD Role Mapping
+    # The Azure AD role name that maps to UserRole.ADMIN
+    # Case-insensitive comparison is performed
+    azure_ad_admin_role: str = "admin"
+
     # Application
     secret_key: str = ""  # Will be validated and set default in model_validator
     environment: Literal["development", "staging", "production"] = "development"
