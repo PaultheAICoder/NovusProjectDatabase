@@ -41,25 +41,21 @@ export function useUploadDocument(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({
+      file,
+      onProgress,
+    }: {
+      file: File;
+      onProgress?: (progress: number) => void;
+    }) => {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL || "/api/v1"}/projects/${projectId}/documents`,
-        {
-          method: "POST",
-          body: formData,
-          credentials: "include",
-        },
+      return api.uploadWithProgress<Document>(
+        `/projects/${projectId}/documents`,
+        formData,
+        onProgress
       );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "Upload failed");
-      }
-
-      return response.json() as Promise<Document>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents", projectId] });

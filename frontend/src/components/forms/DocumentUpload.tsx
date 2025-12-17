@@ -1,12 +1,13 @@
 /**
- * Document upload component with drag-drop.
+ * Document upload component with drag-drop and progress tracking.
  */
 
 import { useCallback, useState } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
-import { Upload, X, FileText, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Upload, FileText, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { useUploadDocument } from "@/hooks/useDocuments";
+import { toast } from "@/hooks/useToast";
 import { cn } from "@/lib/utils";
 
 const ACCEPTED_FILE_TYPES = {
@@ -24,49 +25,144 @@ const ACCEPTED_FILE_TYPES = {
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
+type UploadPhase = "uploading" | "scanning" | "processing" | "complete" | "error";
+
+interface UploadProgress {
+  file: File;
+  progress: number;
+  phase: UploadPhase;
+  error?: string;
+}
+
 interface DocumentUploadProps {
   projectId: string;
   onSuccess?: () => void;
 }
 
 export function DocumentUpload({ projectId, onSuccess }: DocumentUploadProps) {
-  const [uploadQueue, setUploadQueue] = useState<File[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [uploads, setUploads] = useState<Map<string, UploadProgress>>(new Map());
 
   const uploadMutation = useUploadDocument(projectId);
 
   const onDrop = useCallback(
     (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
-      // Handle rejected files
-      const newErrors: string[] = [];
+      // Handle rejected files with toast
       rejectedFiles.forEach(({ file, errors }) => {
-        errors.forEach((error) => {
-          newErrors.push(`${file.name}: ${error.message}`);
+        const errorMsg = errors.map((e) => e.message).join(", ");
+        toast({
+          title: "Upload failed",
+          description: `${file.name}: ${errorMsg}`,
+          variant: "destructive",
         });
       });
-      setErrors(newErrors);
 
-      // Add accepted files to queue and start uploading
-      if (acceptedFiles.length > 0) {
-        setUploadQueue((prev) => [...prev, ...acceptedFiles]);
+      // Process accepted files
+      acceptedFiles.forEach(async (file) => {
+        const fileKey = `${file.name}-${Date.now()}`;
 
-        // Upload files sequentially
-        acceptedFiles.forEach(async (file) => {
-          try {
-            await uploadMutation.mutateAsync(file);
-            setUploadQueue((prev) => prev.filter((f) => f !== file));
-            onSuccess?.();
-          } catch (error) {
-            setErrors((prev) => [
-              ...prev,
-              `${file.name}: ${error instanceof Error ? error.message : "Upload failed"}`,
-            ]);
-            setUploadQueue((prev) => prev.filter((f) => f !== file));
-          }
+        // Initialize upload state
+        setUploads((prev) => {
+          const next = new Map(prev);
+          next.set(fileKey, {
+            file,
+            progress: 0,
+            phase: "uploading",
+          });
+          return next;
         });
-      }
+
+        try {
+          // Phase 1: Uploading with progress
+          await uploadMutation.mutateAsync({
+            file,
+            onProgress: (progress) => {
+              setUploads((prev) => {
+                const next = new Map(prev);
+                const current = next.get(fileKey);
+                if (current) {
+                  // During upload, show 0-70% progress
+                  next.set(fileKey, {
+                    ...current,
+                    progress: Math.round(progress * 0.7),
+                    phase: progress < 100 ? "uploading" : "scanning",
+                  });
+                }
+                return next;
+              });
+            },
+          });
+
+          // Phase 2: Server-side processing (scanning/processing)
+          setUploads((prev) => {
+            const next = new Map(prev);
+            const current = next.get(fileKey);
+            if (current) {
+              next.set(fileKey, {
+                ...current,
+                progress: 85,
+                phase: "processing",
+              });
+            }
+            return next;
+          });
+
+          // Brief delay to show processing state
+          await new Promise((r) => setTimeout(r, 500));
+
+          // Phase 3: Complete
+          setUploads((prev) => {
+            const next = new Map(prev);
+            const current = next.get(fileKey);
+            if (current) {
+              next.set(fileKey, {
+                ...current,
+                progress: 100,
+                phase: "complete",
+              });
+            }
+            return next;
+          });
+
+          // Show success toast
+          toast({
+            title: "Upload complete",
+            description: `${file.name} uploaded successfully`,
+            variant: "success",
+          });
+
+          // Remove from queue after a short delay
+          setTimeout(() => {
+            setUploads((prev) => {
+              const next = new Map(prev);
+              next.delete(fileKey);
+              return next;
+            });
+          }, 2000);
+
+          onSuccess?.();
+        } catch (error) {
+          setUploads((prev) => {
+            const next = new Map(prev);
+            const current = next.get(fileKey);
+            if (current) {
+              next.set(fileKey, {
+                ...current,
+                phase: "error",
+                error: error instanceof Error ? error.message : "Upload failed",
+              });
+            }
+            return next;
+          });
+
+          toast({
+            title: "Upload failed",
+            description: `${file.name}: ${error instanceof Error ? error.message : "Upload failed"}`,
+            variant: "destructive",
+          });
+        }
+      });
     },
-    [uploadMutation, onSuccess],
+    [uploadMutation, onSuccess]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -76,14 +172,6 @@ export function DocumentUpload({ projectId, onSuccess }: DocumentUploadProps) {
     multiple: true,
   });
 
-  const removeFromQueue = (file: File) => {
-    setUploadQueue((prev) => prev.filter((f) => f !== file));
-  };
-
-  const clearErrors = () => {
-    setErrors([]);
-  };
-
   return (
     <div className="space-y-4">
       <div
@@ -92,7 +180,7 @@ export function DocumentUpload({ projectId, onSuccess }: DocumentUploadProps) {
           "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors",
           isDragActive
             ? "border-primary bg-primary/5"
-            : "border-muted-foreground/25 hover:border-primary/50",
+            : "border-muted-foreground/25 hover:border-primary/50"
         )}
       >
         <input {...getInputProps()} />
@@ -111,55 +199,48 @@ export function DocumentUpload({ projectId, onSuccess }: DocumentUploadProps) {
         )}
       </div>
 
-      {/* Upload queue */}
-      {uploadQueue.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Uploading...</p>
-          {uploadQueue.map((file) => (
+      {/* Upload progress display */}
+      {uploads.size > 0 && (
+        <div className="space-y-3">
+          {Array.from(uploads.entries()).map(([key, upload]) => (
             <div
-              key={file.name}
-              className="flex items-center gap-2 rounded-md bg-muted p-2"
+              key={key}
+              className={cn(
+                "rounded-md border p-3 transition-colors",
+                upload.phase === "error"
+                  ? "border-destructive bg-destructive/5"
+                  : upload.phase === "complete"
+                    ? "border-green-500 bg-green-50 dark:bg-green-950"
+                    : "border-border bg-muted/50"
+              )}
             >
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 truncate text-sm">{file.name}</span>
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => removeFromQueue(file)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-3">
+                <FileText className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{upload.file.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {upload.phase === "uploading" && "Uploading..."}
+                    {upload.phase === "scanning" && "Scanning file..."}
+                    {upload.phase === "processing" && "Processing document..."}
+                    {upload.phase === "complete" && "Upload complete"}
+                    {upload.phase === "error" && (upload.error || "Upload failed")}
+                  </p>
+                </div>
+                {upload.phase === "complete" ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ) : upload.phase === "error" ? (
+                  <AlertCircle className="h-5 w-5 text-destructive" />
+                ) : (
+                  <span className="text-sm font-medium tabular-nums text-muted-foreground">
+                    {upload.progress}%
+                  </span>
+                )}
+              </div>
+              {upload.phase !== "complete" && upload.phase !== "error" && (
+                <Progress value={upload.progress} className="mt-2 h-1.5" />
+              )}
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Errors */}
-      {errors.length > 0 && (
-        <div className="rounded-md bg-destructive/10 p-3">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-destructive">
-                Upload errors
-              </p>
-              <ul className="mt-1 list-inside list-disc text-sm text-destructive">
-                {errors.map((error, i) => (
-                  <li key={i}>{error}</li>
-                ))}
-              </ul>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={clearErrors}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
       )}
     </div>

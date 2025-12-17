@@ -253,6 +253,62 @@ export const api = {
   },
 
   /**
+   * Upload file with progress tracking using XMLHttpRequest.
+   */
+  async uploadWithProgress<T>(
+    endpoint: string,
+    formData: FormData,
+    onProgress?: (progress: number) => void
+  ): Promise<T> {
+    const url = `${API_BASE_URL}${endpoint}`;
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable && onProgress) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          onProgress(percentComplete);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data as T);
+          } catch {
+            reject(new ApiError(xhr.status, "Invalid JSON response"));
+          }
+        } else {
+          let message = `HTTP ${xhr.status}: ${xhr.statusText}`;
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            if (errorData.detail) {
+              message = errorData.detail;
+            }
+          } catch {
+            // Use default message
+          }
+          reject(new ApiError(xhr.status, message));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new ApiError(0, "Network error during upload"));
+      });
+
+      xhr.addEventListener("abort", () => {
+        reject(new ApiError(0, "Upload cancelled"));
+      });
+
+      xhr.open("POST", url);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
+  },
+
+  /**
    * Download file and trigger browser download.
    */
   async download(endpoint: string, filename: string): Promise<void> {

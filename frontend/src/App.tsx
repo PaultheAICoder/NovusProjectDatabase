@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-r
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { Header, Sidebar, Footer } from "@/components/layout";
+import { Toaster } from "@/components/ui/toaster";
 
 // Lazy load page components for code splitting
 const DashboardPage = lazy(() =>
@@ -304,6 +305,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <AppRoutes />
+          <Toaster />
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
