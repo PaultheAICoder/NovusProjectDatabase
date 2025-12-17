@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
+from app.config import get_settings
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Organization
 from app.schemas.base import PaginatedResponse
@@ -19,6 +20,9 @@ from app.schemas.organization import (
     OrganizationUpdate,
     ProjectSummaryForOrg,
 )
+from app.services.sync_service import sync_organization_to_monday
+
+settings = get_settings()
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -72,6 +76,7 @@ async def create_organization(
     data: OrganizationCreate,
     db: DbSession,
     current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ) -> OrganizationResponse:
     """Create a new organization."""
     org = Organization(
@@ -95,6 +100,10 @@ async def create_organization(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Organization '{data.name}' already exists",
         )
+
+    # Queue sync to Monday.com if configured
+    if settings.is_monday_configured and settings.monday_organizations_board_id:
+        background_tasks.add_task(sync_organization_to_monday, org.id)
 
     return OrganizationResponse.model_validate(org)
 
@@ -189,6 +198,7 @@ async def update_organization(
     data: OrganizationUpdate,
     db: DbSession,
     current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ) -> OrganizationResponse:
     """Update an organization."""
     result = await db.execute(
@@ -213,5 +223,9 @@ async def update_organization(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Organization name already exists",
         )
+
+    # Queue sync to Monday.com if configured
+    if settings.is_monday_configured and settings.monday_organizations_board_id:
+        background_tasks.add_task(sync_organization_to_monday, org.id)
 
     return OrganizationResponse.model_validate(org)

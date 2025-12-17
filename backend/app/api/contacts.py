@@ -2,12 +2,13 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
+from app.config import get_settings
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Contact, Organization
 from app.schemas.base import PaginatedResponse
@@ -19,6 +20,9 @@ from app.schemas.contact import (
     ContactWithOrganization,
     ProjectSummaryForContact,
 )
+from app.services.sync_service import sync_contact_to_monday
+
+settings = get_settings()
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
@@ -73,6 +77,7 @@ async def create_contact(
     data: ContactCreate,
     db: DbSession,
     current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ) -> ContactResponse:
     """Create a new contact."""
     # Verify organization exists
@@ -103,6 +108,10 @@ async def create_contact(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contact with this email already exists in this organization",
         )
+
+    # Queue sync to Monday.com if configured
+    if settings.is_monday_configured and settings.monday_contacts_board_id:
+        background_tasks.add_task(sync_contact_to_monday, contact.id)
 
     return ContactResponse.model_validate(contact)
 
@@ -178,6 +187,7 @@ async def update_contact(
     data: ContactUpdate,
     db: DbSession,
     current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ) -> ContactResponse:
     """Update a contact."""
     result = await db.execute(select(Contact).where(Contact.id == contact_id))
@@ -200,5 +210,9 @@ async def update_contact(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contact with this email already exists in this organization",
         )
+
+    # Queue sync to Monday.com if configured
+    if settings.is_monday_configured and settings.monday_contacts_board_id:
+        background_tasks.add_task(sync_contact_to_monday, contact.id)
 
     return ContactResponse.model_validate(contact)
