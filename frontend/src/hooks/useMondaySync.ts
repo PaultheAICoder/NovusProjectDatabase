@@ -5,6 +5,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+  AutoResolutionRule,
+  AutoResolutionRuleCreate,
+  AutoResolutionRuleListResponse,
+  AutoResolutionRuleReorderRequest,
+  AutoResolutionRuleUpdate,
   BulkConflictResolveRequest,
   BulkConflictResolveResponse,
   ConflictListResponse,
@@ -195,6 +200,71 @@ export function useRetrySyncQueueItem() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sync", "queue"] });
+    },
+  });
+}
+
+// ============== Auto-Resolution Rule Hooks ==============
+
+export function useAutoResolutionRules() {
+  return useQuery({
+    queryKey: ["sync", "auto-resolution"],
+    queryFn: () => api.get<AutoResolutionRuleListResponse>("/admin/sync/auto-resolution"),
+  });
+}
+
+export function useAutoResolutionRule(ruleId: string | null) {
+  return useQuery({
+    queryKey: ["sync", "auto-resolution", ruleId],
+    queryFn: () => api.get<AutoResolutionRule>(`/admin/sync/auto-resolution/${ruleId}`),
+    enabled: !!ruleId,
+  });
+}
+
+export function useCreateAutoResolutionRule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: AutoResolutionRuleCreate) =>
+      api.post<AutoResolutionRule>("/admin/sync/auto-resolution", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync", "auto-resolution"] });
+    },
+  });
+}
+
+export function useUpdateAutoResolutionRule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ ruleId, data }: { ruleId: string; data: AutoResolutionRuleUpdate }) =>
+      api.patch<AutoResolutionRule>(`/admin/sync/auto-resolution/${ruleId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync", "auto-resolution"] });
+    },
+  });
+}
+
+export function useDeleteAutoResolutionRule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (ruleId: string) =>
+      api.delete(`/admin/sync/auto-resolution/${ruleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync", "auto-resolution"] });
+    },
+  });
+}
+
+export function useReorderAutoResolutionRules() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: AutoResolutionRuleReorderRequest) =>
+      api.post<AutoResolutionRuleListResponse>("/admin/sync/auto-resolution/reorder", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync", "auto-resolution"] });
     },
   });
 }

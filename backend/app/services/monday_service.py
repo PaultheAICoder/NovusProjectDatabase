@@ -1017,7 +1017,70 @@ class MondayService:
                 if hasattr(record, npd_field):
                     npd_field_value = getattr(record, npd_field)
 
-            # Create conflict record
+            # Check for auto-resolution rule
+            from app.services.auto_resolution_service import AutoResolutionService
+
+            auto_resolve_service = AutoResolutionService(self.db)
+            can_auto_resolve, rule, resolution_type = (
+                await auto_resolve_service.try_auto_resolve(
+                    entity_type=entity_type,
+                    entity_id=record.id,
+                    conflict_fields=[column_id],
+                    npd_data={column_id: npd_field_value},
+                    monday_data={column_id: new_value},
+                )
+            )
+
+            if can_auto_resolve and resolution_type and rule:
+                # Auto-resolve the conflict
+                if resolution_type == "keep_npd":
+                    # Keep NPD data, push to Monday (existing behavior in _apply_keep_npd)
+                    # For simplicity, we just skip the Monday update and keep NPD value
+                    logger.info(
+                        "auto_resolved_conflict_keep_npd",
+                        entity_type=entity_type,
+                        entity_id=str(record.id),
+                        rule_id=str(rule.id),
+                        field=column_id,
+                    )
+                    # Don't update NPD, Monday will be updated on next outbound sync
+                    return {
+                        "action": "auto_resolved",
+                        "entity_id": str(record.id),
+                        "entity_type": entity_type,
+                        "resolution": "keep_npd",
+                        "rule_id": str(rule.id),
+                    }
+                else:  # keep_monday
+                    # Apply Monday data to NPD
+                    parsed_value = self._parse_webhook_column_value(
+                        column_id, new_value
+                    )
+                    if column_id in column_mapping:
+                        npd_field = column_mapping[column_id]
+                        if hasattr(record, npd_field):
+                            setattr(record, npd_field, parsed_value)
+
+                    record.sync_status = RecordSyncStatus.SYNCED
+                    record.monday_last_synced = datetime.now(UTC)
+                    await self.db.flush()
+
+                    logger.info(
+                        "auto_resolved_conflict_keep_monday",
+                        entity_type=entity_type,
+                        entity_id=str(record.id),
+                        rule_id=str(rule.id),
+                        field=column_id,
+                    )
+                    return {
+                        "action": "auto_resolved",
+                        "entity_id": str(record.id),
+                        "entity_type": entity_type,
+                        "resolution": "keep_monday",
+                        "rule_id": str(rule.id),
+                    }
+
+            # No auto-resolution rule, create conflict record (existing code)
             conflict = SyncConflict(
                 entity_type=entity_type,
                 entity_id=record.id,

@@ -71,6 +71,13 @@ class SyncQueueOperation(str, Enum):
     DELETE = "delete"
 
 
+class PreferredSource(str, Enum):
+    """Preferred source for auto-resolution."""
+
+    NPD = "npd"
+    MONDAY = "monday"
+
+
 class MondaySyncLog(Base):
     """Log of Monday.com sync operations."""
 
@@ -271,3 +278,55 @@ class SyncQueue(Base):
 
     def __repr__(self) -> str:
         return f"<SyncQueue {self.entity_type} {self.entity_id} {self.status.value}>"
+
+
+class AutoResolutionRule(Base):
+    """Rule for automatic conflict resolution."""
+
+    __tablename__ = "auto_resolution_rules"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    entity_type: Mapped[str] = mapped_column(
+        String(50),  # 'contact', 'organization', or '*' for all
+        nullable=False,
+        index=True,
+    )
+    field_name: Mapped[str | None] = mapped_column(
+        String(100),  # specific field or null for entity-wide
+        nullable=True,
+    )
+    preferred_source: Mapped[PreferredSource] = mapped_column(
+        SAEnum(PreferredSource, native_enum=False),
+        nullable=False,
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=True,
+    )
+    priority: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<AutoResolutionRule {self.name} {self.entity_type}>"

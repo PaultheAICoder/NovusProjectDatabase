@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.monday_sync import (
     MondaySyncStatus,
     MondaySyncType,
+    PreferredSource,
     RecordSyncStatus,
     SyncDirection,
     SyncQueueDirection,
@@ -71,6 +72,13 @@ __all__ = [
     # Sync queue list response
     "SyncQueueListResponse",
     "SyncQueueStatsResponse",
+    # Auto-resolution rule schemas
+    "PreferredSource",
+    "AutoResolutionRuleCreate",
+    "AutoResolutionRuleUpdate",
+    "AutoResolutionRuleResponse",
+    "AutoResolutionRuleListResponse",
+    "AutoResolutionRuleReorderRequest",
 ]
 
 
@@ -387,3 +395,61 @@ class SyncQueueStatsResponse(BaseModel):
     in_progress: int
     completed: int
     failed: int
+
+
+# ============== Auto-Resolution Rule Schemas ==============
+
+
+class AutoResolutionRuleCreate(BaseModel):
+    """Request to create an auto-resolution rule."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    entity_type: str = Field(..., pattern=r"^(contact|organization|\*)$")
+    field_name: str | None = Field(None, max_length=100)
+    preferred_source: PreferredSource
+    is_enabled: bool = True
+    priority: int = Field(default=0, ge=0)
+
+
+class AutoResolutionRuleUpdate(BaseModel):
+    """Request to update an auto-resolution rule."""
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    entity_type: str | None = Field(None, pattern=r"^(contact|organization|\*)$")
+    field_name: str | None = None
+    preferred_source: PreferredSource | None = None
+    is_enabled: bool | None = None
+    priority: int | None = Field(None, ge=0)
+
+
+class AutoResolutionRuleResponse(BaseModel):
+    """Response with auto-resolution rule details."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    entity_type: str
+    field_name: str | None
+    preferred_source: PreferredSource
+    is_enabled: bool
+    priority: int
+    created_at: datetime
+    created_by_id: UUID | None = None
+
+
+class AutoResolutionRuleListResponse(BaseModel):
+    """List of auto-resolution rules."""
+
+    rules: list[AutoResolutionRuleResponse]
+    total: int
+
+
+class AutoResolutionRuleReorderRequest(BaseModel):
+    """Request to reorder rule priorities."""
+
+    rule_ids: list[UUID] = Field(
+        ...,
+        min_length=1,
+        description="Rule IDs in desired priority order (first = highest)",
+    )

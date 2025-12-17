@@ -29,6 +29,11 @@ from app.schemas.import_ import (
     ImportRowsValidateResponse,
 )
 from app.schemas.monday import (
+    AutoResolutionRuleCreate,
+    AutoResolutionRuleListResponse,
+    AutoResolutionRuleReorderRequest,
+    AutoResolutionRuleResponse,
+    AutoResolutionRuleUpdate,
     BulkConflictResolveRequest,
     BulkConflictResolveResponse,
     BulkResolveResult,
@@ -54,6 +59,7 @@ from app.schemas.tag import (
     TagResponse,
     TagUpdate,
 )
+from app.services.auto_resolution_service import AutoResolutionService
 from app.services.conflict_service import ConflictService
 from app.services.import_service import ImportService
 from app.services.monday_service import (
@@ -925,3 +931,155 @@ async def retry_sync_queue_item(
         )
 
     return SyncQueueItemResponse.model_validate(item)
+
+
+# ============== Auto-Resolution Rules (Admin Only) ==============
+
+
+@router.get("/sync/auto-resolution", response_model=AutoResolutionRuleListResponse)
+@limiter.limit(admin_limit)
+async def list_auto_resolution_rules(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> AutoResolutionRuleListResponse:
+    """List all auto-resolution rules ordered by priority. Admin only."""
+    service = AutoResolutionService(db)
+    rules, total = await service.list_rules()
+
+    return AutoResolutionRuleListResponse(
+        rules=[AutoResolutionRuleResponse.model_validate(r) for r in rules],
+        total=total,
+    )
+
+
+@router.post(
+    "/sync/auto-resolution",
+    response_model=AutoResolutionRuleResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit(admin_limit)
+async def create_auto_resolution_rule(
+    request: Request,
+    data: AutoResolutionRuleCreate,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> AutoResolutionRuleResponse:
+    """Create a new auto-resolution rule. Admin only."""
+    service = AutoResolutionService(db)
+
+    rule = await service.create(
+        name=data.name,
+        entity_type=data.entity_type,
+        field_name=data.field_name,
+        preferred_source=data.preferred_source,
+        is_enabled=data.is_enabled,
+        priority=data.priority,
+        created_by_id=admin_user.id,
+    )
+
+    return AutoResolutionRuleResponse.model_validate(rule)
+
+
+@router.get(
+    "/sync/auto-resolution/{rule_id}",
+    response_model=AutoResolutionRuleResponse,
+)
+@limiter.limit(admin_limit)
+async def get_auto_resolution_rule(
+    request: Request,
+    rule_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> AutoResolutionRuleResponse:
+    """Get a specific auto-resolution rule. Admin only."""
+    service = AutoResolutionService(db)
+    rule = await service.get_by_id(rule_id)
+
+    if not rule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Rule not found",
+        )
+
+    return AutoResolutionRuleResponse.model_validate(rule)
+
+
+@router.patch(
+    "/sync/auto-resolution/{rule_id}",
+    response_model=AutoResolutionRuleResponse,
+)
+@limiter.limit(admin_limit)
+async def update_auto_resolution_rule(
+    request: Request,
+    rule_id: UUID,
+    data: AutoResolutionRuleUpdate,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> AutoResolutionRuleResponse:
+    """Update an auto-resolution rule. Admin only."""
+    service = AutoResolutionService(db)
+
+    rule = await service.update(
+        rule_id=rule_id,
+        name=data.name,
+        entity_type=data.entity_type,
+        field_name=data.field_name,
+        preferred_source=data.preferred_source,
+        is_enabled=data.is_enabled,
+        priority=data.priority,
+    )
+
+    if not rule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Rule not found",
+        )
+
+    return AutoResolutionRuleResponse.model_validate(rule)
+
+
+@router.delete(
+    "/sync/auto-resolution/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@limiter.limit(admin_limit)
+async def delete_auto_resolution_rule(
+    request: Request,
+    rule_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> None:
+    """Delete an auto-resolution rule. Admin only."""
+    service = AutoResolutionService(db)
+
+    deleted = await service.delete(rule_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Rule not found",
+        )
+
+
+@router.post(
+    "/sync/auto-resolution/reorder",
+    response_model=AutoResolutionRuleListResponse,
+)
+@limiter.limit(admin_limit)
+async def reorder_auto_resolution_rules(
+    request: Request,
+    data: AutoResolutionRuleReorderRequest,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> AutoResolutionRuleListResponse:
+    """Reorder auto-resolution rules by priority. Admin only.
+
+    First rule in the list gets highest priority.
+    """
+    service = AutoResolutionService(db)
+    rules = await service.reorder(data.rule_ids)
+
+    return AutoResolutionRuleListResponse(
+        rules=[AutoResolutionRuleResponse.model_validate(r) for r in rules],
+        total=len(rules),
+    )

@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { Settings, Tag as TagIcon, Trash2, Edit, Loader2, Merge } from "lucide-react";
+import { AutoResolutionCard } from "@/components/admin/AutoResolutionCard";
 import { ConflictCard } from "@/components/admin/ConflictCard";
 import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
 import { SyncQueueCard } from "@/components/admin/SyncQueueCard";
@@ -299,6 +300,9 @@ export function AdminPage() {
 
       {/* Sync Conflicts Section */}
       <ConflictCard />
+
+      {/* Auto-Resolution Rules Section */}
+      <AutoResolutionCard />
 
       {/* Sync Queue Section */}
       <SyncQueueCard />

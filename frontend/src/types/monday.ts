@@ -165,3 +165,52 @@ export interface SyncQueueStats {
   completed: number;
   failed: number;
 }
+
+// ============== Auto-Resolution Rule Types ==============
+
+/** Preferred source for auto-resolution. */
+export type PreferredSource = "npd" | "monday";
+
+/** Auto-resolution rule from backend. */
+export interface AutoResolutionRule {
+  id: string;
+  name: string;
+  entity_type: "contact" | "organization" | "*";
+  field_name: string | null;
+  preferred_source: PreferredSource;
+  is_enabled: boolean;
+  priority: number;
+  created_at: string;
+  created_by_id: string | null;
+}
+
+/** Request to create an auto-resolution rule. */
+export interface AutoResolutionRuleCreate {
+  name: string;
+  entity_type: "contact" | "organization" | "*";
+  field_name?: string | null;
+  preferred_source: PreferredSource;
+  is_enabled?: boolean;
+  priority?: number;
+}
+
+/** Request to update an auto-resolution rule. */
+export interface AutoResolutionRuleUpdate {
+  name?: string;
+  entity_type?: "contact" | "organization" | "*";
+  field_name?: string | null;
+  preferred_source?: PreferredSource;
+  is_enabled?: boolean;
+  priority?: number;
+}
+
+/** List of auto-resolution rules response. */
+export interface AutoResolutionRuleListResponse {
+  rules: AutoResolutionRule[];
+  total: number;
+}
+
+/** Request to reorder rule priorities. */
+export interface AutoResolutionRuleReorderRequest {
+  rule_ids: string[];
+}
