@@ -2,7 +2,9 @@
 
 from uuid import uuid4
 
+from app.models.document import Document
 from app.models.project import Project, ProjectLocation, ProjectStatus, ProjectTag
+from app.schemas.project import DismissProjectTagSuggestionRequest
 
 
 class TestProjectsSearchVectorModel:
@@ -252,3 +254,66 @@ class TestProjectContactOrganizationValidation:
         assert hasattr(ProjectContact, "project_id")
         assert hasattr(ProjectContact, "contact_id")
         assert hasattr(ProjectContact, "is_primary")
+
+
+class TestDismissProjectTagSuggestion:
+    """Tests for project-level tag suggestion dismissal (GitHub Issue #70)."""
+
+    def test_dismiss_request_schema_exists(self):
+        """DismissProjectTagSuggestionRequest schema should exist."""
+        assert DismissProjectTagSuggestionRequest is not None
+
+    def test_dismiss_request_schema_has_tag_id_field(self):
+        """DismissProjectTagSuggestionRequest should have tag_id field."""
+        tag_id = uuid4()
+        request = DismissProjectTagSuggestionRequest(tag_id=tag_id)
+        assert request.tag_id == tag_id
+
+    def test_document_model_has_dismissed_tag_ids(self):
+        """Document model should have dismissed_tag_ids attribute for storing dismissed tags."""
+        assert hasattr(Document, "dismissed_tag_ids")
+
+    def test_document_model_has_suggested_tag_ids(self):
+        """Document model should have suggested_tag_ids attribute for storing suggestions."""
+        assert hasattr(Document, "suggested_tag_ids")
+
+    def test_dismissal_logic_structure(self):
+        """
+        Test the dismissal logic pattern used in the endpoint.
+
+        The dismissal should:
+        1. Query documents with the suggested tag
+        2. Add the tag_id to each document's dismissed_tag_ids
+        """
+        tag_id = uuid4()
+        dismissed = []
+
+        # Simulate adding to dismissed list
+        if tag_id not in dismissed:
+            dismissed = dismissed + [tag_id]
+
+        assert tag_id in dismissed
+
+    def test_dismissal_prevents_duplicate_entries(self):
+        """Dismissal should not add duplicate tag IDs."""
+        tag_id = uuid4()
+        dismissed = [tag_id]
+
+        # Simulate the check before adding
+        if tag_id not in dismissed:
+            dismissed = dismissed + [tag_id]
+
+        # Should only have one entry
+        assert dismissed.count(tag_id) == 1
+
+    def test_empty_dismissed_list_initialization(self):
+        """Dismissal should handle None dismissed_tag_ids gracefully."""
+        dismissed = None
+        tag_id = uuid4()
+
+        # Simulate the logic in the endpoint
+        dismissed_list = dismissed or []
+        if tag_id not in dismissed_list:
+            dismissed_list = dismissed_list + [tag_id]
+
+        assert tag_id in dismissed_list

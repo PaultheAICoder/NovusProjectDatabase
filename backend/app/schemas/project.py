@@ -153,3 +153,9 @@ class ProjectDetail(ProjectResponse):
     engagement_period: str | None = None
     created_by: UserResponse
     updated_by: UserResponse
+
+
+class DismissProjectTagSuggestionRequest(BaseModel):
+    """Request to dismiss a tag suggestion for all project documents."""
+
+    tag_id: UUID

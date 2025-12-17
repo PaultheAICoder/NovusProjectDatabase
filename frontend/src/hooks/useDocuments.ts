@@ -122,3 +122,19 @@ export function useDismissTagSuggestion(projectId: string) {
     },
   });
 }
+
+export function useDismissProjectTagSuggestion(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (tagId: string) =>
+      api.post(`/projects/${projectId}/dismiss-tag-suggestion`, {
+        tag_id: tagId,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "document-tag-suggestions"],
+      });
+    },
+  });
+}

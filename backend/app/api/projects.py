@@ -22,6 +22,7 @@ from app.models.document import Document
 from app.schemas.base import PaginatedResponse
 from app.schemas.import_ import AutofillRequest, AutofillResponse
 from app.schemas.project import (
+    DismissProjectTagSuggestionRequest,
     ProjectCreate,
     ProjectDetail,
     ProjectResponse,
@@ -571,6 +572,49 @@ async def get_project_document_tag_suggestions(
     tags = tag_result.scalars().all()
 
     return [TagResponse.model_validate(t) for t in tags]
+
+
+@router.post(
+    "/{project_id}/dismiss-tag-suggestion", status_code=status.HTTP_204_NO_CONTENT
+)
+@limiter.limit(crud_limit)
+async def dismiss_project_tag_suggestion(
+    request: Request,
+    project_id: UUID,
+    data: DismissProjectTagSuggestionRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """
+    Dismiss a tag suggestion for all documents in a project.
+
+    The dismissed tag will no longer appear in aggregated suggestions
+    for this project. Applies dismissal to all documents that suggest this tag.
+    """
+    # Verify project exists
+    project = await db.scalar(select(Project).where(Project.id == project_id))
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    # Find all documents with this tag suggestion
+    doc_result = await db.execute(
+        select(Document).where(
+            Document.project_id == project_id,
+            Document.suggested_tag_ids.contains([data.tag_id]),
+        )
+    )
+    documents = doc_result.scalars().all()
+
+    # Add to dismissed_tag_ids for each document
+    for doc in documents:
+        dismissed = doc.dismissed_tag_ids or []
+        if data.tag_id not in dismissed:
+            doc.dismissed_tag_ids = dismissed + [data.tag_id]
+
+    await db.commit()
 
 
 @router.get("/export/csv")

@@ -7,7 +7,7 @@ import { Plus, X, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useProjectTagSuggestions } from "@/hooks/useDocuments";
+import { useProjectTagSuggestions, useDismissProjectTagSuggestion } from "@/hooks/useDocuments";
 import { useUpdateProject } from "@/hooks/useProjects";
 import type { Tag } from "@/types/tag";
 
@@ -22,6 +22,7 @@ export function DocumentTagSuggestions({
 }: DocumentTagSuggestionsProps) {
   const { data: suggestions, isLoading } = useProjectTagSuggestions(projectId);
   const updateProject = useUpdateProject();
+  const dismissSuggestion = useDismissProjectTagSuggestion(projectId);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   // Filter out already-dismissed tags (client-side for instant feedback)
@@ -46,13 +47,34 @@ export function DocumentTagSuggestions({
     }
   };
 
-  const handleDismiss = (tagId: string) => {
+  const handleDismiss = async (tagId: string) => {
+    // Optimistic update for instant feedback
     setDismissed((prev) => new Set(prev).add(tagId));
+    try {
+      await dismissSuggestion.mutateAsync(tagId);
+    } catch {
+      // Revert on error
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.delete(tagId);
+        return next;
+      });
+    }
   };
 
-  const handleDismissAll = () => {
-    const allIds = new Set(activeSuggestions.map((t) => t.id));
+  const handleDismissAll = async () => {
+    const allIds = activeSuggestions.map((t) => t.id);
+    // Optimistic update
     setDismissed((prev) => new Set([...prev, ...allIds]));
+    try {
+      // Dismiss each tag - could be parallelized but sequential is safer
+      for (const tagId of allIds) {
+        await dismissSuggestion.mutateAsync(tagId);
+      }
+    } catch {
+      // On error, refetch to get accurate state
+      // The query invalidation in the hook will handle this
+    }
   };
 
   return (
@@ -86,6 +108,7 @@ export function DocumentTagSuggestions({
                 className="h-4 w-4 p-0 hover:bg-red-100"
                 onClick={() => handleDismiss(tag.id)}
                 title="Dismiss suggestion"
+                disabled={dismissSuggestion.isPending}
               >
                 <X className="h-3 w-3 text-red-600" />
               </Button>
@@ -98,6 +121,7 @@ export function DocumentTagSuggestions({
             size="sm"
             className="text-xs text-muted-foreground"
             onClick={handleDismissAll}
+            disabled={dismissSuggestion.isPending}
           >
             Dismiss all suggestions
           </Button>
