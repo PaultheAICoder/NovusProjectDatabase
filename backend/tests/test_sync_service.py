@@ -310,12 +310,21 @@ class TestSyncContactToMonday:
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.rollback = AsyncMock()
 
-        # Second session - update status after failure
+        # Second session - enqueue for retry (no existing queue item)
         mock_db2 = AsyncMock()
         mock_result2 = MagicMock()
-        mock_result2.scalar_one_or_none.return_value = mock_contact
+        mock_result2.scalar_one_or_none.return_value = None  # No existing queue item
         mock_db2.execute = AsyncMock(return_value=mock_result2)
+        mock_db2.add = MagicMock()
+        mock_db2.flush = AsyncMock()
         mock_db2.commit = AsyncMock()
+
+        # Third session - update sync status to pending
+        mock_db3 = AsyncMock()
+        mock_result3 = MagicMock()
+        mock_result3.scalar_one_or_none.return_value = mock_contact
+        mock_db3.execute = AsyncMock(return_value=mock_result3)
+        mock_db3.commit = AsyncMock()
 
         # Setup context managers
         mock_context = AsyncMock()
@@ -326,7 +335,11 @@ class TestSyncContactToMonday:
         mock_context2.__aenter__.return_value = mock_db2
         mock_context2.__aexit__.return_value = None
 
-        mock_session_maker.side_effect = [mock_context, mock_context2]
+        mock_context3 = AsyncMock()
+        mock_context3.__aenter__.return_value = mock_db3
+        mock_context3.__aexit__.return_value = None
+
+        mock_session_maker.side_effect = [mock_context, mock_context2, mock_context3]
 
         # Mock MondayService to raise an exception
         mock_service = AsyncMock()
@@ -594,17 +607,28 @@ class TestSyncOrganizationToMonday:
         mock_org.address_zip = None
         mock_org.address_country = None
 
+        # First session - fetch org
         mock_db = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_org
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.rollback = AsyncMock()
 
+        # Second session - enqueue for retry (no existing queue item)
         mock_db2 = AsyncMock()
         mock_result2 = MagicMock()
-        mock_result2.scalar_one_or_none.return_value = mock_org
+        mock_result2.scalar_one_or_none.return_value = None  # No existing queue item
         mock_db2.execute = AsyncMock(return_value=mock_result2)
+        mock_db2.add = MagicMock()
+        mock_db2.flush = AsyncMock()
         mock_db2.commit = AsyncMock()
+
+        # Third session - update sync status to pending
+        mock_db3 = AsyncMock()
+        mock_result3 = MagicMock()
+        mock_result3.scalar_one_or_none.return_value = mock_org
+        mock_db3.execute = AsyncMock(return_value=mock_result3)
+        mock_db3.commit = AsyncMock()
 
         mock_context = AsyncMock()
         mock_context.__aenter__.return_value = mock_db
@@ -614,7 +638,11 @@ class TestSyncOrganizationToMonday:
         mock_context2.__aenter__.return_value = mock_db2
         mock_context2.__aexit__.return_value = None
 
-        mock_session_maker.side_effect = [mock_context, mock_context2]
+        mock_context3 = AsyncMock()
+        mock_context3.__aenter__.return_value = mock_db3
+        mock_context3.__aexit__.return_value = None
+
+        mock_session_maker.side_effect = [mock_context, mock_context2, mock_context3]
 
         mock_service = AsyncMock()
         mock_service.create_item.side_effect = Exception("API Error")

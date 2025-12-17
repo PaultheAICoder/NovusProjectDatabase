@@ -14,7 +14,12 @@ from app.config import get_settings
 from app.core.logging import get_logger
 from app.database import async_session_maker
 from app.models.contact import Contact
-from app.models.monday_sync import RecordSyncStatus, SyncDirection
+from app.models.monday_sync import (
+    RecordSyncStatus,
+    SyncDirection,
+    SyncQueueDirection,
+    SyncQueueOperation,
+)
 from app.models.organization import Organization
 from app.services.monday_service import MondayColumnFormatter, MondayService
 
@@ -209,14 +214,50 @@ async def sync_contact_to_monday(contact_id: UUID) -> None:
                 )
 
             except Exception as api_error:
-                # API call failed - mark as pending for retry
+                # API call failed - enqueue for retry
                 await db.rollback()
+                error_msg = str(api_error)
                 logger.error(
                     "sync_contact_to_monday_api_failed",
                     contact_id=str(contact_id),
-                    error=str(api_error),
+                    error=error_msg,
                 )
-                # Update sync status to pending (for potential retry)
+
+                # Determine operation type
+                operation = (
+                    SyncQueueOperation.UPDATE
+                    if contact.monday_id
+                    else SyncQueueOperation.CREATE
+                )
+
+                # Enqueue for retry
+                try:
+                    # Import here to avoid circular imports
+                    from app.services.sync_queue_service import SyncQueueService
+
+                    async with async_session_maker() as queue_db:
+                        queue_service = SyncQueueService(queue_db)
+                        await queue_service.enqueue(
+                            entity_type="contact",
+                            entity_id=contact_id,
+                            direction=SyncQueueDirection.TO_MONDAY,
+                            operation=operation,
+                            error_message=error_msg,
+                        )
+                        await queue_db.commit()
+
+                    logger.info(
+                        "sync_contact_queued_for_retry",
+                        contact_id=str(contact_id),
+                    )
+                except Exception as queue_error:
+                    logger.exception(
+                        "failed_to_queue_contact_sync",
+                        contact_id=str(contact_id),
+                        error=str(queue_error),
+                    )
+
+                # Still update sync status to PENDING
                 try:
                     async with async_session_maker() as error_db:
                         result = await error_db.execute(
@@ -355,14 +396,50 @@ async def sync_organization_to_monday(organization_id: UUID) -> None:
                 )
 
             except Exception as api_error:
-                # API call failed - mark as pending for retry
+                # API call failed - enqueue for retry
                 await db.rollback()
+                error_msg = str(api_error)
                 logger.error(
                     "sync_organization_to_monday_api_failed",
                     organization_id=str(organization_id),
-                    error=str(api_error),
+                    error=error_msg,
                 )
-                # Update sync status to pending (for potential retry)
+
+                # Determine operation type
+                operation = (
+                    SyncQueueOperation.UPDATE
+                    if org.monday_id
+                    else SyncQueueOperation.CREATE
+                )
+
+                # Enqueue for retry
+                try:
+                    # Import here to avoid circular imports
+                    from app.services.sync_queue_service import SyncQueueService
+
+                    async with async_session_maker() as queue_db:
+                        queue_service = SyncQueueService(queue_db)
+                        await queue_service.enqueue(
+                            entity_type="organization",
+                            entity_id=organization_id,
+                            direction=SyncQueueDirection.TO_MONDAY,
+                            operation=operation,
+                            error_message=error_msg,
+                        )
+                        await queue_db.commit()
+
+                    logger.info(
+                        "sync_organization_queued_for_retry",
+                        organization_id=str(organization_id),
+                    )
+                except Exception as queue_error:
+                    logger.exception(
+                        "failed_to_queue_organization_sync",
+                        organization_id=str(organization_id),
+                        error=str(queue_error),
+                    )
+
+                # Still update sync status to PENDING
                 try:
                     async with async_session_maker() as error_db:
                         result = await error_db.execute(

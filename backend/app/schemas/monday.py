@@ -11,6 +11,9 @@ from app.models.monday_sync import (
     MondaySyncType,
     RecordSyncStatus,
     SyncDirection,
+    SyncQueueDirection,
+    SyncQueueOperation,
+    SyncQueueStatus,
 )
 
 # Re-export enums for external use
@@ -19,6 +22,9 @@ __all__ = [
     "MondaySyncType",
     "RecordSyncStatus",
     "SyncDirection",
+    "SyncQueueDirection",
+    "SyncQueueOperation",
+    "SyncQueueStatus",
     "MondayFieldMapping",
     "MondayBoardConfig",
     "MondaySyncTriggerRequest",
@@ -40,6 +46,10 @@ __all__ = [
     "MondayWebhookPayload",
     # Inbound sync result
     "InboundSyncResult",
+    # Sync queue schemas
+    "SyncQueueItemResponse",
+    "SyncQueueProcessResult",
+    "SyncQueueManualRetryRequest",
 ]
 
 
@@ -242,3 +252,45 @@ class InboundSyncResult(BaseModel):
     entity_id: UUID | None = Field(None, description="NPD entity ID if applicable")
     monday_item_id: str | None = Field(None, description="Monday.com item ID")
     message: str | None = Field(None, description="Additional details or error message")
+
+
+# Sync queue schemas
+
+
+class SyncQueueItemResponse(BaseModel):
+    """Response with sync queue item details."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    entity_type: str
+    entity_id: UUID
+    direction: SyncQueueDirection
+    operation: SyncQueueOperation
+    status: SyncQueueStatus
+    attempts: int
+    max_attempts: int
+    last_attempt: datetime | None
+    next_retry: datetime | None
+    error_message: str | None
+    created_at: datetime
+
+
+class SyncQueueProcessResult(BaseModel):
+    """Result from processing the sync queue."""
+
+    status: str = Field(..., description="Overall status: success, partial, error")
+    items_processed: int
+    items_succeeded: int
+    items_failed: int
+    items_requeued: int
+    items_max_retries: int
+    errors: list[str] = Field(default_factory=list)
+    timestamp: str
+
+
+class SyncQueueManualRetryRequest(BaseModel):
+    """Request to manually retry a failed queue item."""
+
+    queue_item_id: UUID = Field(..., description="ID of the queue item to retry")
+    reset_attempts: bool = Field(False, description="If True, reset attempt count to 0")

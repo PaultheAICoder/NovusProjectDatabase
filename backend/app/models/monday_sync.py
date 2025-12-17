@@ -47,6 +47,30 @@ class SyncDirection(str, Enum):
     NONE = "none"
 
 
+class SyncQueueStatus(str, Enum):
+    """Status of a queued sync operation."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class SyncQueueDirection(str, Enum):
+    """Direction of queued sync operation."""
+
+    TO_MONDAY = "to_monday"
+    TO_NPD = "to_npd"
+
+
+class SyncQueueOperation(str, Enum):
+    """Type of sync operation."""
+
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+
+
 class MondaySyncLog(Base):
     """Log of Monday.com sync operations."""
 
@@ -171,3 +195,74 @@ class SyncConflict(Base):
 
     def __repr__(self) -> str:
         return f"<SyncConflict {self.entity_type} {self.entity_id}>"
+
+
+class SyncQueue(Base):
+    """Queue of pending sync operations with retry logic."""
+
+    __tablename__ = "sync_queue"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    entity_type: Mapped[str] = mapped_column(
+        String(50),  # 'contact' or 'organization'
+        nullable=False,
+        index=True,
+    )
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    direction: Mapped[SyncQueueDirection] = mapped_column(
+        SAEnum(SyncQueueDirection, native_enum=False),
+        nullable=False,
+    )
+    operation: Mapped[SyncQueueOperation] = mapped_column(
+        SAEnum(SyncQueueOperation, native_enum=False),
+        nullable=False,
+    )
+    payload: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    status: Mapped[SyncQueueStatus] = mapped_column(
+        SAEnum(SyncQueueStatus, native_enum=False),
+        nullable=False,
+        default=SyncQueueStatus.PENDING,
+        index=True,
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=5,
+    )
+    last_attempt: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    next_retry: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    error_message: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return f"<SyncQueue {self.entity_type} {self.entity_id} {self.status.value}>"

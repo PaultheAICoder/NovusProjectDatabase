@@ -10,6 +10,10 @@ from app.models.monday_sync import (
     RecordSyncStatus,
     SyncConflict,
     SyncDirection,
+    SyncQueue,
+    SyncQueueDirection,
+    SyncQueueOperation,
+    SyncQueueStatus,
 )
 from app.models.organization import Organization
 from app.models.project import (
@@ -46,4 +50,8 @@ __all__ = [
     "RecordSyncStatus",
     "SyncConflict",
     "SyncDirection",
+    "SyncQueue",
+    "SyncQueueDirection",
+    "SyncQueueOperation",
+    "SyncQueueStatus",
 ]

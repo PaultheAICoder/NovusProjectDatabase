@@ -15,6 +15,7 @@ from .embedding_service import EmbeddingService
 from .feedback_service import FeedbackService
 from .graph_email import GraphEmailService
 from .search_service import SearchService
+from .sync_queue_service import SyncQueueService, process_sync_queue
 
 __all__ = [
     "AIEnhancementService",
@@ -26,8 +27,10 @@ __all__ = [
     "ParseConfidence",
     "ParseResult",
     "SearchService",
+    "SyncQueueService",
     "extract_issue_number",
     "extract_project_marker",
     "is_reply_email",
     "parse_reply_decision",
+    "process_sync_queue",
 ]

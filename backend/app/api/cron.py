@@ -15,6 +15,7 @@ from app.api.deps import DbSession
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.models.feedback import FeedbackStatus
+from app.schemas.monday import SyncQueueProcessResult
 from app.services import (
     FeedbackService,
     GraphEmailService,
@@ -22,6 +23,7 @@ from app.services import (
     extract_issue_number,
     extract_project_marker,
     parse_reply_decision,
+    process_sync_queue,
 )
 
 logger = get_logger(__name__)
@@ -475,3 +477,57 @@ This follow-up was automatically created when the user replied to the resolution
     )
 
     return results
+
+
+@router.get("/sync-queue", response_model=SyncQueueProcessResult)
+async def process_sync_queue_endpoint(
+    authorization: str | None = Header(None),
+) -> SyncQueueProcessResult:
+    """Process pending sync queue items.
+
+    This endpoint should be called by an external cron job every minute.
+    Protected by CRON_SECRET bearer token.
+
+    Processing flow:
+    1. Verify CRON_SECRET bearer token
+    2. Fetch pending queue items where next_retry <= now
+    3. For each item:
+       - Mark as in_progress
+       - Execute sync operation
+       - On success: mark as completed
+       - On failure: increment attempts, calculate next_retry
+       - If max_attempts reached: mark as failed
+    4. Return summary
+
+    Backoff schedule:
+    - Attempt 1: Immediate (initial failure)
+    - Attempt 2: +1 minute
+    - Attempt 3: +5 minutes
+    - Attempt 4: +15 minutes
+    - Attempt 5: +60 minutes (max retries)
+    """
+    # Verify cron secret
+    if not verify_cron_secret(authorization):
+        logger.warning("cron_sync_queue_unauthorized")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing CRON_SECRET",
+        )
+
+    logger.info("cron_sync_queue_triggered")
+
+    try:
+        result = await process_sync_queue()
+        return SyncQueueProcessResult(**result)
+    except Exception as e:
+        logger.exception("cron_sync_queue_error", error=str(e))
+        return SyncQueueProcessResult(
+            status="error",
+            items_processed=0,
+            items_succeeded=0,
+            items_failed=0,
+            items_requeued=0,
+            items_max_retries=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
