@@ -63,19 +63,31 @@ export function ConflictCard() {
     setSelectedConflict(null);
   };
 
-  const handleResolve = async (resolution: ConflictResolutionType) => {
+  const handleResolve = async (
+    resolution: ConflictResolutionType,
+    mergeSelections?: Record<string, "npd" | "monday">
+  ) => {
     if (!selectedConflict) return;
 
     try {
       await resolveConflict.mutateAsync({
         conflictId: selectedConflict.id,
-        data: { resolution_type: resolution },
+        data: {
+          resolution_type: resolution,
+          merge_selections: mergeSelections,
+        },
       });
 
+      // Build resolution label based on type
+      const resolutionLabel =
+        resolution === "merge"
+          ? "merged field selections"
+          : resolution === "keep_npd"
+            ? "NPD"
+            : "Monday.com";
+
       setSuccessMessage(
-        `Conflict resolved successfully using ${
-          resolution === "keep_npd" ? "NPD" : "Monday.com"
-        } data.`
+        `Conflict resolved successfully using ${resolutionLabel}.`
       );
       setSelectedConflict(null);
 
