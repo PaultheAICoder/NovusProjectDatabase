@@ -1,6 +1,7 @@
 """Monday.com sync Pydantic schemas."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,6 +29,9 @@ __all__ = [
     "MondayBoardInfo",
     "MondayBoardsResponse",
     "SyncConflictResponse",
+    "MondayItemMutationResponse",
+    "MondayCreateItemRequest",
+    "MondayUpdateItemRequest",
 ]
 
 
@@ -129,3 +133,29 @@ class SyncConflictResponse(BaseModel):
     detected_at: datetime
     resolved_at: datetime | None
     resolution_type: str | None
+
+
+class MondayItemMutationResponse(BaseModel):
+    """Response from Monday.com item mutation (create/update/delete)."""
+
+    id: str = Field(..., description="Monday.com item ID")
+    name: str | None = Field(None, description="Item name (not returned by delete)")
+
+
+class MondayCreateItemRequest(BaseModel):
+    """Request to create a new item in Monday.com."""
+
+    board_id: str = Field(..., description="Target board ID")
+    item_name: str = Field(..., description="Name for the new item")
+    column_values: dict[str, Any] | None = Field(
+        None, description="Column values (column_id -> value)"
+    )
+    group_id: str | None = Field(None, description="Target group ID")
+
+
+class MondayUpdateItemRequest(BaseModel):
+    """Request to update an existing Monday.com item."""
+
+    board_id: str = Field(..., description="Board containing the item")
+    item_id: str = Field(..., description="Item ID to update")
+    column_values: dict[str, Any] = Field(..., description="Column values to update")

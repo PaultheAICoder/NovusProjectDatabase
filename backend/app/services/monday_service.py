@@ -1,5 +1,8 @@
 """Monday.com integration service."""
 
+import asyncio
+import json
+import random
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -18,6 +21,63 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 MONDAY_API_URL = "https://api.monday.com/v2"
+
+
+class MondayAPIError(Exception):
+    """Base exception for Monday.com API errors."""
+
+    pass
+
+
+class MondayRateLimitError(MondayAPIError):
+    """Raised when Monday.com API rate limit is hit."""
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class MondayColumnFormatter:
+    """Utility class for formatting Monday.com column values."""
+
+    @staticmethod
+    def format_email(email: str, display_text: str | None = None) -> dict[str, str]:
+        """Format email column value.
+
+        Monday.com email columns require both 'email' and 'text' fields.
+        """
+        return {
+            "email": email,
+            "text": display_text or email,
+        }
+
+    @staticmethod
+    def format_phone(phone: str, country_code: str = "US") -> dict[str, str]:
+        """Format phone column value.
+
+        Monday.com phone columns require 'phone' and 'countryShortName' (ISO-2).
+        """
+        return {
+            "phone": phone,
+            "countryShortName": country_code.upper(),
+        }
+
+    @staticmethod
+    def format_text(value: str) -> str:
+        """Format text column value (simple string)."""
+        return value
+
+    @staticmethod
+    def format_status(label: str) -> dict[str, str]:
+        """Format status column value."""
+        return {"label": label}
+
+    @staticmethod
+    def format_date(value: datetime | str) -> str:
+        """Format date column value (YYYY-MM-DD string)."""
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d")
+        return value
 
 
 class MondayService:
@@ -70,6 +130,65 @@ class MondayService:
             raise ValueError(f"Monday API error: {data['errors']}")
 
         return data.get("data", {})
+
+    async def _execute_with_retry(
+        self,
+        query: str,
+        variables: dict[str, Any] | None = None,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+    ) -> dict[str, Any]:
+        """Execute GraphQL query with exponential backoff retry on rate limits.
+
+        Args:
+            query: GraphQL query/mutation string
+            variables: Query variables
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds (doubles each retry)
+
+        Returns:
+            Response data from Monday API
+
+        Raises:
+            MondayAPIError: If all retries fail
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                return await self._execute_query(query, variables)
+            except ValueError as e:
+                error_str = str(e)
+
+                # Check if this is a rate limit error
+                if (
+                    "rate limit" in error_str.lower()
+                    or "complexity" in error_str.lower()
+                ):
+                    if attempt < max_retries:
+                        # Calculate delay with jitter
+                        delay = base_delay * (2**attempt) + random.uniform(0, 1)
+                        logger.warning(
+                            "monday_rate_limit_retry",
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                            delay_seconds=delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        raise MondayRateLimitError(
+                            f"Rate limit exceeded after {max_retries} retries"
+                        )
+
+                # Non-rate-limit error - don't retry
+                last_error = e
+                break
+
+        if last_error:
+            raise MondayAPIError(f"Monday API error: {last_error}")
+
+        raise MondayAPIError("Unexpected error in retry logic")
 
     async def get_boards(self, limit: int = 50) -> list[dict[str, Any]]:
         """Get list of accessible boards."""
@@ -146,6 +265,165 @@ class MondayService:
         next_cursor = page.get("cursor")
 
         return items, next_cursor
+
+    async def create_item(
+        self,
+        board_id: str,
+        item_name: str,
+        column_values: dict[str, Any] | None = None,
+        group_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a new item in a Monday.com board.
+
+        Args:
+            board_id: The board ID to create the item in
+            item_name: Name of the new item
+            column_values: Dict mapping column IDs to formatted values
+            group_id: Optional group ID to place the item in
+
+        Returns:
+            Dict with 'id' and 'name' of created item
+
+        Raises:
+            MondayAPIError: If creation fails
+        """
+        # Build column_values JSON string if provided
+        column_values_str = json.dumps(column_values) if column_values else None
+
+        mutation = """
+        mutation create_item(
+            $board_id: ID!,
+            $item_name: String!,
+            $column_values: JSON,
+            $group_id: String
+        ) {
+            create_item(
+                board_id: $board_id,
+                item_name: $item_name,
+                column_values: $column_values,
+                group_id: $group_id
+            ) {
+                id
+                name
+            }
+        }
+        """
+
+        variables: dict[str, Any] = {
+            "board_id": board_id,
+            "item_name": item_name,
+        }
+
+        if column_values_str:
+            variables["column_values"] = column_values_str
+        if group_id:
+            variables["group_id"] = group_id
+
+        data = await self._execute_with_retry(mutation, variables)
+
+        created_item = data.get("create_item", {})
+
+        logger.info(
+            "monday_item_created",
+            board_id=board_id,
+            item_id=created_item.get("id"),
+            item_name=item_name,
+        )
+
+        return created_item
+
+    async def update_item(
+        self,
+        board_id: str,
+        item_id: str,
+        column_values: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Update an existing item in Monday.com.
+
+        Args:
+            board_id: The board ID containing the item
+            item_id: The item ID to update
+            column_values: Dict mapping column IDs to formatted values
+
+        Returns:
+            Dict with 'id' and 'name' of updated item
+
+        Raises:
+            MondayAPIError: If update fails
+        """
+        column_values_str = json.dumps(column_values)
+
+        mutation = """
+        mutation change_multiple_column_values(
+            $board_id: ID!,
+            $item_id: ID!,
+            $column_values: JSON!
+        ) {
+            change_multiple_column_values(
+                board_id: $board_id,
+                item_id: $item_id,
+                column_values: $column_values
+            ) {
+                id
+                name
+            }
+        }
+        """
+
+        variables = {
+            "board_id": board_id,
+            "item_id": item_id,
+            "column_values": column_values_str,
+        }
+
+        data = await self._execute_with_retry(mutation, variables)
+
+        updated_item = data.get("change_multiple_column_values", {})
+
+        logger.info(
+            "monday_item_updated",
+            board_id=board_id,
+            item_id=item_id,
+            updated_fields=list(column_values.keys()),
+        )
+
+        return updated_item
+
+    async def delete_item(
+        self,
+        item_id: str,
+    ) -> dict[str, Any]:
+        """Delete an item from Monday.com.
+
+        Args:
+            item_id: The item ID to delete
+
+        Returns:
+            Dict with 'id' of deleted item
+
+        Raises:
+            MondayAPIError: If deletion fails
+        """
+        mutation = """
+        mutation delete_item($item_id: ID!) {
+            delete_item(item_id: $item_id) {
+                id
+            }
+        }
+        """
+
+        variables = {"item_id": item_id}
+
+        data = await self._execute_with_retry(mutation, variables)
+
+        deleted_item = data.get("delete_item", {})
+
+        logger.info(
+            "monday_item_deleted",
+            item_id=item_id,
+        )
+
+        return deleted_item
 
     async def sync_organizations(
         self,

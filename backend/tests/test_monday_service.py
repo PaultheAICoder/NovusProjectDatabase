@@ -347,3 +347,298 @@ class TestMondayServiceSyncStatus:
         assert status["last_org_sync"] is None
         assert status["last_contact_sync"] is None
         assert status["recent_logs"] == []
+
+
+class TestMondayColumnFormatter:
+    """Tests for MondayColumnFormatter utility class."""
+
+    def test_format_email(self):
+        """Test email column formatting."""
+        from app.services.monday_service import MondayColumnFormatter
+
+        result = MondayColumnFormatter.format_email("test@example.com")
+        assert result == {"email": "test@example.com", "text": "test@example.com"}
+
+        result = MondayColumnFormatter.format_email("test@example.com", "Contact Email")
+        assert result == {"email": "test@example.com", "text": "Contact Email"}
+
+    def test_format_phone(self):
+        """Test phone column formatting."""
+        from app.services.monday_service import MondayColumnFormatter
+
+        result = MondayColumnFormatter.format_phone("+12025550169")
+        assert result == {"phone": "+12025550169", "countryShortName": "US"}
+
+        result = MondayColumnFormatter.format_phone("+442071234567", "GB")
+        assert result == {"phone": "+442071234567", "countryShortName": "GB"}
+
+    def test_format_phone_lowercase_country_code(self):
+        """Test phone column formatting normalizes country code to uppercase."""
+        from app.services.monday_service import MondayColumnFormatter
+
+        result = MondayColumnFormatter.format_phone("+12025550169", "us")
+        assert result == {"phone": "+12025550169", "countryShortName": "US"}
+
+    def test_format_text(self):
+        """Test text column formatting."""
+        from app.services.monday_service import MondayColumnFormatter
+
+        result = MondayColumnFormatter.format_text("Hello World")
+        assert result == "Hello World"
+
+    def test_format_status(self):
+        """Test status column formatting."""
+        from app.services.monday_service import MondayColumnFormatter
+
+        result = MondayColumnFormatter.format_status("Done")
+        assert result == {"label": "Done"}
+
+    def test_format_date_from_datetime(self):
+        """Test date formatting from datetime object."""
+        from datetime import datetime
+
+        from app.services.monday_service import MondayColumnFormatter
+
+        dt = datetime(2025, 12, 17, 10, 30, 0)
+        result = MondayColumnFormatter.format_date(dt)
+        assert result == "2025-12-17"
+
+    def test_format_date_from_string(self):
+        """Test date formatting passthrough for string."""
+        from app.services.monday_service import MondayColumnFormatter
+
+        result = MondayColumnFormatter.format_date("2025-12-17")
+        assert result == "2025-12-17"
+
+
+class TestMondayServiceMutations:
+    """Tests for Monday.com mutation methods."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_create_item_success(self, mock_settings, monday_service):
+        """Test successful item creation."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "create_item": {"id": "12345", "name": "Test Item"}
+            }
+
+            result = await monday_service.create_item(
+                board_id="board123",
+                item_name="Test Item",
+                column_values={
+                    "email_col": {
+                        "email": "test@example.com",
+                        "text": "test@example.com",
+                    }
+                },
+            )
+
+            assert result["id"] == "12345"
+            assert result["name"] == "Test Item"
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_create_item_without_column_values(
+        self, mock_settings, monday_service
+    ):
+        """Test item creation without column values."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "create_item": {"id": "12345", "name": "Simple Item"}
+            }
+
+            result = await monday_service.create_item(
+                board_id="board123",
+                item_name="Simple Item",
+            )
+
+            assert result["id"] == "12345"
+            assert result["name"] == "Simple Item"
+            # Verify column_values was not included in variables
+            call_args = mock_execute.call_args
+            variables = (
+                call_args[0][1] if call_args[0] else call_args[1].get("variables")
+            )
+            assert "column_values" not in variables
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_create_item_with_group_id(self, mock_settings, monday_service):
+        """Test item creation with group ID."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "create_item": {"id": "12345", "name": "Grouped Item"}
+            }
+
+            result = await monday_service.create_item(
+                board_id="board123",
+                item_name="Grouped Item",
+                group_id="group1",
+            )
+
+            assert result["id"] == "12345"
+            # Verify group_id was included in variables
+            call_args = mock_execute.call_args
+            variables = (
+                call_args[0][1] if call_args[0] else call_args[1].get("variables")
+            )
+            assert variables.get("group_id") == "group1"
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_update_item_success(self, mock_settings, monday_service):
+        """Test successful item update."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "change_multiple_column_values": {"id": "12345", "name": "Updated Item"}
+            }
+
+            result = await monday_service.update_item(
+                board_id="board123",
+                item_id="12345",
+                column_values={"text_col": "Updated value"},
+            )
+
+            assert result["id"] == "12345"
+            assert result["name"] == "Updated Item"
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_delete_item_success(self, mock_settings, monday_service):
+        """Test successful item deletion."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {"delete_item": {"id": "12345"}}
+
+            result = await monday_service.delete_item(item_id="12345")
+
+            assert result["id"] == "12345"
+
+
+class TestMondayServiceRetry:
+    """Tests for retry logic with exponential backoff."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_retry_on_rate_limit(self, mock_settings, monday_service):
+        """Test that rate limit errors trigger retry."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_query") as mock_execute:
+            # First call fails with rate limit, second succeeds
+            mock_execute.side_effect = [
+                ValueError("rate limit exceeded"),
+                {"test": "data"},
+            ]
+
+            # Patch asyncio.sleep to avoid actual delays
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                result = await monday_service._execute_with_retry("query")
+                assert result == {"test": "data"}
+                assert mock_execute.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_retry_on_complexity_error(self, mock_settings, monday_service):
+        """Test that complexity errors also trigger retry."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_query") as mock_execute:
+            mock_execute.side_effect = [
+                ValueError("Query complexity exceeded"),
+                {"test": "data"},
+            ]
+
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                result = await monday_service._execute_with_retry("query")
+                assert result == {"test": "data"}
+                assert mock_execute.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_max_retries_exceeded(self, mock_settings, monday_service):
+        """Test that MondayRateLimitError raised after max retries."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        from app.services.monday_service import MondayRateLimitError
+
+        with patch.object(monday_service, "_execute_query") as mock_execute:
+            mock_execute.side_effect = ValueError("rate limit exceeded")
+
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                with pytest.raises(MondayRateLimitError):
+                    await monday_service._execute_with_retry("query", max_retries=2)
+                # Should have tried 3 times (initial + 2 retries)
+                assert mock_execute.call_count == 3
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_non_rate_limit_error_not_retried(
+        self, mock_settings, monday_service
+    ):
+        """Test that non-rate-limit errors are not retried."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        from app.services.monday_service import MondayAPIError
+
+        with patch.object(monday_service, "_execute_query") as mock_execute:
+            mock_execute.side_effect = ValueError("Invalid column ID")
+
+            with pytest.raises(MondayAPIError):
+                await monday_service._execute_with_retry("query")
+
+            # Should only try once
+            assert mock_execute.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_success_on_first_try(self, mock_settings, monday_service):
+        """Test that successful first try doesn't retry."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_query") as mock_execute:
+            mock_execute.return_value = {"test": "data"}
+
+            result = await monday_service._execute_with_retry("query")
+            assert result == {"test": "data"}
+            assert mock_execute.call_count == 1
