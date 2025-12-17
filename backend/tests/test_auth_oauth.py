@@ -6,6 +6,28 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from jose import jwt
 
+# Disable rate limiting for all direct function call tests
+# by patching the limiter before importing auth module
+pytest_plugins = []
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiting():
+    """Disable rate limiting for direct function calls in tests."""
+    from app.core.rate_limit import limiter
+
+    original_enabled = limiter.enabled
+    limiter.enabled = False
+    yield
+    limiter.enabled = original_enabled
+
+
+def create_mock_request(cookies: dict | None = None) -> MagicMock:
+    """Create a mock Request object for auth tests."""
+    mock_request = MagicMock()
+    mock_request.cookies = cookies or {}
+    return mock_request
+
 
 class TestOAuthStateValidation:
     """Tests for CSRF state parameter validation."""
@@ -15,12 +37,14 @@ class TestOAuthStateValidation:
         """Login endpoint should set oauth_state cookie."""
         from app.api.auth import login
 
+        mock_request = create_mock_request()
+
         with patch("app.api.auth.settings") as mock_settings:
             mock_settings.azure_ad_tenant_id = "test-tenant"
             mock_settings.azure_ad_client_id = "test-client"
             mock_settings.azure_ad_redirect_uri = "http://localhost/callback"
 
-            response = await login()
+            response = await login(mock_request)
 
             # Check redirect contains state parameter
             location = str(response.headers.get("location", ""))
@@ -44,13 +68,15 @@ class TestOAuthStateValidation:
         """Each login request should generate a unique state token."""
         from app.api.auth import login
 
+        mock_request = create_mock_request()
+
         with patch("app.api.auth.settings") as mock_settings:
             mock_settings.azure_ad_tenant_id = "test-tenant"
             mock_settings.azure_ad_client_id = "test-client"
             mock_settings.azure_ad_redirect_uri = "http://localhost/callback"
 
-            response1 = await login()
-            response2 = await login()
+            response1 = await login(mock_request)
+            response2 = await login(mock_request)
 
             # Extract state from both responses
             def get_state_from_response(response):
@@ -641,6 +667,7 @@ class TestOAuthStateSecurityProperties:
         """State should be generated using cryptographically secure randomness."""
         from app.api.auth import login
 
+        mock_request = create_mock_request()
         states = []
         with patch("app.api.auth.settings") as mock_settings:
             mock_settings.azure_ad_tenant_id = "test-tenant"
@@ -649,7 +676,7 @@ class TestOAuthStateSecurityProperties:
 
             # Generate multiple states
             for _ in range(10):
-                response = await login()
+                response = await login(mock_request)
                 location = str(response.headers.get("location", ""))
                 for param in location.split("&"):
                     if param.startswith("state="):

@@ -14,6 +14,7 @@ from app.api.deps import CurrentUser
 from app.config import get_settings
 from app.core.auth import azure_scheme, get_or_create_user
 from app.core.logging import get_logger
+from app.core.rate_limit import auth_limit, limiter
 from app.database import get_db
 from app.schemas.user import UserResponse
 
@@ -29,7 +30,8 @@ JWT_EXPIRATION_HOURS = 24
 
 
 @router.get("/debug")
-async def auth_debug() -> dict:
+@limiter.limit(auth_limit)
+async def auth_debug(request: Request) -> dict:
     """Debug endpoint showing Azure AD configuration (non-sensitive parts)."""
     return {
         "tenant_id": settings.azure_ad_tenant_id,
@@ -41,7 +43,8 @@ async def auth_debug() -> dict:
 
 
 @router.get("/login")
-async def login() -> RedirectResponse:
+@limiter.limit(auth_limit)
+async def login(request: Request) -> RedirectResponse:
     """Initiate Azure AD SSO login.
 
     Redirects to Azure AD for authentication.
@@ -82,6 +85,7 @@ async def login() -> RedirectResponse:
 
 
 @router.get("/callback")
+@limiter.limit(auth_limit)
 async def auth_callback(
     request: Request,
     code: str,
@@ -301,7 +305,9 @@ async def auth_callback(
 
 
 @router.post("/logout")
+@limiter.limit(auth_limit)
 async def logout(
+    request: Request,
     current_user: CurrentUser,  # noqa: ARG001
 ) -> JSONResponse:
     """Log out current user.
@@ -318,7 +324,9 @@ async def logout(
 
 
 @router.get("/me", response_model=UserResponse)
+@limiter.limit(auth_limit)
 async def get_current_user_info(
+    request: Request,
     current_user: CurrentUser,
 ) -> UserResponse:
     """Get current authenticated user info."""
@@ -326,7 +334,9 @@ async def get_current_user_info(
 
 
 @router.post("/test-token")
+@limiter.limit(auth_limit)
 async def create_test_token(
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Create a test session token for E2E testing.

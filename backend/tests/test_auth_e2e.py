@@ -1,8 +1,26 @@
 """Tests for E2E test authentication endpoint."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiting():
+    """Disable rate limiting for direct function calls in tests."""
+    from app.core.rate_limit import limiter
+
+    original_enabled = limiter.enabled
+    limiter.enabled = False
+    yield
+    limiter.enabled = original_enabled
+
+
+def create_mock_request() -> MagicMock:
+    """Create a mock Request object for auth tests."""
+    mock_request = MagicMock()
+    mock_request.cookies = {}
+    return mock_request
 
 
 class TestE2EAuthEndpoint:
@@ -25,12 +43,13 @@ class TestE2EAuthEndpoint:
         from app.api.auth import create_test_token
 
         mock_db = AsyncMock()
+        mock_request = create_mock_request()
 
         with patch("app.api.auth.settings") as mock_settings:
             mock_settings.e2e_test_mode = False
 
             with pytest.raises(HTTPException) as exc_info:
-                await create_test_token(db=mock_db)
+                await create_test_token(request=mock_request, db=mock_db)
 
             assert exc_info.value.status_code == 404
             assert exc_info.value.detail == "Not found"
@@ -44,6 +63,7 @@ class TestE2EAuthEndpoint:
         from app.models.user import UserRole
 
         mock_db = AsyncMock()
+        mock_request = create_mock_request()
 
         # Mock user object
         mock_user = MagicMock()
@@ -59,7 +79,7 @@ class TestE2EAuthEndpoint:
             mock_settings.e2e_test_mode = True
             mock_get_user.return_value = mock_user
 
-            response = await create_test_token(db=mock_db)
+            response = await create_test_token(request=mock_request, db=mock_db)
 
             # Verify response content
             assert response.status_code == 200
