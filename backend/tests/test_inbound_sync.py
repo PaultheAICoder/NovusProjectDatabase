@@ -1,7 +1,7 @@
 """Tests for inbound Monday.com sync functions."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -174,9 +174,17 @@ class TestProcessMondayUpdate:
         assert result["entity_type"] == "contact"
 
     @pytest.mark.asyncio
-    async def test_detects_conflict(self):
+    @patch("app.services.auto_resolution_service.AutoResolutionService")
+    async def test_detects_conflict(self, mock_auto_res_class):
         """Test that conflict is detected when NPD was modified after last sync."""
         from app.services.monday_service import MondayService
+
+        # Mock the auto-resolution service to NOT auto-resolve
+        mock_auto_res_instance = MagicMock()
+        mock_auto_res_instance.try_auto_resolve = AsyncMock(
+            return_value=(False, None, None)
+        )
+        mock_auto_res_class.return_value = mock_auto_res_instance
 
         mock_db = AsyncMock()
         mock_org = MagicMock()

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Settings, Tag as TagIcon, Trash2, Edit, Loader2, Merge } from "lucide-react";
 import { AutoResolutionCard } from "@/components/admin/AutoResolutionCard";
 import { ConflictCard } from "@/components/admin/ConflictCard";
+import { DocumentQueueCard } from "@/components/admin/DocumentQueueCard";
 import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
 import { SyncQueueCard } from "@/components/admin/SyncQueueCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -306,6 +307,9 @@ export function AdminPage() {
 
       {/* Sync Queue Section */}
       <SyncQueueCard />
+
+      {/* Document Processing Queue Section */}
+      <DocumentQueueCard />
 
       {/* Monday.com Integration Section */}
       <MondayConfigCard />

@@ -364,6 +364,139 @@ class DocumentQueueService:
             "failed": stats.get("failed", 0),
         }
 
+    async def get_all_items(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        status: DocumentQueueStatus | None = None,
+    ) -> tuple[list[tuple[DocumentProcessingQueue, str]], int]:
+        """Get all queue items with filtering and pagination.
+
+        Args:
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+            status: Filter by status
+
+        Returns:
+            Tuple of (list of (queue item, document_name) tuples, total count)
+        """
+        from app.models.document import Document
+
+        # Build filters
+        filters = []
+        if status:
+            filters.append(DocumentProcessingQueue.status == status)
+
+        # Build count query
+        count_query = select(func.count(DocumentProcessingQueue.id))
+        if filters:
+            count_query = count_query.where(and_(*filters))
+
+        # Get total count
+        total = await self.db.scalar(count_query) or 0
+
+        # Build items query with join for document name
+        items_query = select(DocumentProcessingQueue, Document.display_name).join(
+            Document, DocumentProcessingQueue.document_id == Document.id
+        )
+        if filters:
+            items_query = items_query.where(and_(*filters))
+
+        # Apply pagination and ordering
+        offset = (page - 1) * page_size
+        items_query = (
+            items_query.order_by(DocumentProcessingQueue.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+
+        result = await self.db.execute(items_query)
+        items = [(row[0], row[1]) for row in result.all()]
+
+        return items, total
+
+    async def manual_retry(
+        self, queue_item_id: UUID, reset_attempts: bool = False
+    ) -> DocumentProcessingQueue | None:
+        """Manually retry a failed queue item.
+
+        Args:
+            queue_item_id: ID of the queue item
+            reset_attempts: If True, reset attempts to 0
+
+        Returns:
+            Updated queue item or None if not found
+        """
+        result = await self.db.execute(
+            select(DocumentProcessingQueue).where(
+                DocumentProcessingQueue.id == queue_item_id
+            )
+        )
+        queue_item = result.scalar_one_or_none()
+
+        if not queue_item:
+            return None
+
+        if reset_attempts:
+            queue_item.attempts = 0
+
+        queue_item.status = DocumentQueueStatus.PENDING
+        queue_item.next_retry = datetime.now(UTC)
+        queue_item.error_message = None
+
+        logger.info(
+            "document_queue_item_manual_retry",
+            queue_id=str(queue_item.id),
+            document_id=str(queue_item.document_id),
+            reset_attempts=reset_attempts,
+        )
+
+        await self.db.flush()
+        return queue_item
+
+    async def cancel_item(self, queue_item_id: UUID) -> bool:
+        """Cancel a pending queue item by removing it.
+
+        Only pending items can be cancelled. In-progress items should
+        complete or fail naturally.
+
+        Args:
+            queue_item_id: ID of the queue item
+
+        Returns:
+            True if item was cancelled, False if not found or not cancellable
+        """
+        from sqlalchemy import delete
+
+        result = await self.db.execute(
+            select(DocumentProcessingQueue).where(
+                DocumentProcessingQueue.id == queue_item_id
+            )
+        )
+        queue_item = result.scalar_one_or_none()
+
+        if not queue_item:
+            return False
+
+        # Only allow cancelling pending items
+        if queue_item.status != DocumentQueueStatus.PENDING:
+            return False
+
+        await self.db.execute(
+            delete(DocumentProcessingQueue).where(
+                DocumentProcessingQueue.id == queue_item_id
+            )
+        )
+
+        logger.info(
+            "document_queue_item_cancelled",
+            queue_id=str(queue_item_id),
+            document_id=str(queue_item.document_id),
+        )
+
+        await self.db.flush()
+        return True
+
 
 async def process_document_queue() -> dict:
     """Process pending document queue items.

@@ -11,6 +11,7 @@ from app.core.file_utils import read_file_with_size_limit
 from app.core.rate_limit import admin_limit, limiter
 from app.models import Tag, TagType
 from app.models.document import Document
+from app.models.document_queue import DocumentQueueStatus
 from app.models.monday_sync import (
     MondaySyncLog,
     MondaySyncType,
@@ -21,6 +22,11 @@ from app.models.organization import Organization
 from app.models.project import Project, ProjectStatus
 from app.models.saved_search import SavedSearch
 from app.models.user import User
+from app.schemas.document_queue import (
+    DocumentQueueItemResponse,
+    DocumentQueueListResponse,
+    DocumentQueueStatsResponse,
+)
 from app.schemas.import_ import (
     ImportCommitRequest,
     ImportCommitResponse,
@@ -61,6 +67,7 @@ from app.schemas.tag import (
 )
 from app.services.auto_resolution_service import AutoResolutionService
 from app.services.conflict_service import ConflictService
+from app.services.document_queue_service import DocumentQueueService
 from app.services.import_service import ImportService
 from app.services.monday_service import (
     MondayService,
@@ -931,6 +938,173 @@ async def retry_sync_queue_item(
         )
 
     return SyncQueueItemResponse.model_validate(item)
+
+
+# ============== Document Processing Queue (Admin Only) ==============
+
+
+@router.get("/document-queue", response_model=DocumentQueueListResponse)
+@limiter.limit(admin_limit)
+async def list_document_queue(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    queue_status: str | None = Query(
+        None,
+        alias="status",
+        description="Filter by status: 'pending', 'in_progress', 'completed', 'failed'",
+    ),
+) -> DocumentQueueListResponse:
+    """List document queue items with filtering and pagination. Admin only.
+
+    Returns paginated list of document processing queue items.
+    """
+    # Convert string filter to enum
+    status_enum = None
+    if queue_status:
+        try:
+            status_enum = DocumentQueueStatus(queue_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {queue_status}. Must be 'pending', 'in_progress', 'completed', or 'failed'",
+            )
+
+    service = DocumentQueueService(db)
+    items_with_names, total = await service.get_all_items(
+        page=page,
+        page_size=page_size,
+        status=status_enum,
+    )
+
+    # Build response with document names
+    response_items = []
+    for queue_item, document_name in items_with_names:
+        item_dict = {
+            "id": queue_item.id,
+            "document_id": queue_item.document_id,
+            "document_name": document_name,
+            "status": queue_item.status,
+            "operation": queue_item.operation,
+            "attempts": queue_item.attempts,
+            "max_attempts": queue_item.max_attempts,
+            "error_message": queue_item.error_message,
+            "next_retry": queue_item.next_retry,
+            "created_at": queue_item.created_at,
+            "started_at": queue_item.started_at,
+            "completed_at": queue_item.completed_at,
+        }
+        response_items.append(DocumentQueueItemResponse(**item_dict))
+
+    return DocumentQueueListResponse(
+        items=response_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < total,
+    )
+
+
+@router.get("/document-queue/stats", response_model=DocumentQueueStatsResponse)
+@limiter.limit(admin_limit)
+async def get_document_queue_stats(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> DocumentQueueStatsResponse:
+    """Get document queue statistics. Admin only.
+
+    Returns counts of queue items by status.
+    """
+    service = DocumentQueueService(db)
+    stats = await service.get_queue_stats()
+    return DocumentQueueStatsResponse(
+        pending=stats["pending"],
+        in_progress=stats["in_progress"],
+        completed=stats["completed"],
+        failed=stats["failed"],
+        total=stats["pending"]
+        + stats["in_progress"]
+        + stats["completed"]
+        + stats["failed"],
+    )
+
+
+@router.post(
+    "/document-queue/{queue_id}/retry",
+    response_model=DocumentQueueItemResponse,
+)
+@limiter.limit(admin_limit)
+async def retry_document_queue_item(
+    request: Request,
+    queue_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+    reset_attempts: bool = Query(
+        False, description="If True, reset attempt count to 0"
+    ),
+) -> DocumentQueueItemResponse:
+    """Manually retry a document queue item. Admin only.
+
+    Resets the queue item to pending status so it will be processed
+    on the next queue run. Optionally resets the attempt counter.
+    """
+    service = DocumentQueueService(db)
+    queue_item = await service.manual_retry(queue_id, reset_attempts=reset_attempts)
+
+    if not queue_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queue item not found",
+        )
+
+    # Get document name
+    doc_result = await db.execute(
+        select(Document.display_name).where(Document.id == queue_item.document_id)
+    )
+    document_name = doc_result.scalar_one_or_none() or "Unknown"
+
+    return DocumentQueueItemResponse(
+        id=queue_item.id,
+        document_id=queue_item.document_id,
+        document_name=document_name,
+        status=queue_item.status,
+        operation=queue_item.operation,
+        attempts=queue_item.attempts,
+        max_attempts=queue_item.max_attempts,
+        error_message=queue_item.error_message,
+        next_retry=queue_item.next_retry,
+        created_at=queue_item.created_at,
+        started_at=queue_item.started_at,
+        completed_at=queue_item.completed_at,
+    )
+
+
+@router.delete(
+    "/document-queue/{queue_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@limiter.limit(admin_limit)
+async def cancel_document_queue_item(
+    request: Request,
+    queue_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> None:
+    """Cancel a pending document queue item. Admin only.
+
+    Removes the item from the queue. Only pending items can be cancelled.
+    """
+    service = DocumentQueueService(db)
+    cancelled = await service.cancel_item(queue_id)
+
+    if not cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queue item not found or cannot be cancelled (only pending items can be cancelled)",
+        )
 
 
 # ============== Auto-Resolution Rules (Admin Only) ==============
