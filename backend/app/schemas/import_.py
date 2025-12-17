@@ -159,3 +159,37 @@ class AutofillResponse(BaseModel):
     confidence: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Overall confidence score"
     )
+
+
+class ImportRowValidateRequest(BaseModel):
+    """Request to validate a single edited import row."""
+
+    row_number: int
+    name: str | None = None
+    organization_id: UUID | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    location: str | None = None
+
+
+class ImportRowsValidateRequest(BaseModel):
+    """Request to validate multiple edited import rows."""
+
+    rows: list[ImportRowValidateRequest] = Field(
+        ..., description="Rows to validate with edited values"
+    )
+
+
+class ImportRowValidateResponse(BaseModel):
+    """Validation result for a single row."""
+
+    row_number: int
+    validation: ImportRowValidation
+
+
+class ImportRowsValidateResponse(BaseModel):
+    """Response with validation results for multiple rows."""
+
+    results: list[ImportRowValidateResponse]
+    valid_count: int
+    invalid_count: int

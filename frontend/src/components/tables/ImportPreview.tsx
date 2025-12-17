@@ -2,7 +2,7 @@
  * Import preview component with editable rows.
  */
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   CheckCircle,
   XCircle,
@@ -10,6 +10,8 @@ import {
   Sparkles,
   Loader2,
 } from "lucide-react";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useValidateRows } from "@/hooks/useImport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,7 +38,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAllTags } from "@/hooks/useTags";
-import type { ImportRowPreview, ImportRowUpdate } from "@/types/import";
+import type {
+  ImportRowPreview,
+  ImportRowUpdate,
+  ImportRowValidation,
+  ImportRowsValidateRequest,
+} from "@/types/import";
 import type { ProjectLocation, ProjectStatus } from "@/types/project";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +97,68 @@ export function ImportPreview({
   // Local state for editable rows
   const [editedRows, setEditedRows] = useState<Map<number, Partial<ImportRowUpdate>>>(
     new Map()
+  );
+
+  // Track validation results from revalidation
+  const [revalidatedRows, setRevalidatedRows] = useState<
+    Map<number, ImportRowValidation>
+  >(new Map());
+
+  // Initialize validation mutation
+  const validateMutation = useValidateRows();
+
+  // Debounce edited rows to avoid excessive API calls (500ms delay)
+  const debouncedEditedRows = useDebounce(editedRows, 500);
+
+  // Revalidate when edits are debounced
+  useEffect(() => {
+    // Clear revalidation results if no edits
+    if (debouncedEditedRows.size === 0) {
+      setRevalidatedRows(new Map());
+      return;
+    }
+
+    // Build validation request from edited rows
+    const rowsToValidate: ImportRowsValidateRequest = {
+      rows: Array.from(debouncedEditedRows.entries()).map(([rowNum, edits]) => {
+        const originalRow = rows.find((r) => r.row_number === rowNum);
+        return {
+          row_number: rowNum,
+          name: edits.name ?? originalRow?.name,
+          organization_id:
+            edits.organization_id ?? originalRow?.resolved_organization_id,
+          start_date: edits.start_date ?? originalRow?.start_date,
+          end_date: edits.end_date ?? originalRow?.end_date,
+          location:
+            edits.location ??
+            (originalRow?.location ? mapLocation(originalRow.location) : undefined),
+        };
+      }),
+    };
+
+    validateMutation.mutate(rowsToValidate, {
+      onSuccess: (response) => {
+        const newValidationMap = new Map<number, ImportRowValidation>();
+        response.results.forEach((result) => {
+          newValidationMap.set(result.row_number, result.validation);
+        });
+        setRevalidatedRows(newValidationMap);
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- validateMutation is stable
+  }, [debouncedEditedRows, rows]);
+
+  // Get current validation state for a row (revalidated or original)
+  const getRowValidation = useCallback(
+    (row: ImportRowPreview): ImportRowValidation => {
+      // If row was edited and revalidated, use new validation
+      if (revalidatedRows.has(row.row_number)) {
+        return revalidatedRows.get(row.row_number)!;
+      }
+      // Otherwise use original validation
+      return row.validation;
+    },
+    [revalidatedRows]
   );
 
   const getEditedValue = <K extends keyof ImportRowUpdate>(
@@ -168,7 +237,8 @@ export function ImportPreview({
     onCommit();
   };
 
-  const validCount = rows.filter((r) => r.validation.is_valid).length;
+  // Calculate counts considering revalidation results
+  const validCount = rows.filter((r) => getRowValidation(r).is_valid).length;
   const invalidCount = rows.length - validCount;
 
   return (
@@ -185,6 +255,12 @@ export function ImportPreview({
               <Badge variant="outline" className="gap-1">
                 <XCircle className="h-3 w-3 text-red-600" />
                 {invalidCount} invalid
+              </Badge>
+            )}
+            {validateMutation.isPending && (
+              <Badge variant="outline" className="gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Validating...
               </Badge>
             )}
           </div>
@@ -220,14 +296,14 @@ export function ImportPreview({
                 <TableRow
                   key={row.row_number}
                   className={cn(
-                    !row.validation.is_valid && "bg-red-50/50"
+                    !getRowValidation(row).is_valid && "bg-red-50/50"
                   )}
                 >
                   <TableCell className="font-mono text-xs">
                     {row.row_number}
                   </TableCell>
                   <TableCell>
-                    {row.validation.is_valid ? (
+                    {getRowValidation(row).is_valid ? (
                       <CheckCircle className="h-4 w-4 text-green-600" />
                     ) : (
                       <XCircle className="h-4 w-4 text-red-600" />
@@ -341,7 +417,7 @@ export function ImportPreview({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1">
-                      {row.validation.errors.map((err, i) => (
+                      {getRowValidation(row).errors.map((err, i) => (
                         <Tooltip key={i}>
                           <TooltipTrigger asChild>
                             <div className="flex items-center gap-1 text-xs text-red-600">
@@ -352,7 +428,7 @@ export function ImportPreview({
                           <TooltipContent>{err}</TooltipContent>
                         </Tooltip>
                       ))}
-                      {row.validation.warnings.map((warn, i) => (
+                      {getRowValidation(row).warnings.map((warn, i) => (
                         <Tooltip key={i}>
                           <TooltipTrigger asChild>
                             <div className="flex items-center gap-1 text-xs text-amber-600">

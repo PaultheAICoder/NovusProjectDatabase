@@ -24,6 +24,8 @@ from app.schemas.import_ import (
     ImportCommitRequest,
     ImportCommitResponse,
     ImportPreviewResponse,
+    ImportRowsValidateRequest,
+    ImportRowsValidateResponse,
 )
 from app.schemas.monday import (
     ConflictListResponse,
@@ -392,6 +394,40 @@ async def commit_import(
         successful=successful,
         failed=failed,
         results=results,
+    )
+
+
+@router.post("/import/validate-rows", response_model=ImportRowsValidateResponse)
+@limiter.limit(admin_limit)
+async def validate_import_rows(
+    request: Request,
+    data: ImportRowsValidateRequest,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> ImportRowsValidateResponse:
+    """
+    Validate edited import rows without committing.
+
+    Used to revalidate rows after user edits in the preview table.
+    Lightweight endpoint that only performs validation checks.
+    """
+    if not data.rows:
+        return ImportRowsValidateResponse(
+            results=[],
+            valid_count=0,
+            invalid_count=0,
+        )
+
+    import_service = ImportService(db)
+    results = await import_service.validate_edited_rows(data.rows)
+
+    valid_count = sum(1 for r in results if r.validation.is_valid)
+    invalid_count = len(results) - valid_count
+
+    return ImportRowsValidateResponse(
+        results=results,
+        valid_count=valid_count,
+        invalid_count=invalid_count,
     )
 
 

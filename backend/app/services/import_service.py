@@ -20,6 +20,8 @@ from app.schemas.import_ import (
     ImportRowPreview,
     ImportRowSuggestion,
     ImportRowUpdate,
+    ImportRowValidateRequest,
+    ImportRowValidateResponse,
     ImportRowValidation,
 )
 from app.services.embedding_service import EmbeddingService
@@ -265,6 +267,72 @@ class ImportService:
                 warnings.append(
                     f"Invalid billing amount: {row['billing_amount']}, will be ignored"
                 )
+
+        return ImportRowValidation(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+        )
+
+    async def validate_edited_rows(
+        self,
+        rows: list[ImportRowValidateRequest],
+    ) -> list[ImportRowValidateResponse]:
+        """
+        Validate edited import rows.
+
+        Unlike initial preview validation which works with raw CSV data,
+        this validates rows that have been edited by the user with resolved IDs.
+        """
+        results = []
+        for row in rows:
+            validation = await self._validate_edited_row(row)
+            results.append(
+                ImportRowValidateResponse(
+                    row_number=row.row_number,
+                    validation=validation,
+                )
+            )
+        return results
+
+    async def _validate_edited_row(
+        self, row: ImportRowValidateRequest
+    ) -> ImportRowValidation:
+        """Validate a single edited row with resolved IDs."""
+        errors = []
+        warnings = []
+
+        # Required: name
+        if not row.name or not row.name.strip():
+            errors.append("Name is required")
+
+        # Required: organization_id must exist
+        if not row.organization_id:
+            errors.append("Organization is required")
+        else:
+            org = await self.db.get(Organization, row.organization_id)
+            if not org:
+                errors.append("Selected organization not found")
+
+        # Required: start_date
+        if not row.start_date:
+            errors.append("Start date is required")
+        else:
+            try:
+                self._parse_date(row.start_date)
+            except ValueError:
+                errors.append(f"Invalid start date format: {row.start_date}")
+
+        # Optional: end_date format validation
+        if row.end_date:
+            try:
+                self._parse_date(row.end_date)
+            except ValueError:
+                errors.append(f"Invalid end date format: {row.end_date}")
+
+        # Required for commit: location (make this an ERROR, not warning)
+        if not row.location:
+            errors.append("Location is required")
 
         return ImportRowValidation(
             is_valid=len(errors) == 0,

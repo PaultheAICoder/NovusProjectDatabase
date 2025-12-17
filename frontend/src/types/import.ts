@@ -108,3 +108,27 @@ export interface AutofillResponse {
   suggested_tag_ids: string[];
   confidence: number;
 }
+
+export interface ImportRowValidateRequest {
+  row_number: number;
+  name?: string;
+  organization_id?: string;
+  start_date?: string;
+  end_date?: string;
+  location?: string;
+}
+
+export interface ImportRowsValidateRequest {
+  rows: ImportRowValidateRequest[];
+}
+
+export interface ImportRowValidateResponse {
+  row_number: number;
+  validation: ImportRowValidation;
+}
+
+export interface ImportRowsValidateResponse {
+  results: ImportRowValidateResponse[];
+  valid_count: number;
+  invalid_count: number;
+}

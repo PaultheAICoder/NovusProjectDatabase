@@ -10,6 +10,8 @@ import type {
   ImportCommitRequest,
   ImportCommitResponse,
   ImportPreviewResponse,
+  ImportRowsValidateRequest,
+  ImportRowsValidateResponse,
 } from "@/types/import";
 
 export function useImportPreview() {
@@ -53,6 +55,13 @@ export function useImportCommit() {
       // Invalidate projects list after import
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
+  });
+}
+
+export function useValidateRows() {
+  return useMutation({
+    mutationFn: (data: ImportRowsValidateRequest) =>
+      api.post<ImportRowsValidateResponse>("/admin/import/validate-rows", data),
   });
 }
 
