@@ -1,5 +1,6 @@
 """SQLAlchemy models."""
 
+from app.models.api_token import APIToken
 from app.models.contact import Contact
 from app.models.document import Document
 from app.models.document_queue import (
@@ -33,6 +34,7 @@ from app.models.tag import Tag, TagType
 from app.models.user import User, UserRole
 
 __all__ = [
+    "APIToken",
     "User",
     "UserRole",
     "Organization",
