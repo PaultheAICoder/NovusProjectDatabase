@@ -50,26 +50,61 @@ test.describe('Authentication Flow', () => {
   test('displays error message for token_exchange_failed', async ({ page }) => {
     await page.goto('/login?error=token_exchange_failed');
 
-    // Error message should be visible
-    await expect(page.getByText(/Authentication failed/i)).toBeVisible();
+    // Verify Alert component renders
+    await expect(page.getByRole('alert')).toBeVisible();
+
+    // Verify title
+    await expect(page.getByText('Authentication Failed')).toBeVisible();
+
+    // Verify Retry button exists
+    await expect(page.getByRole('button', { name: /Try Again/i })).toBeVisible();
+
+    // Verify Contact Support link exists
+    await expect(page.getByRole('link', { name: /Contact Support/i })).toBeVisible();
   });
 
   test('displays error message for no_id_token', async ({ page }) => {
     await page.goto('/login?error=no_id_token');
 
-    await expect(page.getByText(/Authentication failed/i)).toBeVisible();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByText('Authentication Failed')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Try Again/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Contact Support/i })).toBeVisible();
   });
 
   test('displays error message for domain_not_allowed', async ({ page }) => {
     await page.goto('/login?error=domain_not_allowed');
 
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByText('Access Denied')).toBeVisible();
     await expect(page.getByText(/not authorized/i)).toBeVisible();
+
+    // Retry button should NOT be visible for domain_not_allowed
+    await expect(page.getByRole('button', { name: /Try Again/i })).not.toBeVisible();
+
+    // But Contact Support should be visible
+    await expect(page.getByRole('link', { name: /Contact Support/i })).toBeVisible();
+  });
+
+  test('displays session expired message for invalid_state', async ({ page }) => {
+    await page.goto('/login?error=invalid_state');
+
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByText('Session Expired')).toBeVisible();
+
+    // Retry should be visible
+    await expect(page.getByRole('button', { name: /Try Again/i })).toBeVisible();
+
+    // Contact Support should NOT be visible for session expiry
+    await expect(page.getByRole('link', { name: /Contact Support/i })).not.toBeVisible();
   });
 
   test('displays generic error for unknown error codes', async ({ page }) => {
     await page.goto('/login?error=unknown_error');
 
-    await expect(page.getByText(/error occurred/i)).toBeVisible();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByText('Sign-In Error')).toBeVisible();
+    await expect(page.getByText(/unexpected error/i)).toBeVisible();
   });
 });
 

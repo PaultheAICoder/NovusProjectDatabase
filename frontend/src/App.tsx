@@ -5,11 +5,13 @@
 import { lazy, Suspense } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { Header, Sidebar, Footer } from "@/components/layout";
 import { Toaster } from "@/components/ui/toaster";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 // Lazy load page components for code splitting
 const DashboardPage = lazy(() =>
@@ -98,22 +100,85 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Enhanced error message configuration for login errors.
+ */
+interface ErrorMessageConfig {
+  title: string;
+  description: string;
+  tip?: string;
+  showRetry: boolean;
+  showContactSupport: boolean;
+}
+
+const errorConfigs: Record<string, ErrorMessageConfig> = {
+  token_exchange_failed: {
+    title: "Authentication Failed",
+    description: "We couldn't complete the sign-in process with Azure AD.",
+    tip: "This may be a temporary issue. Please wait a moment and try again.",
+    showRetry: true,
+    showContactSupport: true,
+  },
+  no_id_token: {
+    title: "Authentication Failed",
+    description: "The authentication response was incomplete.",
+    tip: "Try signing in again. If the problem persists, contact support.",
+    showRetry: true,
+    showContactSupport: true,
+  },
+  invalid_token: {
+    title: "Invalid Authentication",
+    description: "The authentication response could not be verified.",
+    tip: "Clear your browser cookies and try signing in again.",
+    showRetry: true,
+    showContactSupport: true,
+  },
+  invalid_state: {
+    title: "Session Expired",
+    description: "Your sign-in session has expired or was interrupted.",
+    tip: "This can happen if you waited too long or opened multiple tabs.",
+    showRetry: true,
+    showContactSupport: false,
+  },
+  token_expired: {
+    title: "Session Expired",
+    description: "Your authentication session has expired.",
+    tip: "Please sign in again to continue.",
+    showRetry: true,
+    showContactSupport: false,
+  },
+  missing_user_info: {
+    title: "Missing Account Information",
+    description: "We couldn't retrieve your user information from Azure AD.",
+    tip: "Contact your IT administrator if your Azure AD profile is incomplete.",
+    showRetry: true,
+    showContactSupport: true,
+  },
+  domain_not_allowed: {
+    title: "Access Denied",
+    description: "Your email domain is not authorized to access this application.",
+    tip: "Only users with approved company email addresses can sign in.",
+    showRetry: false,
+    showContactSupport: true,
+  },
+};
+
+const defaultErrorConfig: ErrorMessageConfig = {
+  title: "Sign-In Error",
+  description: "An unexpected error occurred during sign-in.",
+  tip: "Please try again. If the problem continues, contact support.",
+  showRetry: true,
+  showContactSupport: true,
+};
+
+const SUPPORT_EMAIL = "support@novus-db.com";
+
 function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
   const error = searchParams.get("error");
 
-  const errorMessages: Record<string, string> = {
-    token_exchange_failed: "Authentication failed. Please try again.",
-    no_id_token: "Authentication failed. Please try again.",
-    invalid_token: "Invalid authentication response. Please try again.",
-    invalid_state: "Authentication session expired or invalid. Please try again.",
-    token_expired: "Your authentication session has expired. Please sign in again.",
-    missing_user_info: "Could not retrieve your user information.",
-    domain_not_allowed: "Your email domain is not authorized to access this application.",
-  };
-
-  const errorMessage = error ? errorMessages[error] || "An error occurred during sign in." : null;
+  const errorConfig = error ? (errorConfigs[error] || defaultErrorConfig) : null;
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -125,8 +190,32 @@ function LoginPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold">Novus Project Database</h1>
           <p className="mt-2 text-muted-foreground">Sign in to continue</p>
-          {errorMessage && (
-            <p className="mt-2 text-sm text-destructive">{errorMessage}</p>
+          {errorConfig && (
+            <Alert variant="destructive" className="mt-4 max-w-md mx-auto text-left">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{errorConfig.title}</AlertTitle>
+              <AlertDescription>
+                <p>{errorConfig.description}</p>
+                {errorConfig.tip && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {errorConfig.tip}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {errorConfig.showRetry && (
+                    <Button variant="outline" size="sm" onClick={login}>
+                      <RefreshCw className="mr-2 h-3 w-3" />
+                      Try Again
+                    </Button>
+                  )}
+                  {errorConfig.showContactSupport && (
+                    <Button variant="ghost" size="sm" asChild>
+                      <a href={`mailto:${SUPPORT_EMAIL}`}>Contact Support</a>
+                    </Button>
+                  )}
+                </div>
+              </AlertDescription>
+            </Alert>
           )}
           <button
             onClick={login}
