@@ -342,6 +342,7 @@ async def preview_import(
         content=content,
         filename=file.filename,
         include_suggestions=include_suggestions,
+        user_id=admin_user.id,
     )
 
     valid_rows = sum(1 for r in rows if r.validation.is_valid)

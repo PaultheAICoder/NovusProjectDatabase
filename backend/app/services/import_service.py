@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.models.organization import Organization
 from app.models.project import Project, ProjectLocation, ProjectStatus
-from app.models.tag import Tag
+from app.models.tag import Tag, TagType
 from app.models.user import User
 from app.schemas.import_ import (
     AutofillResponse,
@@ -277,6 +277,7 @@ class ImportService:
         content: bytes,
         filename: str,
         include_suggestions: bool = True,
+        user_id: UUID | None = None,
     ) -> tuple[list[ImportRowPreview], dict[str, str]]:
         """
         Parse CSV and return preview with validation and suggestions.
@@ -308,7 +309,9 @@ class ImportService:
                     owner_id = owner.id
 
             if row.get("tags"):
-                tag_ids = await self._resolve_tags(row["tags"])
+                tag_ids = await self._resolve_tags(
+                    row["tags"], user_id=user_id, create_missing=True
+                )
 
             # Get suggestions if requested and row has a name
             suggestions = None
@@ -592,19 +595,53 @@ class ImportService:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def _resolve_tags(self, tag_names: list[str]) -> list[UUID]:
-        """Resolve tag names to IDs, creating freeform tags if needed."""
+    async def _resolve_tags(
+        self,
+        tag_names: list[str],
+        user_id: UUID | None = None,
+        create_missing: bool = False,
+    ) -> list[UUID]:
+        """Resolve tag names to IDs, optionally creating freeform tags if needed.
+
+        Args:
+            tag_names: List of tag name strings to resolve
+            user_id: User ID for audit trail on newly created tags (required if create_missing=True)
+            create_missing: If True, create freeform tags for unknown names
+
+        Returns:
+            List of resolved tag UUIDs (existing or newly created)
+        """
         if not tag_names:
             return []
 
         tag_ids = []
         for name in tag_names:
+            name = name.strip()
+            if not name:
+                continue
+
+            # Try to find existing tag (case-insensitive)
             stmt = select(Tag).where(func.lower(Tag.name) == name.lower())
             result = await self.db.execute(stmt)
             tag = result.scalar_one_or_none()
 
             if tag:
                 tag_ids.append(tag.id)
+            elif create_missing:
+                # Create new freeform tag
+                new_tag = Tag(
+                    name=name,
+                    type=TagType.FREEFORM,
+                    created_by=user_id,
+                )
+                self.db.add(new_tag)
+                await self.db.flush()
+                tag_ids.append(new_tag.id)
+                logger.info(
+                    "created_freeform_tag_during_import",
+                    tag_name=name,
+                    tag_id=str(new_tag.id),
+                )
 
         return tag_ids
 
