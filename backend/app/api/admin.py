@@ -21,12 +21,15 @@ from app.schemas.import_ import (
     ImportPreviewResponse,
 )
 from app.schemas.monday import (
+    ConflictListResponse,
+    ConflictResolveRequest,
     MondayBoardInfo,
     MondayBoardsResponse,
     MondayConfigResponse,
     MondaySyncLogResponse,
     MondaySyncStatusResponse,
     MondaySyncTriggerRequest,
+    SyncConflictResponse,
 )
 from app.schemas.search import SavedSearchResponse
 from app.schemas.tag import (
@@ -36,6 +39,7 @@ from app.schemas.tag import (
     TagResponse,
     TagUpdate,
 )
+from app.services.conflict_service import ConflictService
 from app.services.import_service import ImportService
 from app.services.monday_service import MondayService
 from app.services.tag_suggester import TagSuggester
@@ -576,3 +580,117 @@ async def get_monday_sync_logs(
     )
 
     return [MondaySyncLogResponse.model_validate(log) for log in result.all()]
+
+
+# ============== Sync Conflict Management (Admin Only) ==============
+
+
+@router.get("/sync/conflicts", response_model=ConflictListResponse)
+@limiter.limit(admin_limit)
+async def list_sync_conflicts(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    entity_type: str | None = Query(
+        None, description="Filter by entity type: 'contact' or 'organization'"
+    ),
+) -> ConflictListResponse:
+    """List unresolved sync conflicts. Admin only.
+
+    Returns paginated list of conflicts that need manual resolution.
+    """
+    service = ConflictService(db)
+    conflicts, total = await service.list_unresolved(
+        page=page,
+        page_size=page_size,
+        entity_type=entity_type,
+    )
+
+    return ConflictListResponse(
+        items=[SyncConflictResponse.model_validate(c) for c in conflicts],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < total,
+    )
+
+
+@router.get("/sync/conflicts/stats")
+@limiter.limit(admin_limit)
+async def get_sync_conflict_stats(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> dict:
+    """Get sync conflict statistics. Admin only."""
+    service = ConflictService(db)
+    return await service.get_conflict_stats()
+
+
+@router.get("/sync/conflicts/{conflict_id}", response_model=SyncConflictResponse)
+@limiter.limit(admin_limit)
+async def get_sync_conflict(
+    request: Request,
+    conflict_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> SyncConflictResponse:
+    """Get details of a specific sync conflict. Admin only.
+
+    Returns the conflict with both NPD and Monday.com data versions.
+    """
+    service = ConflictService(db)
+    conflict = await service.get_by_id(conflict_id)
+
+    if not conflict:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conflict not found",
+        )
+
+    return SyncConflictResponse.model_validate(conflict)
+
+
+@router.post(
+    "/sync/conflicts/{conflict_id}/resolve",
+    response_model=SyncConflictResponse,
+)
+@limiter.limit(admin_limit)
+async def resolve_sync_conflict(
+    request: Request,
+    conflict_id: UUID,
+    data: ConflictResolveRequest,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> SyncConflictResponse:
+    """Resolve a sync conflict. Admin only.
+
+    Resolution types:
+    - keep_npd: Use NPD data, push to Monday.com
+    - keep_monday: Use Monday.com data, update NPD
+    - merge: Apply field-level selections (requires merge_selections)
+    """
+    service = ConflictService(db)
+
+    try:
+        conflict = await service.resolve(
+            conflict_id=conflict_id,
+            resolution_type=data.resolution_type,
+            resolved_by_id=admin_user.id,
+            merge_selections=data.merge_selections,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    if not conflict:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conflict not found",
+        )
+
+    return SyncConflictResponse.model_validate(conflict)

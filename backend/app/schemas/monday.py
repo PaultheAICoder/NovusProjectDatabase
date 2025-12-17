@@ -1,6 +1,7 @@
 """Monday.com sync Pydantic schemas."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +16,15 @@ from app.models.monday_sync import (
     SyncQueueOperation,
     SyncQueueStatus,
 )
+
+
+class ConflictResolutionType(str, Enum):
+    """Resolution type for sync conflicts."""
+
+    KEEP_NPD = "keep_npd"
+    KEEP_MONDAY = "keep_monday"
+    MERGE = "merge"
+
 
 # Re-export enums for external use
 __all__ = [
@@ -50,6 +60,10 @@ __all__ = [
     "SyncQueueItemResponse",
     "SyncQueueProcessResult",
     "SyncQueueManualRetryRequest",
+    # Conflict resolution schemas
+    "ConflictResolutionType",
+    "ConflictResolveRequest",
+    "ConflictListResponse",
 ]
 
 
@@ -151,6 +165,7 @@ class SyncConflictResponse(BaseModel):
     detected_at: datetime
     resolved_at: datetime | None
     resolution_type: str | None
+    resolved_by_id: UUID | None = None
 
 
 class MondayItemMutationResponse(BaseModel):
@@ -294,3 +309,28 @@ class SyncQueueManualRetryRequest(BaseModel):
 
     queue_item_id: UUID = Field(..., description="ID of the queue item to retry")
     reset_attempts: bool = Field(False, description="If True, reset attempt count to 0")
+
+
+# Conflict resolution schemas
+
+
+class ConflictResolveRequest(BaseModel):
+    """Request to resolve a sync conflict."""
+
+    resolution_type: ConflictResolutionType = Field(
+        ..., description="How to resolve: keep_npd, keep_monday, or merge"
+    )
+    merge_selections: dict[str, str] | None = Field(
+        None,
+        description="For merge: dict of field_name -> 'npd' or 'monday'",
+    )
+
+
+class ConflictListResponse(BaseModel):
+    """Paginated list of conflicts."""
+
+    items: list[SyncConflictResponse]
+    total: int
+    page: int
+    page_size: int
+    has_more: bool

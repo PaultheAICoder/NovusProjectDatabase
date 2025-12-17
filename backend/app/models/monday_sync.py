@@ -192,6 +192,11 @@ class SyncConflict(Base):
         String(50),  # 'npd_wins', 'monday_wins', 'merged', 'manual'
         nullable=True,
     )
+    resolved_by_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     def __repr__(self) -> str:
         return f"<SyncConflict {self.entity_type} {self.entity_id}>"

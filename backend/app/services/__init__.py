@@ -1,6 +1,7 @@
 """Business logic services."""
 
 from .ai_enhancement import AIEnhancementService
+from .conflict_service import ConflictService
 from .document_processor import DocumentProcessor
 from .email_parsing import (
     ParseAction,
@@ -19,6 +20,7 @@ from .sync_queue_service import SyncQueueService, process_sync_queue
 
 __all__ = [
     "AIEnhancementService",
+    "ConflictService",
     "DocumentProcessor",
     "EmbeddingService",
     "FeedbackService",

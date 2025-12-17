@@ -1,0 +1,440 @@
+"""Tests for ConflictService."""
+
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+import pytest
+
+from app.models.monday_sync import RecordSyncStatus, SyncConflict
+from app.schemas.monday import ConflictResolutionType
+from app.services.conflict_service import ConflictService
+
+
+class TestListUnresolved:
+    """Tests for list_unresolved method."""
+
+    @pytest.mark.asyncio
+    async def test_list_unresolved_returns_only_unresolved_conflicts(self):
+        """Test that list_unresolved returns only conflicts without resolved_at."""
+        conflict_id = uuid4()
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = conflict_id
+        mock_conflict.resolved_at = None
+        mock_conflict.detected_at = datetime.now(UTC)
+
+        mock_db = AsyncMock()
+        # Mock count query
+        mock_db.scalar.return_value = 1
+        # Mock results query
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_conflict]
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        conflicts, total = await service.list_unresolved()
+
+        assert total == 1
+        assert len(conflicts) == 1
+        assert conflicts[0].id == conflict_id
+
+    @pytest.mark.asyncio
+    async def test_list_unresolved_filters_by_entity_type(self):
+        """Test that entity_type filter is applied."""
+        mock_db = AsyncMock()
+        mock_db.scalar.return_value = 0
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        conflicts, total = await service.list_unresolved(entity_type="contact")
+
+        assert total == 0
+        assert len(conflicts) == 0
+        # Verify execute was called (query was built)
+        assert mock_db.execute.called
+
+    @pytest.mark.asyncio
+    async def test_list_unresolved_pagination_works(self):
+        """Test pagination with page and page_size."""
+        mock_conflict_1 = MagicMock(spec=SyncConflict)
+        mock_conflict_1.id = uuid4()
+        mock_conflict_1.resolved_at = None
+
+        mock_db = AsyncMock()
+        mock_db.scalar.return_value = 10  # Total 10 items
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_conflict_1]
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        conflicts, total = await service.list_unresolved(page=2, page_size=5)
+
+        assert total == 10
+        assert len(conflicts) == 1
+
+
+class TestGetById:
+    """Tests for get_by_id method."""
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_returns_conflict(self):
+        """Test that get_by_id returns the conflict when found."""
+        conflict_id = uuid4()
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = conflict_id
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_conflict
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        result = await service.get_by_id(conflict_id)
+
+        assert result is not None
+        assert result.id == conflict_id
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_returns_none_for_missing(self):
+        """Test that get_by_id returns None when not found."""
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        result = await service.get_by_id(uuid4())
+
+        assert result is None
+
+
+class TestResolve:
+    """Tests for resolve method."""
+
+    @pytest.mark.asyncio
+    @patch("app.services.sync_service.sync_contact_to_monday")
+    async def test_resolve_keep_npd_triggers_sync_to_monday(
+        self, mock_sync_contact_to_monday
+    ):
+        """Test that keep_npd resolution triggers sync to Monday."""
+        conflict_id = uuid4()
+        entity_id = uuid4()
+        user_id = uuid4()
+
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = conflict_id
+        mock_conflict.entity_type = "contact"
+        mock_conflict.entity_id = entity_id
+        mock_conflict.resolved_at = None
+        mock_conflict.npd_data = {"name": "NPD Name"}
+        mock_conflict.monday_data = {"name": "Monday Name"}
+        mock_conflict.conflict_fields = ["name"]
+
+        mock_contact = MagicMock()
+        mock_contact.id = entity_id
+        mock_contact.sync_status = RecordSyncStatus.CONFLICT
+
+        mock_db = AsyncMock()
+        # Mock get_by_id
+        mock_result1 = MagicMock()
+        mock_result1.scalar_one_or_none.return_value = mock_conflict
+        # Mock get_entity (contact)
+        mock_result2 = MagicMock()
+        mock_result2.scalar_one_or_none.return_value = mock_contact
+
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
+        mock_db.flush = AsyncMock()
+
+        mock_sync_contact_to_monday.return_value = None
+
+        service = ConflictService(mock_db)
+        result = await service.resolve(
+            conflict_id=conflict_id,
+            resolution_type=ConflictResolutionType.KEEP_NPD,
+            resolved_by_id=user_id,
+        )
+
+        assert result is not None
+        mock_sync_contact_to_monday.assert_called_once_with(entity_id)
+        assert mock_conflict.resolved_at is not None
+        assert mock_conflict.resolution_type == "keep_npd"
+        assert mock_conflict.resolved_by_id == user_id
+        assert mock_contact.sync_status == RecordSyncStatus.SYNCED
+
+    @pytest.mark.asyncio
+    async def test_resolve_keep_monday_updates_npd_entity(self):
+        """Test that keep_monday resolution updates NPD entity."""
+        conflict_id = uuid4()
+        entity_id = uuid4()
+        user_id = uuid4()
+
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = conflict_id
+        mock_conflict.entity_type = "contact"
+        mock_conflict.entity_id = entity_id
+        mock_conflict.resolved_at = None
+        mock_conflict.npd_data = {"name": "NPD Name"}
+        mock_conflict.monday_data = {"name": "Monday Name"}
+        mock_conflict.conflict_fields = ["name"]
+
+        mock_contact = MagicMock()
+        mock_contact.id = entity_id
+        mock_contact.name = "NPD Name"
+        mock_contact.sync_status = RecordSyncStatus.CONFLICT
+
+        mock_db = AsyncMock()
+        mock_result1 = MagicMock()
+        mock_result1.scalar_one_or_none.return_value = mock_conflict
+        mock_result2 = MagicMock()
+        mock_result2.scalar_one_or_none.return_value = mock_contact
+
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
+        mock_db.flush = AsyncMock()
+
+        service = ConflictService(mock_db)
+        result = await service.resolve(
+            conflict_id=conflict_id,
+            resolution_type=ConflictResolutionType.KEEP_MONDAY,
+            resolved_by_id=user_id,
+        )
+
+        assert result is not None
+        assert mock_conflict.resolution_type == "keep_monday"
+        # Verify entity was updated
+        assert mock_contact.name == "Monday Name"
+        assert mock_contact.sync_status == RecordSyncStatus.SYNCED
+
+    @pytest.mark.asyncio
+    @patch("app.services.sync_service.sync_contact_to_monday")
+    async def test_resolve_merge_applies_field_selections(
+        self, mock_sync_contact_to_monday
+    ):
+        """Test that merge resolution applies field-level selections."""
+        conflict_id = uuid4()
+        entity_id = uuid4()
+        user_id = uuid4()
+
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = conflict_id
+        mock_conflict.entity_type = "contact"
+        mock_conflict.entity_id = entity_id
+        mock_conflict.resolved_at = None
+        mock_conflict.npd_data = {"name": "NPD Name", "email": "npd@example.com"}
+        mock_conflict.monday_data = {
+            "name": "Monday Name",
+            "email": "monday@example.com",
+        }
+        mock_conflict.conflict_fields = ["name", "email"]
+
+        mock_contact = MagicMock()
+        mock_contact.id = entity_id
+        mock_contact.name = "NPD Name"
+        mock_contact.email = "npd@example.com"
+        mock_contact.sync_status = RecordSyncStatus.CONFLICT
+
+        mock_db = AsyncMock()
+        mock_result1 = MagicMock()
+        mock_result1.scalar_one_or_none.return_value = mock_conflict
+        mock_result2 = MagicMock()
+        mock_result2.scalar_one_or_none.return_value = mock_contact
+
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
+        mock_db.flush = AsyncMock()
+
+        mock_sync_contact_to_monday.return_value = None
+
+        service = ConflictService(mock_db)
+        result = await service.resolve(
+            conflict_id=conflict_id,
+            resolution_type=ConflictResolutionType.MERGE,
+            resolved_by_id=user_id,
+            merge_selections={"name": "npd", "email": "monday"},
+        )
+
+        assert result is not None
+        assert mock_conflict.resolution_type == "merge"
+        # name should be kept as NPD (not changed)
+        # email should be updated to Monday value
+        assert mock_contact.email == "monday@example.com"
+        mock_sync_contact_to_monday.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_resolve_already_resolved_conflict_returns_existing(self):
+        """Test that already resolved conflict is returned without changes."""
+        conflict_id = uuid4()
+        user_id = uuid4()
+
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = conflict_id
+        mock_conflict.resolved_at = datetime.now(UTC)  # Already resolved
+        mock_conflict.resolution_type = "keep_npd"
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_conflict
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        result = await service.resolve(
+            conflict_id=conflict_id,
+            resolution_type=ConflictResolutionType.KEEP_NPD,
+            resolved_by_id=user_id,
+        )
+
+        assert result is not None
+        assert result.resolution_type == "keep_npd"
+        # Flush should not be called since we returned early
+        mock_db.flush.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resolve_missing_conflict_returns_none(self):
+        """Test that missing conflict returns None."""
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        result = await service.resolve(
+            conflict_id=uuid4(),
+            resolution_type=ConflictResolutionType.KEEP_NPD,
+            resolved_by_id=uuid4(),
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_merge_without_selections_raises_error(self):
+        """Test that merge without merge_selections raises ValueError."""
+        conflict_id = uuid4()
+        entity_id = uuid4()
+        user_id = uuid4()
+
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = conflict_id
+        mock_conflict.entity_type = "contact"
+        mock_conflict.entity_id = entity_id
+        mock_conflict.resolved_at = None
+        mock_conflict.conflict_fields = ["name"]
+
+        mock_contact = MagicMock()
+        mock_contact.id = entity_id
+
+        mock_db = AsyncMock()
+        mock_result1 = MagicMock()
+        mock_result1.scalar_one_or_none.return_value = mock_conflict
+        mock_result2 = MagicMock()
+        mock_result2.scalar_one_or_none.return_value = mock_contact
+
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
+
+        service = ConflictService(mock_db)
+
+        with pytest.raises(ValueError, match="merge_selections"):
+            await service.resolve(
+                conflict_id=conflict_id,
+                resolution_type=ConflictResolutionType.MERGE,
+                resolved_by_id=user_id,
+                merge_selections=None,  # Missing!
+            )
+
+
+class TestGetConflictStats:
+    """Tests for get_conflict_stats method."""
+
+    @pytest.mark.asyncio
+    async def test_get_conflict_stats_returns_counts(self):
+        """Test that stats returns correct counts."""
+        mock_db = AsyncMock()
+        # Return 5 unresolved, then 3 resolved
+        mock_db.scalar.side_effect = [5, 3]
+
+        service = ConflictService(mock_db)
+        stats = await service.get_conflict_stats()
+
+        assert stats["unresolved"] == 5
+        assert stats["resolved"] == 3
+        assert stats["total"] == 8
+
+
+class TestGetEntity:
+    """Tests for _get_entity helper method."""
+
+    @pytest.mark.asyncio
+    async def test_get_entity_returns_contact(self):
+        """Test that _get_entity returns contact for contact type."""
+        entity_id = uuid4()
+        mock_contact = MagicMock()
+        mock_contact.id = entity_id
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_contact
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        result = await service._get_entity("contact", entity_id)
+
+        assert result is not None
+        assert result.id == entity_id
+
+    @pytest.mark.asyncio
+    async def test_get_entity_returns_organization(self):
+        """Test that _get_entity returns organization for organization type."""
+        entity_id = uuid4()
+        mock_org = MagicMock()
+        mock_org.id = entity_id
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_org
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        result = await service._get_entity("organization", entity_id)
+
+        assert result is not None
+        assert result.id == entity_id
+
+    @pytest.mark.asyncio
+    async def test_get_entity_returns_none_for_unknown_type(self):
+        """Test that _get_entity returns None for unknown type."""
+        mock_db = AsyncMock()
+
+        service = ConflictService(mock_db)
+        result = await service._get_entity("unknown", uuid4())
+
+        assert result is None
+
+
+class TestApplyKeepMonday:
+    """Tests for _apply_keep_monday helper method."""
+
+    @pytest.mark.asyncio
+    async def test_apply_keep_monday_handles_nested_values(self):
+        """Test that nested Monday.com values are handled correctly."""
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = uuid4()
+        mock_conflict.entity_type = "contact"
+        mock_conflict.monday_data = {
+            "email": {"email": "test@example.com", "text": "test@example.com"},
+            "name": "Plain Name",
+        }
+        mock_conflict.conflict_fields = ["email", "name"]
+
+        mock_contact = MagicMock()
+        mock_contact.id = uuid4()
+        mock_contact.email = "old@example.com"
+        mock_contact.name = "Old Name"
+
+        mock_db = AsyncMock()
+
+        service = ConflictService(mock_db)
+        await service._apply_keep_monday(mock_conflict, mock_contact)
+
+        # Nested email value should be extracted
+        assert mock_contact.email == "test@example.com"
+        # Plain value should be applied directly
+        assert mock_contact.name == "Plain Name"
