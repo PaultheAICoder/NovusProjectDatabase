@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Search, Check } from "lucide-react";
+import { ChevronDown, Search, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,18 +12,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { Tag } from "@/types/tag";
+import { useTagSearch, useAllTags } from "@/hooks/useTags";
+import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 
 interface TagFilterComboboxProps {
-  allTags: Tag[];
   selectedTagIds: string[];
   onTagToggle: (tagId: string) => void;
   placeholder?: string;
 }
 
 export function TagFilterCombobox({
-  allTags,
   selectedTagIds,
   onTagToggle,
   placeholder = "Tags",
@@ -34,10 +33,22 @@ export function TagFilterCombobox({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // Filter tags by input value (case-insensitive)
-  const filteredTags = allTags.filter((tag) =>
-    tag.name.toLowerCase().includes(inputValue.toLowerCase())
-  );
+  // Debounce search input for server-side search
+  const debouncedSearch = useDebounce(inputValue, 300);
+
+  // Server-side search when user types
+  const { data: searchResults, isLoading } = useTagSearch({
+    search: debouncedSearch,
+    pageSize: 50,
+  });
+
+  // Get initial tags for when dropdown opens with no search
+  const { data: allTagsData } = useAllTags();
+
+  // Use search results if searching, otherwise initial tags
+  const filteredTags = debouncedSearch
+    ? (searchResults?.items ?? [])
+    : (allTagsData ?? []);
 
   // Reset highlighted index when filter changes
   useEffect(() => {
@@ -126,12 +137,17 @@ export function TagFilterCombobox({
             />
           </div>
         </div>
+        {isLoading && debouncedSearch && (
+          <div className="flex items-center justify-center py-2 border-t">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
         <ul
           ref={listRef}
           className="max-h-60 overflow-auto border-t"
           role="listbox"
         >
-          {filteredTags.length === 0 ? (
+          {filteredTags.length === 0 && !isLoading ? (
             <li className="px-3 py-2 text-sm text-muted-foreground">
               No matching tags
             </li>

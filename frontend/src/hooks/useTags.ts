@@ -4,6 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { PaginatedResponse } from "@/types";
 import type {
   CooccurrenceTagsResponse,
   PopularTag,
@@ -179,4 +180,31 @@ export function useAllTags() {
     : [];
 
   return { data: allTags, ...rest };
+}
+
+interface UseTagSearchParams {
+  search: string;
+  type?: TagType;
+  pageSize?: number;
+}
+
+export function useTagSearch({
+  search,
+  type,
+  pageSize = 30,
+}: UseTagSearchParams) {
+  const params = new URLSearchParams({
+    page: "1",
+    page_size: String(pageSize),
+  });
+  if (search) params.append("search", search);
+  if (type) params.append("type", type);
+
+  return useQuery({
+    queryKey: ["tags", "search", { search, type, pageSize }],
+    queryFn: () =>
+      api.get<PaginatedResponse<Tag>>(`/tags/list?${params.toString()}`),
+    enabled: search.length >= 1,
+    staleTime: 1000 * 60, // 1 minute cache
+  });
 }

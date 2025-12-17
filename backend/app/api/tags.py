@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import CurrentUser, DbSession
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Tag, TagType
+from app.schemas.base import PaginatedResponse
 from app.schemas.tag import (
     CooccurrenceTagsResponse,
     CooccurrenceTagSuggestion,
@@ -59,6 +60,48 @@ async def list_tags(
         grouped[tag.type.value].append(tag_response)
 
     return TagListResponse(**grouped)
+
+
+@router.get("/list", response_model=PaginatedResponse[TagResponse])
+@limiter.limit(crud_limit)
+async def list_tags_flat(
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    type: TagType | None = None,
+    search: str | None = None,
+) -> PaginatedResponse[TagResponse]:
+    """List tags with pagination and optional search (flat list, not grouped)."""
+    from sqlalchemy import func
+
+    query = select(Tag)
+
+    if type:
+        query = query.where(Tag.type == type)
+
+    if search:
+        query = query.where(Tag.name.ilike(f"%{search}%"))
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Apply pagination
+    query = query.order_by(Tag.name)
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    result = await db.execute(query)
+    tags = result.scalars().all()
+
+    return PaginatedResponse(
+        items=[TagResponse.model_validate(tag) for tag in tags],
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=(total + page_size - 1) // page_size if total > 0 else 0,
+    )
 
 
 @router.post("", response_model=TagResponse, status_code=status.HTTP_201_CREATED)

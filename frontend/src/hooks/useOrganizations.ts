@@ -46,6 +46,32 @@ export function useOrganization(id: string | undefined) {
   });
 }
 
+interface UseOrganizationSearchParams {
+  search: string;
+  pageSize?: number;
+}
+
+export function useOrganizationSearch({
+  search,
+  pageSize = 20,
+}: UseOrganizationSearchParams) {
+  const params = new URLSearchParams({
+    page: "1",
+    page_size: String(pageSize),
+  });
+  if (search) params.append("search", search);
+
+  return useQuery({
+    queryKey: ["organizations", "search", { search, pageSize }],
+    queryFn: () =>
+      api.get<PaginatedResponse<Organization>>(
+        `/organizations?${params.toString()}`,
+      ),
+    enabled: search.length >= 1,
+    staleTime: 1000 * 60, // 1 minute cache
+  });
+}
+
 export function useCreateOrganization() {
   const queryClient = useQueryClient();
 

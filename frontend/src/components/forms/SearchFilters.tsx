@@ -2,6 +2,7 @@
  * Search filters component.
  */
 
+import { useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,8 +15,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { TagFilterCombobox } from "@/components/forms/TagFilterCombobox";
 import { OrganizationFilterCombobox } from "@/components/forms/OrganizationCombobox";
-import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAllTags } from "@/hooks/useTags";
+import type { Organization } from "@/types/organization";
 import type { ProjectStatus } from "@/types/project";
 
 const statusOptions: { value: ProjectStatus; label: string }[] = [
@@ -45,8 +46,20 @@ export function SearchFilters({
   onTagsChange,
   onClearAll,
 }: SearchFiltersProps) {
-  const { data: orgsData } = useOrganizations({ pageSize: 100 });
+  // Track selected organization for display in badge
+  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+  // Keep useAllTags for badge display
   const { data: allTags } = useAllTags();
+
+  // Wrapper for org selection to track the selected org name
+  const handleOrganizationSelect = (id: string | undefined, org?: Organization) => {
+    if (org) {
+      setSelectedOrg(org);
+    } else if (!id) {
+      setSelectedOrg(null);
+    }
+    onOrganizationChange(id);
+  };
 
   const hasFilters =
     status.length > 0 || organizationId !== undefined || tagIds.length > 0;
@@ -102,15 +115,13 @@ export function SearchFilters({
         </Select>
 
         <OrganizationFilterCombobox
-          organizations={orgsData?.items ?? []}
           selectedId={organizationId}
-          onSelect={onOrganizationChange}
+          onSelect={handleOrganizationSelect}
           placeholder="Organization"
           showAllOption={true}
         />
 
         <TagFilterCombobox
-          allTags={allTags ?? []}
           selectedTagIds={tagIds}
           onTagToggle={handleTagToggle}
           placeholder="Tags"
@@ -136,11 +147,11 @@ export function SearchFilters({
               </button>
             </Badge>
           ))}
-          {organizationId && orgsData?.items && (
+          {organizationId && selectedOrg && (
             <Badge variant="secondary" className="gap-1">
-              {orgsData.items.find((o) => o.id === organizationId)?.name}
+              {selectedOrg.name}
               <button
-                onClick={() => onOrganizationChange(undefined)}
+                onClick={() => handleOrganizationSelect(undefined)}
                 className="ml-1 rounded-full hover:bg-muted"
               >
                 <X className="h-3 w-3" />

@@ -35,7 +35,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAllTags } from "@/hooks/useTags";
 import type { ImportRowPreview, ImportRowUpdate } from "@/types/import";
 import type { ProjectLocation, ProjectStatus } from "@/types/project";
@@ -86,7 +85,6 @@ export function ImportPreview({
   onCommit,
   isCommitting = false,
 }: ImportPreviewProps) {
-  const { data: orgsData } = useOrganizations({ pageSize: 100 });
   const { data: allTags } = useAllTags();
 
   // Local state for editable rows
@@ -247,7 +245,6 @@ export function ImportPreview({
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <OrganizationSelectCombobox
-                        organizations={orgsData?.items ?? []}
                         value={
                           getEditedValue(
                             row.row_number,

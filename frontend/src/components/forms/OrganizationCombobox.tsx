@@ -25,20 +25,22 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateOrganization } from "@/hooks/useOrganizations";
+import { useCreateOrganization, useOrganizations, useOrganizationSearch } from "@/hooks/useOrganizations";
+import { useDebounce } from "@/hooks/useDebounce";
 import type { Organization } from "@/types/organization";
 import { cn } from "@/lib/utils";
 
 interface OrganizationFilterComboboxProps {
-  organizations: Organization[];
+  /** Optional pre-loaded organizations (for displaying selected item when not in search results) */
+  initialOrganizations?: Organization[];
   selectedId: string | undefined;
-  onSelect: (id: string | undefined) => void;
+  onSelect: (id: string | undefined, org?: Organization) => void;
   placeholder?: string;
   showAllOption?: boolean;
 }
 
 export function OrganizationFilterCombobox({
-  organizations,
+  initialOrganizations,
   selectedId,
   onSelect,
   placeholder = "Organization",
@@ -50,10 +52,22 @@ export function OrganizationFilterCombobox({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // Filter organizations by input value (case-insensitive)
-  const filteredOrgs = organizations.filter((org) =>
-    org.name.toLowerCase().includes(inputValue.toLowerCase())
-  );
+  // Debounce search input for server-side search
+  const debouncedSearch = useDebounce(inputValue, 300);
+
+  // Server-side search when user types
+  const { data: searchResults, isLoading } = useOrganizationSearch({
+    search: debouncedSearch,
+    pageSize: 50,
+  });
+
+  // Initial data for when dropdown opens with no search
+  const { data: initialData } = useOrganizations({ pageSize: 50 });
+
+  // Use search results if searching, otherwise initial data
+  const organizations = debouncedSearch
+    ? (searchResults?.items ?? [])
+    : (initialData?.items ?? []);
 
   // Reset highlighted index when filter changes
   useEffect(() => {
@@ -85,7 +99,7 @@ export function OrganizationFilterCombobox({
   }, [highlightedIndex, showAllOption]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    const maxIndex = filteredOrgs.length - 1;
+    const maxIndex = organizations.length - 1;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -98,10 +112,10 @@ export function OrganizationFilterCombobox({
       if (highlightedIndex === -1 && showAllOption) {
         onSelect(undefined);
         setIsOpen(false);
-      } else if (highlightedIndex >= 0 && highlightedIndex < filteredOrgs.length) {
-        const selectedOrg = filteredOrgs[highlightedIndex];
-        if (selectedOrg) {
-          onSelect(selectedOrg.id);
+      } else if (highlightedIndex >= 0 && highlightedIndex < organizations.length) {
+        const org = organizations[highlightedIndex];
+        if (org) {
+          onSelect(org.id, org);
           setIsOpen(false);
         }
       }
@@ -112,14 +126,15 @@ export function OrganizationFilterCombobox({
     }
   };
 
-  const handleOrgClick = (orgId: string | undefined) => {
-    onSelect(orgId);
+  const handleOrgClick = (orgId: string | undefined, org?: Organization) => {
+    onSelect(orgId, org);
     setIsOpen(false);
   };
 
-  // Get display text for trigger button
+  // Get display text for trigger button - look in both searched and initial orgs
   const selectedOrg = selectedId
-    ? organizations.find((o) => o.id === selectedId)
+    ? organizations.find((o) => o.id === selectedId) ||
+      initialOrganizations?.find((o) => o.id === selectedId)
     : null;
   const displayText = selectedOrg?.name ?? placeholder;
 
@@ -150,6 +165,11 @@ export function OrganizationFilterCombobox({
             />
           </div>
         </div>
+        {isLoading && debouncedSearch && (
+          <div className="flex items-center justify-center py-2 border-t">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
         <ul
           ref={listRef}
           className="max-h-60 overflow-auto border-t"
@@ -163,7 +183,7 @@ export function OrganizationFilterCombobox({
                   "flex w-full items-center gap-2 px-3 py-2 text-left text-sm",
                   highlightedIndex === -1 ? "bg-accent" : "hover:bg-accent/50"
                 )}
-                onClick={() => handleOrgClick(undefined)}
+                onClick={() => handleOrgClick(undefined, undefined)}
                 onMouseEnter={() => setHighlightedIndex(-1)}
               >
                 <span
@@ -178,12 +198,12 @@ export function OrganizationFilterCombobox({
               </button>
             </li>
           )}
-          {filteredOrgs.length === 0 ? (
+          {organizations.length === 0 && !isLoading ? (
             <li className="px-3 py-2 text-sm text-muted-foreground">
               No matching organizations
             </li>
           ) : (
-            filteredOrgs.map((org, index) => {
+            organizations.map((org, index) => {
               const isSelected = selectedId === org.id;
               const isHighlighted = index === highlightedIndex;
 
@@ -195,7 +215,7 @@ export function OrganizationFilterCombobox({
                       "flex w-full items-center gap-2 px-3 py-2 text-left text-sm",
                       isHighlighted ? "bg-accent" : "hover:bg-accent/50"
                     )}
-                    onClick={() => handleOrgClick(org.id)}
+                    onClick={() => handleOrgClick(org.id, org)}
                     onMouseEnter={() => setHighlightedIndex(index)}
                   >
                     <span
@@ -219,7 +239,8 @@ export function OrganizationFilterCombobox({
 }
 
 interface OrganizationSelectComboboxProps {
-  organizations: Organization[];
+  /** Optional pre-loaded organizations (for displaying selected item when not in search results) */
+  initialOrganizations?: Organization[];
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -230,7 +251,7 @@ interface OrganizationSelectComboboxProps {
 }
 
 export function OrganizationSelectCombobox({
-  organizations,
+  initialOrganizations,
   value,
   onChange,
   placeholder = "Select organization",
@@ -260,10 +281,22 @@ export function OrganizationSelectCombobox({
 
   const createMutation = useCreateOrganization();
 
-  // Filter organizations by input value (case-insensitive)
-  const filteredOrgs = organizations.filter((org) =>
-    org.name.toLowerCase().includes(inputValue.toLowerCase())
-  );
+  // Debounce search input for server-side search
+  const debouncedSearch = useDebounce(inputValue, 300);
+
+  // Server-side search when user types
+  const { data: searchResults, isLoading } = useOrganizationSearch({
+    search: debouncedSearch,
+    pageSize: 50,
+  });
+
+  // Initial data for when dropdown opens with no search
+  const { data: initialData } = useOrganizations({ pageSize: 50 });
+
+  // Use search results if searching, otherwise initial data
+  const organizations = debouncedSearch
+    ? (searchResults?.items ?? [])
+    : (initialData?.items ?? []);
 
   // Reset highlighted index when filter changes
   useEffect(() => {
@@ -297,15 +330,15 @@ export function OrganizationSelectCombobox({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightedIndex((prev) =>
-        Math.min(prev + 1, filteredOrgs.length - 1)
+        Math.min(prev + 1, organizations.length - 1)
       );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlightedIndex((prev) => Math.max(prev - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (highlightedIndex >= 0 && highlightedIndex < filteredOrgs.length) {
-        const selectedOrg = filteredOrgs[highlightedIndex];
+      if (highlightedIndex >= 0 && highlightedIndex < organizations.length) {
+        const selectedOrg = organizations[highlightedIndex];
         if (selectedOrg) {
           onChange(selectedOrg.id);
           setIsOpen(false);
@@ -318,7 +351,7 @@ export function OrganizationSelectCombobox({
     }
   };
 
-  const handleOrgClick = (orgId: string) => {
+  const handleSelectOrgClick = (orgId: string) => {
     onChange(orgId);
     setIsOpen(false);
   };
@@ -366,8 +399,11 @@ export function OrganizationSelectCombobox({
     setShowCreateDialog(open);
   };
 
-  // Get display text for trigger button
-  const selectedOrg = value ? organizations.find((o) => o.id === value) : null;
+  // Get display text for trigger button - look in both searched and initial orgs
+  const selectedOrg = value
+    ? organizations.find((o) => o.id === value) ||
+      initialOrganizations?.find((o) => o.id === value)
+    : null;
   const displayText = selectedOrg?.name ?? placeholder;
 
   return (
@@ -406,17 +442,22 @@ export function OrganizationSelectCombobox({
             />
           </div>
         </div>
+        {isLoading && debouncedSearch && (
+          <div className="flex items-center justify-center py-2 border-t">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
         <ul
           ref={listRef}
           className="max-h-60 overflow-auto border-t"
           role="listbox"
         >
-          {filteredOrgs.length === 0 ? (
+          {organizations.length === 0 && !isLoading ? (
             <li className="px-3 py-2 text-sm text-muted-foreground">
               No matching organizations
             </li>
           ) : (
-            filteredOrgs.map((org, index) => {
+            organizations.map((org, index) => {
               const isSelected = value === org.id;
               const isHighlighted = index === highlightedIndex;
 
@@ -428,7 +469,7 @@ export function OrganizationSelectCombobox({
                       "flex w-full items-center gap-2 px-3 py-2 text-left text-sm",
                       isHighlighted ? "bg-accent" : "hover:bg-accent/50"
                     )}
-                    onClick={() => handleOrgClick(org.id)}
+                    onClick={() => handleSelectOrgClick(org.id)}
                     onMouseEnter={() => setHighlightedIndex(index)}
                   >
                     <span

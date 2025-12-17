@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/select";
 import { OrganizationSelectCombobox } from "@/components/forms/OrganizationCombobox";
 import { ContactSelectCombobox } from "@/components/forms/ContactSelectCombobox";
-import { useOrganizations } from "@/hooks/useOrganizations";
 import { useContacts } from "@/hooks/useContacts";
 import { useAllTags } from "@/hooks/useTags";
 import type { ProjectDetail, ProjectLocation, ProjectStatus } from "@/types/project";
@@ -123,7 +122,6 @@ export function ProjectForm({
   onCancel,
   isSubmitting = false,
 }: ProjectFormProps) {
-  const { data: orgsData } = useOrganizations({ pageSize: 100 });
   const { data: allTags } = useAllTags();
   const autofillMutation = useAutofill();
 
@@ -286,7 +284,6 @@ export function ProjectForm({
                 <FormLabel>Organization <span className="text-destructive">*</span></FormLabel>
                 <FormControl>
                   <OrganizationSelectCombobox
-                    organizations={orgsData?.items ?? []}
                     value={field.value}
                     onChange={field.onChange}
                     placeholder="Select organization"

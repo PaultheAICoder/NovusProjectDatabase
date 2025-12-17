@@ -25,7 +25,6 @@ import {
   useUpdateContact,
   useDeleteContact,
 } from "@/hooks/useContacts";
-import { useOrganizations } from "@/hooks/useOrganizations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -92,7 +91,6 @@ export function ContactsPage() {
     pageSize,
     organizationId: orgFilter,
   });
-  const { data: orgsData } = useOrganizations({ pageSize: 100 });
   const createMutation = useCreateContact();
   const updateMutation = useUpdateContact();
   const deleteMutation = useDeleteContact();
@@ -239,7 +237,6 @@ export function ContactsPage() {
 
       <div className="flex items-center gap-4">
         <OrganizationFilterCombobox
-          organizations={orgsData?.items ?? []}
           selectedId={orgFilter}
           onSelect={(value) => {
             setOrgFilter(value);
@@ -395,7 +392,6 @@ export function ContactsPage() {
             <div className="space-y-2">
               <Label htmlFor="contact-org">Organization *</Label>
               <OrganizationSelectCombobox
-                organizations={orgsData?.items ?? []}
                 value={formData.organization_id}
                 onChange={(value) =>
                   setFormData({ ...formData, organization_id: value })
