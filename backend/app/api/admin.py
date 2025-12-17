@@ -29,7 +29,11 @@ from app.schemas.import_ import (
     ImportRowsValidateResponse,
 )
 from app.schemas.monday import (
+    BulkConflictResolveRequest,
+    BulkConflictResolveResponse,
+    BulkResolveResult,
     ConflictListResponse,
+    ConflictResolutionType,
     ConflictResolveRequest,
     MondayBoardInfo,
     MondayBoardsResponse,
@@ -749,6 +753,64 @@ async def resolve_sync_conflict(
         )
 
     return SyncConflictResponse.model_validate(conflict)
+
+
+@router.post(
+    "/sync/conflicts/bulk-resolve",
+    response_model=BulkConflictResolveResponse,
+)
+@limiter.limit(admin_limit)
+async def bulk_resolve_sync_conflicts(
+    request: Request,
+    data: BulkConflictResolveRequest,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> BulkConflictResolveResponse:
+    """Resolve multiple sync conflicts at once. Admin only.
+
+    Resolution types for bulk:
+    - keep_npd: Use NPD data for all, push to Monday.com
+    - keep_monday: Use Monday.com data for all, update NPD
+
+    Note: merge resolution is not supported for bulk operations.
+    """
+    # Validate resolution type
+    if data.resolution_type == ConflictResolutionType.MERGE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bulk resolution does not support merge. Use individual resolve for merge operations.",
+        )
+
+    service = ConflictService(db)
+
+    try:
+        results = await service.bulk_resolve(
+            conflict_ids=data.conflict_ids,
+            resolution_type=data.resolution_type,
+            resolved_by_id=admin_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    succeeded = sum(1 for r in results if r["success"])
+    failed = len(results) - succeeded
+
+    return BulkConflictResolveResponse(
+        total=len(results),
+        succeeded=succeeded,
+        failed=failed,
+        results=[
+            BulkResolveResult(
+                conflict_id=r["conflict_id"],
+                success=r["success"],
+                error=r["error"],
+            )
+            for r in results
+        ],
+    )
 
 
 # ============== Sync Queue Management (Admin Only) ==============

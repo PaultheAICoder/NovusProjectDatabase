@@ -18,9 +18,9 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.models.contact import Contact
 from app.models.monday_sync import RecordSyncStatus, SyncDirection
 from app.models.organization import Organization
-from app.models.contact import Contact
 
 
 # Database fixture for integration tests
@@ -30,7 +30,7 @@ async def db():
     # Use test database URL
     database_url = os.getenv(
         "TEST_DATABASE_URL",
-        "postgresql+asyncpg://npd_test:npd_test_2025@localhost:6712/npd_test"
+        "postgresql+asyncpg://npd_test:npd_test_2025@localhost:6712/npd_test",
     )
     engine = create_async_engine(database_url, echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -163,9 +163,7 @@ class TestDatabaseEnumValues:
         """Verify all contact sync_status values are valid enum names."""
         valid_values = {member.name for member in RecordSyncStatus}
 
-        result = await db.execute(
-            text("SELECT DISTINCT sync_status FROM contacts")
-        )
+        result = await db.execute(text("SELECT DISTINCT sync_status FROM contacts"))
         db_values = {row[0] for row in result.fetchall()}
 
         invalid = db_values - valid_values
@@ -180,9 +178,7 @@ class TestDatabaseEnumValues:
         """Verify all contact sync_direction values are valid enum names."""
         valid_values = {member.name for member in SyncDirection}
 
-        result = await db.execute(
-            text("SELECT DISTINCT sync_direction FROM contacts")
-        )
+        result = await db.execute(text("SELECT DISTINCT sync_direction FROM contacts"))
         db_values = {row[0] for row in result.fetchall()}
 
         invalid = db_values - valid_values
@@ -204,16 +200,18 @@ class TestEnumRoundTrip:
         # Create with explicit enum values using raw SQL to avoid model issues
         org_id = uuid.uuid4()
         await db.execute(
-            text("""
+            text(
+                """
                 INSERT INTO organizations (id, name, sync_status, sync_direction)
                 VALUES (:id, :name, :sync_status, :sync_direction)
-            """),
+            """
+            ),
             {
                 "id": str(org_id),
                 "name": f"Test Enum Org {uuid.uuid4().hex[:8]}",
                 "sync_status": "SYNCED",
                 "sync_direction": "NPD_TO_MONDAY",
-            }
+            },
         )
         await db.commit()
 
@@ -232,8 +230,7 @@ class TestEnumRoundTrip:
 
         # Cleanup
         await db.execute(
-            text("DELETE FROM organizations WHERE id = :id"),
-            {"id": str(org_id)}
+            text("DELETE FROM organizations WHERE id = :id"), {"id": str(org_id)}
         )
         await db.commit()
 
@@ -251,17 +248,19 @@ class TestEnumRoundTrip:
             org_id = uuid.uuid4()
             await db.execute(
                 text("INSERT INTO organizations (id, name) VALUES (:id, :name)"),
-                {"id": str(org_id), "name": f"Test Org {uuid.uuid4().hex[:8]}"}
+                {"id": str(org_id), "name": f"Test Org {uuid.uuid4().hex[:8]}"},
             )
             await db.commit()
 
         # Create contact with explicit enum values using raw SQL
         contact_id = uuid.uuid4()
         await db.execute(
-            text("""
+            text(
+                """
                 INSERT INTO contacts (id, name, email, organization_id, sync_status, sync_direction)
                 VALUES (:id, :name, :email, :org_id, :sync_status, :sync_direction)
-            """),
+            """
+            ),
             {
                 "id": str(contact_id),
                 "name": f"Test Contact {uuid.uuid4().hex[:8]}",
@@ -269,7 +268,7 @@ class TestEnumRoundTrip:
                 "org_id": str(org_id),
                 "sync_status": "CONFLICT",
                 "sync_direction": "MONDAY_TO_NPD",
-            }
+            },
         )
         await db.commit()
 
@@ -288,7 +287,6 @@ class TestEnumRoundTrip:
 
         # Cleanup
         await db.execute(
-            text("DELETE FROM contacts WHERE id = :id"),
-            {"id": str(contact_id)}
+            text("DELETE FROM contacts WHERE id = :id"), {"id": str(contact_id)}
         )
         await db.commit()

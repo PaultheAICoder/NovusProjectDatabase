@@ -5,6 +5,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+  BulkConflictResolveRequest,
+  BulkConflictResolveResponse,
   ConflictListResponse,
   ConflictResolveRequest,
   ConflictStats,
@@ -118,6 +120,20 @@ export function useResolveSyncConflict() {
       conflictId: string;
       data: ConflictResolveRequest;
     }) => api.post<SyncConflict>(`/admin/sync/conflicts/${conflictId}/resolve`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync", "conflicts"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+export function useBulkResolveSyncConflicts() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: BulkConflictResolveRequest) =>
+      api.post<BulkConflictResolveResponse>("/admin/sync/conflicts/bulk-resolve", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sync", "conflicts"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });

@@ -64,6 +64,10 @@ __all__ = [
     "ConflictResolutionType",
     "ConflictResolveRequest",
     "ConflictListResponse",
+    # Bulk conflict resolution schemas
+    "BulkResolveResult",
+    "BulkConflictResolveRequest",
+    "BulkConflictResolveResponse",
     # Sync queue list response
     "SyncQueueListResponse",
     "SyncQueueStatsResponse",
@@ -337,6 +341,33 @@ class ConflictListResponse(BaseModel):
     page: int
     page_size: int
     has_more: bool
+
+
+class BulkResolveResult(BaseModel):
+    """Result for a single conflict in bulk resolution."""
+
+    conflict_id: UUID
+    success: bool
+    error: str | None = None
+
+
+class BulkConflictResolveRequest(BaseModel):
+    """Request to resolve multiple conflicts at once."""
+
+    conflict_ids: list[UUID] = Field(..., min_length=1, max_length=100)
+    resolution_type: ConflictResolutionType = Field(
+        ...,
+        description="Resolution type: only keep_npd or keep_monday allowed for bulk",
+    )
+
+
+class BulkConflictResolveResponse(BaseModel):
+    """Response from bulk conflict resolution."""
+
+    total: int
+    succeeded: int
+    failed: int
+    results: list[BulkResolveResult]
 
 
 class SyncQueueListResponse(BaseModel):

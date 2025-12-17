@@ -438,3 +438,160 @@ class TestApplyKeepMonday:
         assert mock_contact.email == "test@example.com"
         # Plain value should be applied directly
         assert mock_contact.name == "Plain Name"
+
+
+class TestBulkResolve:
+    """Tests for bulk_resolve method."""
+
+    @pytest.mark.asyncio
+    async def test_bulk_resolve_processes_multiple_conflicts(self):
+        """Test that bulk_resolve processes multiple conflicts."""
+        conflict_id_1 = uuid4()
+        conflict_id_2 = uuid4()
+        entity_id_1 = uuid4()
+        entity_id_2 = uuid4()
+        user_id = uuid4()
+
+        # Create mock conflicts
+        mock_conflict_1 = MagicMock(spec=SyncConflict)
+        mock_conflict_1.id = conflict_id_1
+        mock_conflict_1.entity_type = "contact"
+        mock_conflict_1.entity_id = entity_id_1
+        mock_conflict_1.resolved_at = None
+        mock_conflict_1.npd_data = {"name": "NPD 1"}
+        mock_conflict_1.monday_data = {"name": "Monday 1"}
+        mock_conflict_1.conflict_fields = ["name"]
+
+        mock_conflict_2 = MagicMock(spec=SyncConflict)
+        mock_conflict_2.id = conflict_id_2
+        mock_conflict_2.entity_type = "contact"
+        mock_conflict_2.entity_id = entity_id_2
+        mock_conflict_2.resolved_at = None
+        mock_conflict_2.npd_data = {"name": "NPD 2"}
+        mock_conflict_2.monday_data = {"name": "Monday 2"}
+        mock_conflict_2.conflict_fields = ["name"]
+
+        mock_contact_1 = MagicMock()
+        mock_contact_1.id = entity_id_1
+        mock_contact_1.name = "NPD 1"
+
+        mock_contact_2 = MagicMock()
+        mock_contact_2.id = entity_id_2
+        mock_contact_2.name = "NPD 2"
+
+        mock_db = AsyncMock()
+        # Mock results for first conflict
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one_or_none.return_value = mock_conflict_1
+        mock_result_entity_1 = MagicMock()
+        mock_result_entity_1.scalar_one_or_none.return_value = mock_contact_1
+        # Mock results for second conflict
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = mock_conflict_2
+        mock_result_entity_2 = MagicMock()
+        mock_result_entity_2.scalar_one_or_none.return_value = mock_contact_2
+
+        mock_db.execute.side_effect = [
+            mock_result_1,
+            mock_result_entity_1,
+            mock_result_2,
+            mock_result_entity_2,
+        ]
+        mock_db.flush = AsyncMock()
+
+        service = ConflictService(mock_db)
+        results = await service.bulk_resolve(
+            conflict_ids=[conflict_id_1, conflict_id_2],
+            resolution_type=ConflictResolutionType.KEEP_MONDAY,
+            resolved_by_id=user_id,
+        )
+
+        assert len(results) == 2
+        assert results[0]["success"] is True
+        assert results[1]["success"] is True
+        assert results[0]["conflict_id"] == conflict_id_1
+        assert results[1]["conflict_id"] == conflict_id_2
+
+    @pytest.mark.asyncio
+    async def test_bulk_resolve_rejects_merge_resolution_type(self):
+        """Test that bulk_resolve raises error for merge resolution."""
+        mock_db = AsyncMock()
+        service = ConflictService(mock_db)
+
+        with pytest.raises(ValueError, match="does not support merge"):
+            await service.bulk_resolve(
+                conflict_ids=[uuid4()],
+                resolution_type=ConflictResolutionType.MERGE,
+                resolved_by_id=uuid4(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_bulk_resolve_handles_not_found_conflicts(self):
+        """Test that missing conflicts are marked as failed."""
+        conflict_id = uuid4()
+        user_id = uuid4()
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        service = ConflictService(mock_db)
+        results = await service.bulk_resolve(
+            conflict_ids=[conflict_id],
+            resolution_type=ConflictResolutionType.KEEP_NPD,
+            resolved_by_id=user_id,
+        )
+
+        assert len(results) == 1
+        assert results[0]["success"] is False
+        assert "not found" in results[0]["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_bulk_resolve_continues_on_individual_failure(self):
+        """Test that bulk_resolve continues processing after individual failure."""
+        conflict_id_1 = uuid4()
+        conflict_id_2 = uuid4()
+        entity_id_2 = uuid4()
+        user_id = uuid4()
+
+        # First conflict will fail (not found)
+        # Second conflict will succeed
+        mock_conflict_2 = MagicMock(spec=SyncConflict)
+        mock_conflict_2.id = conflict_id_2
+        mock_conflict_2.entity_type = "contact"
+        mock_conflict_2.entity_id = entity_id_2
+        mock_conflict_2.resolved_at = None
+        mock_conflict_2.npd_data = {"name": "NPD"}
+        mock_conflict_2.monday_data = {"name": "Monday"}
+        mock_conflict_2.conflict_fields = ["name"]
+
+        mock_contact_2 = MagicMock()
+        mock_contact_2.id = entity_id_2
+        mock_contact_2.name = "NPD"
+
+        mock_db = AsyncMock()
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one_or_none.return_value = None  # Not found
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = mock_conflict_2
+        mock_result_entity_2 = MagicMock()
+        mock_result_entity_2.scalar_one_or_none.return_value = mock_contact_2
+
+        mock_db.execute.side_effect = [
+            mock_result_1,  # First conflict not found
+            mock_result_2,
+            mock_result_entity_2,  # Second conflict found
+        ]
+        mock_db.flush = AsyncMock()
+
+        service = ConflictService(mock_db)
+        results = await service.bulk_resolve(
+            conflict_ids=[conflict_id_1, conflict_id_2],
+            resolution_type=ConflictResolutionType.KEEP_MONDAY,
+            resolved_by_id=user_id,
+        )
+
+        assert len(results) == 2
+        assert results[0]["success"] is False
+        assert results[1]["success"] is True

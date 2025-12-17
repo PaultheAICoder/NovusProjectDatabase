@@ -5,9 +5,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.models.monday_sync import SyncConflict
 from app.schemas.monday import (
+    BulkConflictResolveRequest,
+    BulkConflictResolveResponse,
+    BulkResolveResult,
     ConflictListResponse,
     ConflictResolutionType,
     ConflictResolveRequest,
@@ -420,3 +424,53 @@ class TestConflictResolutionSchemas:
         assert response.id == conflict_id
         assert response.entity_type == "contact"
         assert response.resolved_by_id is None
+
+
+class TestBulkResolveEndpointLogic:
+    """Tests for bulk_resolve_sync_conflicts endpoint logic."""
+
+    @pytest.mark.asyncio
+    async def test_bulk_resolve_returns_response_with_counts(self):
+        """Test that bulk resolve returns proper counts."""
+        response = BulkConflictResolveResponse(
+            total=3,
+            succeeded=2,
+            failed=1,
+            results=[
+                BulkResolveResult(conflict_id=uuid4(), success=True, error=None),
+                BulkResolveResult(conflict_id=uuid4(), success=True, error=None),
+                BulkResolveResult(
+                    conflict_id=uuid4(), success=False, error="Not found"
+                ),
+            ],
+        )
+
+        assert response.total == 3
+        assert response.succeeded == 2
+        assert response.failed == 1
+        assert len(response.results) == 3
+
+    def test_bulk_resolve_request_validation(self):
+        """Test BulkConflictResolveRequest validates properly."""
+        # Valid request
+        request = BulkConflictResolveRequest(
+            conflict_ids=[uuid4(), uuid4()],
+            resolution_type=ConflictResolutionType.KEEP_NPD,
+        )
+        assert len(request.conflict_ids) == 2
+
+    def test_bulk_resolve_request_rejects_empty_list(self):
+        """Test that empty conflict_ids list is rejected."""
+        with pytest.raises(ValidationError):
+            BulkConflictResolveRequest(
+                conflict_ids=[],
+                resolution_type=ConflictResolutionType.KEEP_NPD,
+            )
+
+    def test_bulk_resolve_request_limits_to_100(self):
+        """Test that more than 100 conflict_ids is rejected."""
+        with pytest.raises(ValidationError):
+            BulkConflictResolveRequest(
+                conflict_ids=[uuid4() for _ in range(101)],
+                resolution_type=ConflictResolutionType.KEEP_NPD,
+            )

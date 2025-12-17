@@ -302,3 +302,64 @@ class ConflictService:
             "resolved": resolved,
             "total": unresolved + resolved,
         }
+
+    async def bulk_resolve(
+        self,
+        conflict_ids: list[UUID],
+        resolution_type: ConflictResolutionType,
+        resolved_by_id: UUID,
+    ) -> list[dict]:
+        """Resolve multiple conflicts with the same resolution type.
+
+        Args:
+            conflict_ids: List of conflict UUIDs to resolve
+            resolution_type: How to resolve (keep_npd or keep_monday only)
+            resolved_by_id: UUID of the user resolving the conflicts
+
+        Returns:
+            List of dicts with conflict_id, success, and error (if failed)
+        """
+        if resolution_type == ConflictResolutionType.MERGE:
+            raise ValueError(
+                "Bulk resolution does not support merge - use individual resolve"
+            )
+
+        results = []
+        for conflict_id in conflict_ids:
+            try:
+                conflict = await self.resolve(
+                    conflict_id=conflict_id,
+                    resolution_type=resolution_type,
+                    resolved_by_id=resolved_by_id,
+                )
+                if conflict:
+                    results.append(
+                        {
+                            "conflict_id": conflict_id,
+                            "success": True,
+                            "error": None,
+                        }
+                    )
+                else:
+                    results.append(
+                        {
+                            "conflict_id": conflict_id,
+                            "success": False,
+                            "error": "Conflict not found",
+                        }
+                    )
+            except Exception as e:
+                logger.error(
+                    "bulk_resolve_conflict_failed",
+                    conflict_id=str(conflict_id),
+                    error=str(e),
+                )
+                results.append(
+                    {
+                        "conflict_id": conflict_id,
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
+
+        return results

@@ -94,6 +94,27 @@ export interface ConflictResolveRequest {
   merge_selections?: Record<string, "npd" | "monday">;
 }
 
+/** Result for a single conflict in bulk resolution. */
+export interface BulkResolveResult {
+  conflict_id: string;
+  success: boolean;
+  error: string | null;
+}
+
+/** Request to bulk resolve multiple conflicts. */
+export interface BulkConflictResolveRequest {
+  conflict_ids: string[];
+  resolution_type: "keep_npd" | "keep_monday"; // merge not allowed for bulk
+}
+
+/** Response from bulk conflict resolution. */
+export interface BulkConflictResolveResponse {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkResolveResult[];
+}
+
 /** Conflict statistics. */
 export interface ConflictStats {
   unresolved: number;

@@ -4,6 +4,7 @@
  */
 
 import { Building2, ChevronLeft, ChevronRight, Eye, Loader2, User } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatDistanceToNow } from "date-fns";
 import {
   Table,
@@ -35,6 +36,8 @@ interface ConflictListProps {
   onEntityTypeFilterChange: (type: "contact" | "organization" | null) => void;
   onPageChange: (page: number) => void;
   onViewConflict: (conflict: SyncConflict) => void;
+  selectedIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
 }
 
 export function ConflictList({
@@ -48,6 +51,8 @@ export function ConflictList({
   onEntityTypeFilterChange,
   onPageChange,
   onViewConflict,
+  selectedIds,
+  onSelectionChange,
 }: ConflictListProps) {
   const startIndex = (page - 1) * pageSize + 1;
   const endIndex = Math.min(page * pageSize, total);
@@ -60,6 +65,27 @@ export function ConflictList({
       "Unknown"
     );
   };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === conflicts.length) {
+      onSelectionChange(new Set());
+    } else {
+      onSelectionChange(new Set(conflicts.map((c) => c.id)));
+    }
+  };
+
+  const handleSelectConflict = (conflictId: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(conflictId)) {
+      newSet.delete(conflictId);
+    } else {
+      newSet.add(conflictId);
+    }
+    onSelectionChange(newSet);
+  };
+
+  const allSelected = conflicts.length > 0 && selectedIds.size === conflicts.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < conflicts.length;
 
   if (isLoading) {
     return (
@@ -109,6 +135,14 @@ export function ConflictList({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Select all"
+                    className={someSelected ? "data-[state=checked]:bg-primary/50" : ""}
+                  />
+                </TableHead>
                 <TableHead className="w-[100px]">Type</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead className="w-[140px]">Conflicting Fields</TableHead>
@@ -119,6 +153,13 @@ export function ConflictList({
             <TableBody>
               {conflicts.map((conflict) => (
                 <TableRow key={conflict.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(conflict.id)}
+                      onCheckedChange={() => handleSelectConflict(conflict.id)}
+                      aria-label={`Select ${getEntityName(conflict)}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {conflict.entity_type === "organization" ? (
