@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     clamav_scan_on_upload: bool = True  # When enabled, scan files during upload
     clamav_fail_open: bool = True  # If True, allow upload when scan fails/unavailable
 
+    # ClamAV Connection Pool
+    clamav_pool_size: int = 5  # Number of pooled connections
+    clamav_pool_timeout: int = 10  # Seconds to wait for connection from pool
+    clamav_connection_max_age: int = 300  # Max connection age in seconds (5 min)
+
     # Logging
     log_level: str = "INFO"
 

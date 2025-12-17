@@ -4,7 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
-from app.services.antivirus import AntivirusService, ScanResponse, ScanResult
+from app.services.antivirus import (
+    AntivirusService,
+    ClamAVConnectionPool,
+    ScanResponse,
+    ScanResult,
+    close_clamav_pool,
+    get_clamav_pool,
+    init_clamav_pool,
+)
 
 
 class TestAntivirusService:
@@ -14,6 +22,12 @@ class TestAntivirusService:
     def service(self) -> AntivirusService:
         """Create a service instance."""
         return AntivirusService()
+
+    @pytest.fixture(autouse=True)
+    def mock_no_pool(self):
+        """Ensure tests run without pool (testing fallback behavior)."""
+        with patch("app.services.antivirus._clamav_pool", None):
+            yield
 
     def test_is_enabled_default_false(self, service: AntivirusService):
         """By default, antivirus should be disabled."""
@@ -186,3 +200,244 @@ class TestScanResult:
         assert ScanResult.INFECTED.value == "infected"
         assert ScanResult.ERROR.value == "error"
         assert ScanResult.SKIPPED.value == "skipped"
+
+
+class TestClamAVConnectionPool:
+    """Tests for ClamAVConnectionPool."""
+
+    @pytest.fixture
+    def pool(self) -> ClamAVConnectionPool:
+        """Create a pool instance for testing."""
+        return ClamAVConnectionPool(
+            host="localhost",
+            port=3310,
+            pool_size=2,
+            connection_timeout=5.0,
+            max_connection_age=60.0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_pool_stats_initial(self, pool: ClamAVConnectionPool):
+        """Initial pool stats should show empty pool."""
+        stats = pool.stats
+        assert stats["pool_size"] == 2
+        assert stats["created_count"] == 0
+        assert stats["active_count"] == 0
+        assert stats["available_count"] == 0
+        assert stats["closed"] is False
+
+    @pytest.mark.asyncio
+    async def test_pool_acquire_creates_connection(self, pool: ClamAVConnectionPool):
+        """Acquiring from empty pool should create new connection."""
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.is_closing = MagicMock(return_value=False)
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch(
+                "asyncio.open_connection",
+                AsyncMock(return_value=(mock_reader, mock_writer)),
+            ),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            reader, writer = await pool.acquire()
+            assert pool.stats["created_count"] == 1
+            assert pool.stats["active_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_pool_release_returns_connection(self, pool: ClamAVConnectionPool):
+        """Released connection should be available for reuse."""
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.is_closing = MagicMock(return_value=False)
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch(
+                "asyncio.open_connection",
+                AsyncMock(return_value=(mock_reader, mock_writer)),
+            ),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            reader, writer = await pool.acquire()
+            await pool.release(reader, writer)
+            assert pool.stats["available_count"] == 1
+            assert pool.stats["active_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_pool_close(self, pool: ClamAVConnectionPool):
+        """Closing pool should mark it closed."""
+        await pool.close()
+        assert pool.stats["closed"] is True
+
+    @pytest.mark.asyncio
+    async def test_pool_acquire_after_close_raises(self, pool: ClamAVConnectionPool):
+        """Acquiring after close should raise RuntimeError."""
+        await pool.close()
+        with pytest.raises(RuntimeError, match="Pool is closed"):
+            await pool.acquire()
+
+    @pytest.mark.asyncio
+    async def test_pool_connection_refused(self, pool: ClamAVConnectionPool):
+        """Connection refused should propagate."""
+        with (
+            patch("asyncio.open_connection", side_effect=ConnectionRefusedError()),
+            pytest.raises(ConnectionRefusedError),
+        ):
+            await pool.acquire()
+
+    @pytest.mark.asyncio
+    async def test_pool_release_discard(self, pool: ClamAVConnectionPool):
+        """Discarding connection should close it instead of returning to pool."""
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.is_closing = MagicMock(return_value=False)
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch(
+                "asyncio.open_connection",
+                AsyncMock(return_value=(mock_reader, mock_writer)),
+            ),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            reader, writer = await pool.acquire()
+            await pool.release(reader, writer, discard=True)
+            assert pool.stats["available_count"] == 0
+            assert pool.stats["created_count"] == 0
+            mock_writer.close.assert_called_once()
+
+
+class TestAntivirusServiceWithPool:
+    """Tests for AntivirusService using connection pool."""
+
+    @pytest.fixture
+    def service(self) -> AntivirusService:
+        """Create a service instance."""
+        return AntivirusService()
+
+    @pytest.mark.asyncio
+    async def test_scan_uses_pool_when_available(self, service: AntivirusService):
+        """Scan should use pool when available."""
+        mock_pool = MagicMock(spec=ClamAVConnectionPool)
+        mock_reader = AsyncMock()
+        mock_reader.read = AsyncMock(return_value=b"stream: OK\x00")
+        mock_writer = MagicMock()
+        mock_writer.write = MagicMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.is_closing = MagicMock(return_value=False)
+
+        mock_pool.acquire = AsyncMock(return_value=(mock_reader, mock_writer))
+        mock_pool.release = AsyncMock()
+
+        with (
+            patch.object(
+                AntivirusService, "is_enabled", new_callable=PropertyMock
+            ) as mock_enabled,
+            patch("app.services.antivirus.get_clamav_pool", return_value=mock_pool),
+        ):
+            mock_enabled.return_value = True
+            result = await service.scan_bytes(b"test content", "test.txt")
+
+            assert result.result == ScanResult.CLEAN
+            mock_pool.acquire.assert_called_once()
+            mock_pool.release.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_scan_pool_timeout_returns_error(self, service: AntivirusService):
+        """Pool timeout should return ERROR."""
+        mock_pool = MagicMock(spec=ClamAVConnectionPool)
+        mock_pool.acquire = AsyncMock(side_effect=TimeoutError("Pool timeout"))
+        mock_pool.stats = {"pool_size": 5, "active_count": 5}
+
+        with (
+            patch.object(
+                AntivirusService, "is_enabled", new_callable=PropertyMock
+            ) as mock_enabled,
+            patch("app.services.antivirus.get_clamav_pool", return_value=mock_pool),
+        ):
+            mock_enabled.return_value = True
+            result = await service.scan_bytes(b"test content", "test.txt")
+
+            assert result.result == ScanResult.ERROR
+            assert "pool timeout" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_ping_uses_pool_when_available(self, service: AntivirusService):
+        """Ping should use pool when available."""
+        mock_pool = MagicMock(spec=ClamAVConnectionPool)
+        mock_reader = AsyncMock()
+        mock_reader.read = AsyncMock(return_value=b"PONG\x00")
+        mock_writer = MagicMock()
+        mock_writer.write = MagicMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.is_closing = MagicMock(return_value=False)
+
+        mock_pool.acquire = AsyncMock(return_value=(mock_reader, mock_writer))
+        mock_pool.release = AsyncMock()
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("app.services.antivirus.get_clamav_pool", return_value=mock_pool),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            result = await service.ping()
+
+            assert result is True
+            mock_pool.acquire.assert_called_once()
+            mock_pool.release.assert_called_once()
+
+
+class TestPoolLifecycle:
+    """Tests for pool lifecycle functions."""
+
+    @pytest.mark.asyncio
+    async def test_init_pool_when_disabled(self):
+        """Pool should not initialize when ClamAV is disabled."""
+        with patch("app.services.antivirus.get_settings") as mock_settings:
+            mock_settings.return_value.clamav_enabled = False
+            result = await init_clamav_pool()
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_init_pool_when_enabled(self):
+        """Pool should initialize when ClamAV is enabled."""
+        with patch("app.services.antivirus.get_settings") as mock_settings:
+            settings = MagicMock()
+            settings.clamav_enabled = True
+            settings.clamav_host = "localhost"
+            settings.clamav_port = 3310
+            settings.clamav_pool_size = 3
+            settings.clamav_pool_timeout = 5
+            settings.clamav_connection_max_age = 60
+            mock_settings.return_value = settings
+
+            pool = await init_clamav_pool()
+            assert pool is not None
+            assert get_clamav_pool() is pool
+
+            # Cleanup
+            await close_clamav_pool()
+            assert get_clamav_pool() is None
+
+    @pytest.mark.asyncio
+    async def test_close_pool_when_none(self):
+        """Closing None pool should be safe."""
+        with patch("app.services.antivirus._clamav_pool", None):
+            # Should not raise
+            await close_clamav_pool()

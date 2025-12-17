@@ -30,6 +30,7 @@ from app.core.logging import (
     request_id_ctx,
 )
 from app.core.rate_limit import limiter
+from app.services.antivirus import close_clamav_pool, init_clamav_pool
 
 settings = get_settings()
 
@@ -65,8 +66,15 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             "Set AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID, and AZURE_AD_CLIENT_SECRET.",
         )
 
+    # Initialize ClamAV connection pool (if enabled)
+    await init_clamav_pool()
+
     yield
+
     # Shutdown
+    # Close ClamAV connection pool
+    await close_clamav_pool()
+
     logger.info("application_shutdown")
 
 
