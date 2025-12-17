@@ -15,6 +15,7 @@ from app.api.deps import DbSession
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.models.feedback import FeedbackStatus
+from app.schemas.document import DocumentQueueProcessResult
 from app.schemas.monday import SyncQueueProcessResult
 from app.services import (
     FeedbackService,
@@ -23,6 +24,7 @@ from app.services import (
     extract_issue_number,
     extract_project_marker,
     parse_reply_decision,
+    process_document_queue,
     process_sync_queue,
 )
 
@@ -528,6 +530,51 @@ async def process_sync_queue_endpoint(
             items_failed=0,
             items_requeued=0,
             items_max_retries=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+
+
+@router.get("/document-queue", response_model=DocumentQueueProcessResult)
+async def process_document_queue_endpoint(
+    authorization: str | None = Header(None),
+) -> DocumentQueueProcessResult:
+    """Process pending document queue items.
+
+    This endpoint should be called by an external cron job every minute.
+    Protected by CRON_SECRET bearer token.
+
+    Processing flow:
+    1. Verify CRON_SECRET bearer token
+    2. Fetch pending queue items where next_retry <= now
+    3. For each item:
+       - Mark as in_progress
+       - Fetch document and file content
+       - Execute document processing
+       - On success: mark as completed
+       - On failure: mark as failed (retry logic in Phase 3)
+    4. Return summary
+    """
+    # Verify cron secret
+    if not verify_cron_secret(authorization):
+        logger.warning("cron_document_queue_unauthorized")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing CRON_SECRET",
+        )
+
+    logger.info("cron_document_queue_triggered")
+
+    try:
+        result = await process_document_queue()
+        return DocumentQueueProcessResult(**result)
+    except Exception as e:
+        logger.exception("cron_document_queue_error", error=str(e))
+        return DocumentQueueProcessResult(
+            status="error",
+            items_processed=0,
+            items_succeeded=0,
+            items_failed=0,
             errors=[str(e)],
             timestamp=datetime.now(UTC).isoformat(),
         )

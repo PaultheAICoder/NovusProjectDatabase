@@ -5,7 +5,6 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -25,6 +24,7 @@ from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter, upload_limit
 from app.core.storage import StorageService
 from app.models.document import Document
+from app.models.document_queue import DocumentQueueOperation
 from app.models.project import Project
 from app.models.tag import Tag
 from app.models.user import User
@@ -38,8 +38,8 @@ from app.schemas.document import (
 )
 from app.schemas.tag import TagResponse
 from app.services.antivirus import AntivirusService, ScanResult
-from app.services.document_processing_task import process_document_background
 from app.services.document_processor import DocumentProcessor
+from app.services.document_queue_service import DocumentQueueService
 from app.services.file_validation import FileValidationService
 from app.services.search_cache import invalidate_search_cache
 
@@ -79,7 +79,6 @@ async def get_project(
 async def upload_document(
     request: Request,
     project_id: UUID,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -211,11 +210,15 @@ async def upload_document(
     await db.commit()
     await db.refresh(document)
 
-    # Queue background task for document processing
-    # The background task will create its own database session
+    # Queue document for processing (durable queue survives restarts)
     processor = DocumentProcessor()
     if processor.is_supported(document.mime_type):
-        background_tasks.add_task(process_document_background, document.id)
+        queue_service = DocumentQueueService(db)
+        await queue_service.enqueue(
+            document_id=document.id,
+            operation=DocumentQueueOperation.PROCESS,
+        )
+        await db.commit()
         logger.info(
             "document_processing_queued",
             document_id=str(document.id),
@@ -376,7 +379,6 @@ async def reprocess_document(
     request: Request,
     project_id: UUID,
     document_id: UUID,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DocumentResponse:
@@ -411,8 +413,13 @@ async def reprocess_document(
     await db.commit()
     await db.refresh(document)
 
-    # Queue background task for reprocessing
-    background_tasks.add_task(process_document_background, document.id)
+    # Queue document for reprocessing (durable queue survives restarts)
+    queue_service = DocumentQueueService(db)
+    await queue_service.enqueue(
+        document_id=document.id,
+        operation=DocumentQueueOperation.REPROCESS,
+    )
+    await db.commit()
     logger.info(
         "document_reprocessing_queued",
         document_id=str(document.id),

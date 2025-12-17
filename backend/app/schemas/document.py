@@ -72,3 +72,14 @@ class DismissTagSuggestionRequest(BaseModel):
     """Request to dismiss a tag suggestion."""
 
     tag_id: UUID
+
+
+class DocumentQueueProcessResult(BaseModel):
+    """Result from processing the document queue."""
+
+    status: str = Field(..., description="Overall status: success, partial, error")
+    items_processed: int
+    items_succeeded: int
+    items_failed: int
+    errors: list[str] = Field(default_factory=list)
+    timestamp: str

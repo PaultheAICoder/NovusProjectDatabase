@@ -1,8 +1,8 @@
-"""Background document processing task.
+"""Document content processing functions.
 
-This module provides background processing for document text extraction
-and embedding generation. It creates its own database session since
-FastAPI BackgroundTasks run after the response is sent.
+This module provides the core document processing logic for text extraction
+and embedding generation. The _process_document_content function is called
+by the DocumentQueueService during queue processing.
 """
 
 from uuid import UUID
@@ -23,11 +23,14 @@ logger = get_logger(__name__)
 
 async def process_document_background(document_id: UUID) -> None:
     """
-    Process a document in the background.
+    Process a document (legacy direct invocation).
 
-    This function is designed to be called from FastAPI BackgroundTasks.
-    It creates its own database session since the original request session
-    is closed when this runs.
+    NOTE: This function is kept for backward compatibility but is no longer
+    the primary processing path. Documents are now processed via the
+    DocumentQueueService and process_document_queue() function.
+
+    This function creates its own database session since it may be called
+    directly for testing or debugging purposes.
 
     Args:
         document_id: The UUID of the document to process

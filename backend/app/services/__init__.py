@@ -3,6 +3,7 @@
 from .ai_enhancement import AIEnhancementService
 from .conflict_service import ConflictService
 from .document_processor import DocumentProcessor
+from .document_queue_service import DocumentQueueService, process_document_queue
 from .email_parsing import (
     ParseAction,
     ParseConfidence,
@@ -22,6 +23,7 @@ __all__ = [
     "AIEnhancementService",
     "ConflictService",
     "DocumentProcessor",
+    "DocumentQueueService",
     "EmbeddingService",
     "FeedbackService",
     "GraphEmailService",
@@ -34,5 +36,6 @@ __all__ = [
     "extract_project_marker",
     "is_reply_email",
     "parse_reply_decision",
+    "process_document_queue",
     "process_sync_queue",
 ]
