@@ -5,7 +5,30 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.monday_sync import MondaySyncStatus, MondaySyncType
+from app.models.monday_sync import (
+    MondaySyncStatus,
+    MondaySyncType,
+    RecordSyncStatus,
+    SyncDirection,
+)
+
+# Re-export enums for external use
+__all__ = [
+    "MondaySyncStatus",
+    "MondaySyncType",
+    "RecordSyncStatus",
+    "SyncDirection",
+    "MondayFieldMapping",
+    "MondayBoardConfig",
+    "MondaySyncTriggerRequest",
+    "MondaySyncLogResponse",
+    "MondaySyncStatusResponse",
+    "MondayConfigResponse",
+    "MondayBoardColumn",
+    "MondayBoardInfo",
+    "MondayBoardsResponse",
+    "SyncConflictResponse",
+]
 
 
 class MondayFieldMapping(BaseModel):
@@ -89,3 +112,20 @@ class MondayBoardsResponse(BaseModel):
     """Response with available Monday boards."""
 
     boards: list[MondayBoardInfo]
+
+
+class SyncConflictResponse(BaseModel):
+    """Response with sync conflict details."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    entity_type: str
+    entity_id: UUID
+    monday_item_id: str
+    npd_data: dict
+    monday_data: dict
+    conflict_fields: list[str]
+    detected_at: datetime
+    resolved_at: datetime | None
+    resolution_type: str | None

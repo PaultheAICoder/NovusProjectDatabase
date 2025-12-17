@@ -3,12 +3,14 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Computed, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, Computed, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.monday_sync import RecordSyncStatus, SyncDirection
 
 
 class Organization(Base):
@@ -74,6 +76,22 @@ class Organization(Base):
     monday_last_synced: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+    sync_status: Mapped[RecordSyncStatus] = mapped_column(
+        SAEnum(RecordSyncStatus, native_enum=False),
+        nullable=False,
+        default=RecordSyncStatus.PENDING,
+        index=True,
+    )
+    sync_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+    sync_direction: Mapped[SyncDirection] = mapped_column(
+        SAEnum(SyncDirection, native_enum=False),
+        nullable=False,
+        default=SyncDirection.BIDIRECTIONAL,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
