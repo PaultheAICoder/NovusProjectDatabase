@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Bookmark, BookmarkPlus, Loader2, ChevronRight, Download } from "lucide-react";
+import { Search, Bookmark, BookmarkPlus, Loader2, ChevronRight, Download, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SearchFilters } from "@/components/forms/SearchFilters";
 import { SearchResults } from "@/components/tables/SearchResults";
 import { SavedSearchList } from "@/components/SavedSearchList";
@@ -24,7 +31,14 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useCreateSavedSearch } from "@/hooks/useSavedSearches";
 import { useExportSearchResults } from "@/hooks/useExport";
 import type { ProjectStatus } from "@/types/project";
-import type { SavedSearch } from "@/types/search";
+import type { SavedSearch, SearchParams } from "@/types/search";
+
+const sortOptions = [
+  { value: "relevance", label: "Relevance" },
+  { value: "name", label: "Name" },
+  { value: "start_date", label: "Start Date" },
+  { value: "updated_at", label: "Last Updated" },
+] as const;
 
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -36,6 +50,8 @@ export function SearchPage() {
   const initialTagIds = searchParams.getAll("tag_ids");
   const initialPage = parseInt(searchParams.get("page") ?? "1", 10);
   const initialPageSize = parseInt(searchParams.get("page_size") ?? "20", 10);
+  const initialSortBy = (searchParams.get("sort_by") as SearchParams["sortBy"]) ?? "relevance";
+  const initialSortOrder = (searchParams.get("sort_order") as "asc" | "desc") ?? "desc";
 
   // Local state
   const [inputValue, setInputValue] = useState(initialQuery);
@@ -47,6 +63,8 @@ export function SearchPage() {
   const [tagIds, setTagIds] = useState<string[]>(initialTagIds);
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
+  const [sortBy, setSortBy] = useState<SearchParams["sortBy"]>(initialSortBy);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(initialSortOrder);
 
   // Saved search state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -70,6 +88,8 @@ export function SearchPage() {
     status: debouncedStatus.length > 0 ? debouncedStatus : undefined,
     organizationId: debouncedOrgId,
     tagIds: debouncedTagIds.length > 0 ? debouncedTagIds : undefined,
+    sortBy,
+    sortOrder,
     page,
     pageSize,
   });
@@ -81,10 +101,12 @@ export function SearchPage() {
     status.forEach((s) => params.append("status", s));
     if (organizationId) params.set("organization_id", organizationId);
     tagIds.forEach((id) => params.append("tag_ids", id));
+    if (sortBy && sortBy !== "relevance") params.set("sort_by", sortBy);
+    if (sortOrder && sortOrder !== "desc") params.set("sort_order", sortOrder);
     if (page > 1) params.set("page", String(page));
     if (pageSize !== 20) params.set("page_size", String(pageSize));
     setSearchParams(params);
-  }, [query, status, organizationId, tagIds, page, pageSize, setSearchParams]);
+  }, [query, status, organizationId, tagIds, sortBy, sortOrder, page, pageSize, setSearchParams]);
 
   useEffect(() => {
     updateURL();
@@ -101,6 +123,8 @@ export function SearchPage() {
     setStatus([]);
     setOrganizationId(undefined);
     setTagIds([]);
+    setSortBy("relevance");
+    setSortOrder("desc");
     setPage(1);
     setSelectedSavedSearchId(undefined);
   };
@@ -134,6 +158,8 @@ export function SearchPage() {
           status: status.length > 0 ? status : undefined,
           organization_id: organizationId,
           tag_ids: tagIds.length > 0 ? tagIds : undefined,
+          sort_by: sortBy !== "relevance" ? sortBy : undefined,
+          sort_order: sortOrder !== "desc" ? sortOrder : undefined,
         },
       });
       setShowSaveDialog(false);
@@ -150,6 +176,8 @@ export function SearchPage() {
     setStatus((search.filters.status as ProjectStatus[]) ?? []);
     setOrganizationId(search.filters.organization_id);
     setTagIds(search.filters.tag_ids ?? []);
+    setSortBy((search.filters.sort_by as SearchParams["sortBy"]) ?? "relevance");
+    setSortOrder((search.filters.sort_order as "asc" | "desc") ?? "desc");
     setPage(1);
   };
 
@@ -258,12 +286,52 @@ export function SearchPage() {
           onClearAll={handleClearAll}
         />
 
-        {data && (
-          <div className="text-sm text-muted-foreground">
-            {data.total} result{data.total !== 1 ? "s" : ""} found
-            {query && ` for "${query}"`}
+        {/* Result count and sort controls */}
+        <div className="flex items-center justify-between">
+          {data && (
+            <span className="text-sm text-muted-foreground">
+              {data.total} result{data.total !== 1 ? "s" : ""} found
+              {query && ` for "${query}"`}
+            </span>
+          )}
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Sort by</span>
+            <Select
+              value={sortBy}
+              onValueChange={(value) => {
+                setSortBy(value as SearchParams["sortBy"]);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sortOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={sortOrder}
+              onValueChange={(value) => {
+                setSortOrder(value as "asc" | "desc");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">Ascending</SelectItem>
+                <SelectItem value="desc">Descending</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        )}
+        </div>
 
         <SearchResults
           data={data?.items ?? []}

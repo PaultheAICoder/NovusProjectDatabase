@@ -19,6 +19,7 @@ import {
   Loader2,
   Search,
   X,
+  ArrowUpDown,
 } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useExportProjects } from "@/hooks/useExport";
@@ -64,6 +65,12 @@ const statusLabels: Record<ProjectStatus, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
 };
+
+const sortOptions = [
+  { value: "name", label: "Name" },
+  { value: "start_date", label: "Start Date" },
+  { value: "updated_at", label: "Last Updated" },
+] as const;
 
 const columns = [
   columnHelper.accessor("name", {
@@ -114,6 +121,8 @@ export function ProjectsPage() {
   const initialTagIds = searchParams.getAll("tag_ids");
   const initialPage = parseInt(searchParams.get("page") ?? "1", 10);
   const initialPageSize = parseInt(searchParams.get("page_size") ?? "20", 10);
+  const initialSortBy = (searchParams.get("sort_by") as "name" | "start_date" | "updated_at") ?? "updated_at";
+  const initialSortOrder = (searchParams.get("sort_order") as "asc" | "desc") ?? "desc";
 
   // Default active statuses (excludes cancelled)
   const defaultActiveStatuses: ProjectStatus[] = [
@@ -136,6 +145,8 @@ export function ProjectsPage() {
   const [tagIds, setTagIds] = useState<string[]>(initialTagIds);
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
+  const [sortBy, setSortBy] = useState<"name" | "start_date" | "updated_at">(initialSortBy);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(initialSortOrder);
 
   const { exportProjects, isExporting } = useExportProjects();
 
@@ -152,6 +163,8 @@ export function ProjectsPage() {
     status: debouncedStatus.length > 0 ? debouncedStatus : undefined,
     organizationId: debouncedOrgId,
     tagIds: debouncedTagIds.length > 0 ? debouncedTagIds : undefined,
+    sortBy,
+    sortOrder,
   });
 
   // Update URL when filters change
@@ -161,10 +174,12 @@ export function ProjectsPage() {
     statusFilter.forEach((s) => params.append("status", s));
     if (organizationId) params.set("organization_id", organizationId);
     tagIds.forEach((id) => params.append("tag_ids", id));
+    if (sortBy !== "updated_at") params.set("sort_by", sortBy);
+    if (sortOrder !== "desc") params.set("sort_order", sortOrder);
     if (page > 1) params.set("page", String(page));
     if (pageSize !== 20) params.set("page_size", String(pageSize));
     setSearchParams(params);
-  }, [query, statusFilter, organizationId, tagIds, page, pageSize, setSearchParams]);
+  }, [query, statusFilter, organizationId, tagIds, sortBy, sortOrder, page, pageSize, setSearchParams]);
 
   useEffect(() => {
     updateURL();
@@ -184,6 +199,8 @@ export function ProjectsPage() {
     setStatusFilter(defaultActiveStatuses);
     setOrganizationId(undefined);
     setTagIds([]);
+    setSortBy("updated_at");
+    setSortOrder("desc");
     setPage(1);
   };
 
@@ -295,8 +312,8 @@ export function ProjectsPage() {
         onClearAll={handleClearAll}
       />
 
-      {/* Result count */}
-      <div className="flex items-center gap-4">
+      {/* Result count and sort controls */}
+      <div className="flex items-center justify-between">
         {data && (
           <span className="text-sm text-muted-foreground">
             {data.total} project{data.total !== 1 ? "s" : ""}
@@ -304,6 +321,43 @@ export function ProjectsPage() {
             {query && ` for "${query}"`}
           </span>
         )}
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Sort by</span>
+          <Select
+            value={sortBy}
+            onValueChange={(value) => {
+              setSortBy(value as "name" | "start_date" | "updated_at");
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sortOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={sortOrder}
+            onValueChange={(value) => {
+              setSortOrder(value as "asc" | "desc");
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-[100px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="asc">Ascending</SelectItem>
+              <SelectItem value="desc">Descending</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="rounded-md border">
