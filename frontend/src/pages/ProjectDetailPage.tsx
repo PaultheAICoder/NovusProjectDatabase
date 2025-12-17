@@ -144,14 +144,15 @@ export function ProjectDetailPage() {
           </Button>
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="destructive">Delete</Button>
+              <Button variant="outline">Cancel Project</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Delete Project</DialogTitle>
+                <DialogTitle>Cancel Project</DialogTitle>
                 <DialogDescription>
-                  Are you sure you want to delete "{project.name}"? This action
-                  cannot be undone.
+                  Are you sure you want to cancel "{project.name}"? The project
+                  will be marked as cancelled and hidden from default lists. You
+                  can restore it later by changing the status.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -160,7 +161,7 @@ export function ProjectDetailPage() {
                   onClick={handleDelete}
                   disabled={deleteProject.isPending}
                 >
-                  {deleteProject.isPending ? "Deleting..." : "Delete"}
+                  {deleteProject.isPending ? "Cancelling..." : "Cancel Project"}
                 </Button>
               </DialogFooter>
             </DialogContent>

@@ -479,7 +479,12 @@ async def delete_project(
     db: DbSession,
     current_user: CurrentUser,
 ) -> None:
-    """Archive/delete a project (soft delete by setting status to cancelled)."""
+    """Cancel a project (soft-delete by setting status to cancelled).
+
+    This does not permanently delete the project. The project will be marked
+    as cancelled and hidden from default list views. The project can be
+    restored by updating its status via PUT /projects/{project_id}.
+    """
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 

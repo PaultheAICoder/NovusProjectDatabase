@@ -5,6 +5,7 @@
 
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -116,6 +117,20 @@ export function ProjectSearchFilters({
           onTagToggle={handleTagToggle}
           placeholder="Tags"
         />
+
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+          <Checkbox
+            checked={status.includes("cancelled")}
+            onCheckedChange={(checked) => {
+              if (checked) {
+                onStatusChange([...status, "cancelled"]);
+              } else {
+                onStatusChange(status.filter((s) => s !== "cancelled"));
+              }
+            }}
+          />
+          Include cancelled
+        </label>
 
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={onClearAll}>

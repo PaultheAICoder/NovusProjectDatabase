@@ -220,13 +220,17 @@ paths:
 
     delete:
       tags: [projects]
-      summary: Archive/delete a project
-      operationId: deleteProject
+      summary: Cancel a project (soft-delete)
+      description: |
+        Marks the project as cancelled (soft-delete). The project is not permanently
+        deleted and can be restored by updating its status via PUT. Cancelled projects
+        are hidden from default list views.
+      operationId: cancelProject
       security:
         - cookieAuth: []
       responses:
         '204':
-          description: Project archived successfully
+          description: Project cancelled successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':

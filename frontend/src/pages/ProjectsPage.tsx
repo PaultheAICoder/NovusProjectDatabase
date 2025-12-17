@@ -115,11 +115,21 @@ export function ProjectsPage() {
   const initialPage = parseInt(searchParams.get("page") ?? "1", 10);
   const initialPageSize = parseInt(searchParams.get("page_size") ?? "20", 10);
 
+  // Default active statuses (excludes cancelled)
+  const defaultActiveStatuses: ProjectStatus[] = [
+    "approved",
+    "active",
+    "on_hold",
+    "completed",
+  ];
+
   // Local state
   const [inputValue, setInputValue] = useState(initialQuery);
   const [query, setQuery] = useState(initialQuery);
-  const [statusFilter, setStatusFilter] =
-    useState<ProjectStatus[]>(initialStatus);
+  // Use URL status if provided, otherwise default to active statuses (exclude cancelled)
+  const [statusFilter, setStatusFilter] = useState<ProjectStatus[]>(
+    initialStatus.length > 0 ? initialStatus : defaultActiveStatuses
+  );
   const [organizationId, setOrganizationId] = useState<string | undefined>(
     initialOrgId
   );
@@ -171,7 +181,7 @@ export function ProjectsPage() {
   const handleClearAll = () => {
     setInputValue("");
     setQuery("");
-    setStatusFilter([]);
+    setStatusFilter(defaultActiveStatuses);
     setOrganizationId(undefined);
     setTagIds([]);
     setPage(1);
@@ -183,9 +193,14 @@ export function ProjectsPage() {
     setPage(1);
   };
 
+  // Check if status filter differs from default (includes cancelled or is subset)
+  const isNonDefaultStatusFilter =
+    statusFilter.length !== defaultActiveStatuses.length ||
+    statusFilter.some((s) => !defaultActiveStatuses.includes(s));
+
   const hasActiveFilters =
     query ||
-    statusFilter.length > 0 ||
+    isNonDefaultStatusFilter ||
     organizationId !== undefined ||
     tagIds.length > 0;
 

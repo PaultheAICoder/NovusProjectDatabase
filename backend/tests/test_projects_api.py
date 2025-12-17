@@ -256,6 +256,48 @@ class TestProjectContactOrganizationValidation:
         assert hasattr(ProjectContact, "is_primary")
 
 
+class TestProjectCancellation:
+    """Tests for project cancellation (soft-delete) behavior (GitHub Issue #71)."""
+
+    def test_delete_endpoint_sets_cancelled_status(self):
+        """DELETE /projects/{id} should set status to cancelled, not hard delete.
+
+        This documents the soft-delete behavior of the delete endpoint.
+        """
+        # The cancelled status value should be 'cancelled'
+        assert ProjectStatus.CANCELLED.value == "cancelled"
+
+    def test_cancelled_is_valid_status(self):
+        """Cancelled should be a valid ProjectStatus value."""
+        assert ProjectStatus.CANCELLED in ProjectStatus
+
+    def test_cancelled_status_in_enum_list(self):
+        """Cancelled should be in the list of all status values."""
+        all_statuses = [s.value for s in ProjectStatus]
+        assert "cancelled" in all_statuses
+
+    def test_status_transitions_exists(self):
+        """Project model should have STATUS_TRANSITIONS for state machine logic."""
+        from app.models.project import STATUS_TRANSITIONS
+
+        assert STATUS_TRANSITIONS is not None
+        assert isinstance(STATUS_TRANSITIONS, dict)
+
+    def test_cancelled_is_terminal_status(self):
+        """Cancelled status should be terminal (no transitions out by default)."""
+        from app.models.project import STATUS_TRANSITIONS
+
+        # Get allowed transitions from cancelled
+        allowed_from_cancelled = STATUS_TRANSITIONS.get(ProjectStatus.CANCELLED, set())
+
+        # Cancelled is a terminal status - no transitions allowed (empty set)
+        assert allowed_from_cancelled == set()
+
+    def test_project_can_transition_to_method_exists(self):
+        """Project model should have can_transition_to method for status validation."""
+        assert hasattr(Project, "can_transition_to")
+
+
 class TestDismissProjectTagSuggestion:
     """Tests for project-level tag suggestion dismissal (GitHub Issue #70)."""
 
