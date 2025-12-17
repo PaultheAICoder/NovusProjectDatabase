@@ -22,13 +22,14 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # Add sync_status column to contacts
+    # Note: Use uppercase enum NAMES to match SQLAlchemy SAEnum(native_enum=False) behavior
     op.add_column(
         "contacts",
         sa.Column(
             "sync_status",
             sa.String(20),
             nullable=False,
-            server_default="pending",
+            server_default="PENDING",
         ),
     )
     op.create_index("ix_contacts_sync_status", "contacts", ["sync_status"])
@@ -51,7 +52,7 @@ def upgrade() -> None:
             "sync_direction",
             sa.String(20),
             nullable=False,
-            server_default="bidirectional",
+            server_default="BIDIRECTIONAL",
         ),
     )
 
@@ -62,7 +63,7 @@ def upgrade() -> None:
             "sync_status",
             sa.String(20),
             nullable=False,
-            server_default="pending",
+            server_default="PENDING",
         ),
     )
     op.create_index("ix_organizations_sync_status", "organizations", ["sync_status"])
@@ -85,22 +86,22 @@ def upgrade() -> None:
             "sync_direction",
             sa.String(20),
             nullable=False,
-            server_default="bidirectional",
+            server_default="BIDIRECTIONAL",
         ),
     )
 
-    # Update existing records with monday_id to have sync_status = 'synced'
+    # Update existing records with monday_id to have sync_status = 'SYNCED'
     op.execute(
         """
         UPDATE contacts
-        SET sync_status = 'synced'
+        SET sync_status = 'SYNCED'
         WHERE monday_id IS NOT NULL
         """
     )
     op.execute(
         """
         UPDATE organizations
-        SET sync_status = 'synced'
+        SET sync_status = 'SYNCED'
         WHERE monday_id IS NOT NULL
         """
     )

@@ -200,6 +200,26 @@ if [ "$SKIP_RESTORE" = "false" ]; then
         --no-owner --no-privileges /tmp/restore.dump 2>/dev/null || true
     docker exec "$TEST_DB_CONTAINER" rm -f /tmp/restore.dump
 
+    # Fix sync enum case (backup may have lowercase values, SQLAlchemy expects uppercase)
+    docker exec "$TEST_DB_CONTAINER" psql -U "$TEST_DB_USER" -d "$TEST_DB_NAME" -c "
+        UPDATE organizations SET sync_status = 'PENDING' WHERE sync_status = 'pending';
+        UPDATE organizations SET sync_status = 'SYNCED' WHERE sync_status = 'synced';
+        UPDATE organizations SET sync_status = 'CONFLICT' WHERE sync_status = 'conflict';
+        UPDATE organizations SET sync_status = 'DISABLED' WHERE sync_status = 'disabled';
+        UPDATE organizations SET sync_direction = 'BIDIRECTIONAL' WHERE sync_direction = 'bidirectional';
+        UPDATE organizations SET sync_direction = 'NPD_TO_MONDAY' WHERE sync_direction = 'npd_to_monday';
+        UPDATE organizations SET sync_direction = 'MONDAY_TO_NPD' WHERE sync_direction = 'monday_to_npd';
+        UPDATE organizations SET sync_direction = 'NONE' WHERE sync_direction = 'none';
+        UPDATE contacts SET sync_status = 'PENDING' WHERE sync_status = 'pending';
+        UPDATE contacts SET sync_status = 'SYNCED' WHERE sync_status = 'synced';
+        UPDATE contacts SET sync_status = 'CONFLICT' WHERE sync_status = 'conflict';
+        UPDATE contacts SET sync_status = 'DISABLED' WHERE sync_status = 'disabled';
+        UPDATE contacts SET sync_direction = 'BIDIRECTIONAL' WHERE sync_direction = 'bidirectional';
+        UPDATE contacts SET sync_direction = 'NPD_TO_MONDAY' WHERE sync_direction = 'npd_to_monday';
+        UPDATE contacts SET sync_direction = 'MONDAY_TO_NPD' WHERE sync_direction = 'monday_to_npd';
+        UPDATE contacts SET sync_direction = 'NONE' WHERE sync_direction = 'none';
+    " >/dev/null 2>&1 || true
+
     echo -e "${GREEN}[OK]${NC} Restore complete"
 fi
 
