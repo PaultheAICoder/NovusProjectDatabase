@@ -244,7 +244,10 @@ export function OrganizationsPage() {
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  Loading organizations...
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="text-muted-foreground">Loading organizations...</span>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length === 0 ? (

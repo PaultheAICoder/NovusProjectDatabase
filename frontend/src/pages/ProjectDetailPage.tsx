@@ -17,6 +17,7 @@ import { useProject, useDeleteProject } from "@/hooks/useProjects";
 import { DocumentUpload } from "@/components/forms/DocumentUpload";
 import { DocumentList } from "@/components/tables/DocumentList";
 import { DocumentTagSuggestions } from "@/components/features/DocumentTagSuggestions";
+import { DetailPageSkeleton } from "@/components/skeletons/DetailPageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -91,11 +92,7 @@ export function ProjectDetailPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="text-muted-foreground">Loading project...</div>
-      </div>
-    );
+    return <DetailPageSkeleton type="project" />;
   }
 
   if (isError || !project) {

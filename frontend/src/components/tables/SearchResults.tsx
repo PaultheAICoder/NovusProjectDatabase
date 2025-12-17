@@ -10,7 +10,7 @@ import {
   createColumnHelper,
 } from "@tanstack/react-table";
 import { format } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -164,7 +164,10 @@ export function SearchResults({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  Searching...
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="text-muted-foreground">Searching...</span>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length === 0 ? (

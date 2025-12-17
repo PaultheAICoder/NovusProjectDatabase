@@ -14,6 +14,7 @@ import {
 import { useProjects } from "@/hooks/useProjects";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useContacts } from "@/hooks/useContacts";
+import { RecentProjectsSkeleton } from "@/components/skeletons/DashboardSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -148,9 +149,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             {loadingActive ? (
-              <div className="py-4 text-center text-muted-foreground">
-                Loading...
-              </div>
+              <RecentProjectsSkeleton />
             ) : activeProjects?.items.length === 0 ? (
               <div className="py-4 text-center text-muted-foreground">
                 No active projects found.

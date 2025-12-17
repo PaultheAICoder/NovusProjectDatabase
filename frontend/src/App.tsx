@@ -5,6 +5,7 @@
 import { lazy, Suspense } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { Header, Sidebar, Footer } from "@/components/layout";
@@ -58,7 +59,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -76,7 +77,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function PageLoader() {
   return (
     <div className="flex min-h-[400px] items-center justify-center">
-      <div className="text-muted-foreground">Loading...</div>
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
     </div>
   );
 }

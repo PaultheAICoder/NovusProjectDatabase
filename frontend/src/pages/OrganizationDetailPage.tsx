@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/dialog";
 import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge";
 import { SyncToggle } from "@/components/sync/SyncToggle";
+import { DetailPageSkeleton } from "@/components/skeletons/DetailPageSkeleton";
 
 const statusVariants: Record<
   string,
@@ -152,11 +153,7 @@ export function OrganizationDetailPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="text-muted-foreground">Loading organization...</div>
-      </div>
-    );
+    return <DetailPageSkeleton type="organization" />;
   }
 
   if (isError || !organization) {

@@ -3,7 +3,7 @@
  */
 
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { useProject, useCreateProject, useUpdateProject } from "@/hooks/useProjects";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,7 +47,10 @@ export function ProjectFormPage() {
   if (isEditing && isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="text-muted-foreground">Loading project...</div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Loading project...</span>
+        </div>
       </div>
     );
   }
