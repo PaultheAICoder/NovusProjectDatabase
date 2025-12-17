@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,3 +214,65 @@ async def get_current_user_info(
 ) -> UserResponse:
     """Get current authenticated user info."""
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/test-token")
+async def create_test_token(
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Create a test session token for E2E testing.
+
+    SECURITY: Only available when E2E_TEST_MODE=true.
+    This endpoint is for Playwright E2E tests only.
+    """
+    if not settings.e2e_test_mode:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
+        )
+
+    # Create or get test user
+    test_azure_id = "e2e-test-user-00000000-0000-0000-0000-000000000000"
+    test_email = "e2e-test@example.com"
+    test_display_name = "E2E Test User"
+
+    user = await get_or_create_user(
+        db=db,
+        azure_id=test_azure_id,
+        email=test_email,
+        display_name=test_display_name,
+        roles=["user"],
+    )
+    await db.commit()
+
+    # Create session JWT (same as auth_callback)
+    session_token = jwt.encode(
+        {
+            "sub": str(user.id),
+            "email": user.email,
+            "role": user.role.value,
+            "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    response = JSONResponse(
+        content={
+            "message": "Test session created",
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "display_name": user.display_name,
+            },
+        }
+    )
+    response.set_cookie(
+        key="session",
+        value=session_token,
+        httponly=True,
+        secure=False,  # Test environment uses HTTP
+        samesite="lax",
+        max_age=JWT_EXPIRATION_HOURS * 3600,
+    )
+    return response

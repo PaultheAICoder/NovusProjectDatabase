@@ -82,24 +82,71 @@ The base URL can be overridden with the `PLAYWRIGHT_BASE_URL` environment variab
 
 ## Authentication
 
-E2E tests run against unauthenticated flows by default. Tests that require
-authentication are currently skipped with `test.skip()`.
+E2E tests support authenticated flows using a backend test endpoint.
 
-To implement full auth testing, one of these approaches is needed:
+### How It Works
 
-1. **Azure AD Test Credentials**: Create a test user with Azure AD and use Playwright's `storageState` to persist auth
-2. **Backend Test Endpoint**: Add a test-only endpoint that generates session tokens
-3. **Mock Auth**: Intercept auth requests in tests (limited applicability)
+1. The backend exposes `POST /api/v1/auth/test-token` when `E2E_TEST_MODE=true`
+2. This endpoint creates a test user and returns a valid session cookie
+3. Playwright's `authenticatedPage` fixture calls this endpoint before each test
+4. The session cookie persists for the test duration
+
+### Using Authenticated Tests
+
+Import from the auth fixture:
+
+```typescript
+import { test, expect } from './fixtures/auth';
+
+test('my authenticated test', async ({ authenticatedPage }) => {
+  // Page is already authenticated with test user
+  await authenticatedPage.goto('/');
+  await expect(authenticatedPage.getByText('E2E Test User')).toBeVisible();
+});
+```
+
+### Test User Details
+
+- **Display Name**: E2E Test User
+- **Email**: e2e-test@example.com
+- **Role**: user (not admin)
+
+### Mixing Auth and Unauth Tests
+
+For tests that don't need authentication, import from Playwright directly:
+
+```typescript
+import { test as unauthTest, expect } from '@playwright/test';
+
+unauthTest('login page shows button', async ({ page }) => {
+  await page.goto('/login');
+  // Test unauthenticated flow
+});
+```
+
+### CI Environment
+
+The test Docker environment (`docker-compose.test.yml`) has `E2E_TEST_MODE=true` set,
+so authenticated tests work automatically in CI.
+
+### Local Development
+
+If running tests against local dev server (not Docker), set the environment variable:
+
+```bash
+# In backend .env or export
+E2E_TEST_MODE=true
+```
 
 ## Test Structure
 
 ```
 tests/e2e/
   fixtures/
-    auth.ts        # Authentication fixtures (placeholder)
+    auth.ts        # Authentication fixtures (test-token endpoint)
   smoke.spec.ts    # Basic app loading and rendering tests
   auth.spec.ts     # Authentication flow tests
-  navigation.spec.ts # Page navigation tests (some require auth)
+  navigation.spec.ts # Page navigation tests (uses auth fixture)
   README.md        # This file
 ```
 

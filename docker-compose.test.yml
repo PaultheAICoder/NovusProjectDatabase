@@ -45,6 +45,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://npd_test:npd_test_2025@db-test:5432/npd_test
       OLLAMA_BASE_URL: http://ollama-test:11434
+      E2E_TEST_MODE: "true"  # Enable test token endpoint for E2E auth
     ports:
       - "6711:6701"
     volumes:

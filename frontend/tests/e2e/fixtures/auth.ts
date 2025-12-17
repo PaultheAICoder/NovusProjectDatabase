@@ -1,15 +1,15 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 /**
  * Authentication fixtures for Playwright E2E tests.
  *
- * Current Implementation:
- * This fixture provides a base for authenticated testing. Due to Azure AD SSO,
- * full authentication bypass requires one of:
- *   1. A test user with Azure AD test credentials
- *   2. A backend test endpoint that generates test session tokens
- *   3. Using Playwright's storageState to persist auth between tests
+ * Uses backend test-token endpoint to create authenticated sessions.
+ * This approach:
+ * - Only works when backend has E2E_TEST_MODE=true
+ * - Creates real session cookies (same as production auth)
+ * - Persists auth via Playwright's cookie handling
  *
- * For now, tests using this fixture will test unauthenticated flows,
- * which redirects to the login page.
+ * Note: ESLint react-hooks/rules-of-hooks is disabled for this file because
+ * Playwright's `use()` function is incorrectly detected as a React hook.
  */
 
 import { test as base, Page, expect } from '@playwright/test';
@@ -19,11 +19,41 @@ import { test as base, Page, expect } from '@playwright/test';
  */
 export type AuthFixtures = {
   /**
-   * A page instance that has attempted to navigate to the authenticated area.
-   * Currently redirects to login since full auth bypass is not implemented.
+   * A page instance with authenticated session.
    */
   authenticatedPage: Page;
 };
+
+/**
+ * Authenticate a page by calling the test-token endpoint.
+ */
+async function authenticate(page: Page): Promise<void> {
+  // Get base URL from Playwright config or use default test URL
+  const pages = page.context().pages();
+  let baseURL = 'http://localhost:6710';
+
+  if (pages.length > 0 && pages[0]) {
+    const currentUrl = pages[0].url();
+    if (currentUrl && currentUrl.startsWith('http')) {
+      baseURL = new URL(currentUrl).origin;
+    }
+  }
+
+  // Call test-token endpoint to get session cookie
+  const response = await page.request.post(`${baseURL}/api/v1/auth/test-token`);
+
+  if (!response.ok()) {
+    const status = response.status();
+    if (status === 404) {
+      throw new Error(
+        'Test token endpoint not found. Ensure E2E_TEST_MODE=true in backend environment.'
+      );
+    }
+    throw new Error(`Failed to authenticate: ${status} ${response.statusText()}`);
+  }
+
+  // Cookie is automatically stored by Playwright
+}
 
 /**
  * Extended test with authentication fixtures.
@@ -33,18 +63,26 @@ export type AuthFixtures = {
  * import { test, expect } from './fixtures/auth';
  *
  * test('authenticated test', async ({ authenticatedPage }) => {
- *   // Test authenticated flows
+ *   await authenticatedPage.goto('/');
+ *   // Page is now authenticated
  * });
  * ```
  */
 export const test = base.extend<AuthFixtures>({
   authenticatedPage: async ({ page }, use) => {
-    // Navigate to app - will redirect to login if not authenticated
+    // Authenticate before providing page
+    await authenticate(page);
+
+    // Navigate to app - should now be authenticated
     await page.goto('/');
 
-    // For smoke tests, we verify the login page renders
-    // Full auth bypass would set session cookies here
-    // eslint-disable-next-line react-hooks/rules-of-hooks
+    // Verify authentication worked by checking for user display name
+    // (wait a bit for React to render)
+    await page.waitForSelector('text=E2E Test User', { timeout: 10000 }).catch(() => {
+      // If display name not found, auth may have failed silently
+      console.warn('Warning: User display name not found after authentication');
+    });
+
     await use(page);
   },
 });

@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     monday_webhook_secret: str = ""  # Signing secret for webhook JWT verification
     monday_webhook_enabled: bool = True  # Enable/disable webhook processing
 
+    # E2E Testing (only enable in test environment)
+    e2e_test_mode: bool = False
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalize_log_level(cls, v: str) -> str:
