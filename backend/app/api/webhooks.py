@@ -6,12 +6,18 @@ import re
 from datetime import UTC, datetime
 
 import httpx
+import jwt
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from app.api.deps import DbSession
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.models.feedback import FeedbackStatus
+from app.schemas.monday import (
+    MondayWebhookChallenge,
+    MondayWebhookChallengeResponse,
+    MondayWebhookPayload,
+)
 from app.services import FeedbackService, GraphEmailService
 
 logger = get_logger(__name__)
@@ -52,6 +58,44 @@ def verify_github_signature(payload: bytes, signature: str | None) -> bool:
 
     # Use constant-time comparison to prevent timing attacks
     return hmac.compare_digest(computed, expected_signature)
+
+
+def verify_monday_signature(token: str | None) -> bool:
+    """Verify Monday.com webhook JWT signature.
+
+    Monday.com sends a JWT in the Authorization header. The JWT is signed
+    with the app's signing secret. Verification ensures the webhook is
+    legitimately from Monday.com.
+
+    Args:
+        token: JWT from Authorization header (with or without "Bearer " prefix)
+
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    if not settings.monday_webhook_secret:
+        logger.warning("monday_webhook_secret_not_configured")
+        return False
+
+    if not token:
+        return False
+
+    # Remove "Bearer " prefix if present
+    if token.startswith("Bearer "):
+        token = token[7:]
+
+    try:
+        # Decode and verify the JWT
+        jwt.decode(
+            token,
+            settings.monday_webhook_secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},  # Monday doesn't set audience
+        )
+        return True
+    except jwt.InvalidTokenError as e:
+        logger.warning("monday_webhook_invalid_jwt", error=str(e))
+        return False
 
 
 def extract_submitter_from_body(body: str) -> dict[str, str] | None:
@@ -249,3 +293,116 @@ async def handle_github_webhook(
             logger.debug("graph_email_not_configured_skipping_notification")
 
     return {"status": "processed", "feedback_id": str(feedback.id)}
+
+
+# Monday.com Webhook Endpoints
+
+
+@router.get("/monday")
+async def monday_webhook_health() -> dict[str, str]:
+    """Health check endpoint for Monday.com webhook configuration.
+
+    This endpoint can be used to verify the webhook URL is accessible.
+    """
+    return {"status": "ok", "service": "monday-webhook"}
+
+
+@router.post("/monday")
+async def handle_monday_webhook(
+    request: Request,
+    authorization: str | None = Header(None),
+) -> dict[str, str] | MondayWebhookChallengeResponse:
+    """Handle incoming Monday.com webhook events.
+
+    Supports:
+    - Challenge verification for webhook setup
+    - Item events (create, update, delete)
+
+    Requires valid JWT signature when webhook secret is configured.
+    """
+    # Parse JSON payload
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON payload",
+        )
+
+    # Handle challenge verification (no auth required)
+    if "challenge" in payload:
+        challenge = MondayWebhookChallenge(**payload)
+        logger.info(
+            "monday_webhook_challenge_received",
+            challenge_length=len(challenge.challenge),
+        )
+        return MondayWebhookChallengeResponse(challenge=challenge.challenge)
+
+    # Check if webhook processing is enabled
+    if not settings.monday_webhook_enabled:
+        logger.debug("monday_webhook_disabled")
+        return {"status": "ignored", "reason": "webhook processing disabled"}
+
+    # Verify signature (if secret is configured)
+    if settings.monday_webhook_secret:
+        if not verify_monday_signature(authorization):
+            logger.warning(
+                "monday_webhook_invalid_signature",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid webhook signature",
+            )
+    else:
+        logger.warning("monday_webhook_no_secret_configured")
+
+    # Parse and validate webhook payload
+    try:
+        webhook_payload = MondayWebhookPayload(**payload)
+    except Exception as e:
+        logger.warning(
+            "monday_webhook_invalid_payload",
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid webhook payload: {str(e)}",
+        )
+
+    event = webhook_payload.event
+    event_type = event.type
+
+    # Log the event
+    logger.info(
+        "monday_webhook_received",
+        event_type=event_type,
+        board_id=event.boardId,
+        item_id=event.pulseId,
+        item_name=event.pulseName,
+        column_id=event.columnId,
+        trigger_uuid=event.triggerUuid,
+    )
+
+    # Identify board type (contacts vs organizations)
+    board_type = None
+    if event.boardId:
+        if event.boardId == settings.monday_contacts_board_id:
+            board_type = "contacts"
+        elif event.boardId == settings.monday_organizations_board_id:
+            board_type = "organizations"
+        else:
+            board_type = "unknown"
+
+    logger.debug(
+        "monday_webhook_board_identified",
+        board_id=event.boardId,
+        board_type=board_type,
+    )
+
+    # Return acknowledgment (actual sync logic will be in issue #58)
+    return {
+        "status": "received",
+        "event_type": event_type,
+        "board_type": board_type or "unknown",
+        "item_id": event.pulseId or "unknown",
+    }

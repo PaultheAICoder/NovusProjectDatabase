@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     monday_contacts_board_id: str = ""  # Board ID containing contacts
     monday_organizations_board_id: str = ""  # Board ID containing organizations
 
+    # Monday.com Webhook Settings
+    monday_webhook_secret: str = ""  # Signing secret for webhook JWT verification
+    monday_webhook_enabled: bool = True  # Enable/disable webhook processing
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalize_log_level(cls, v: str) -> str:
@@ -217,6 +221,11 @@ class Settings(BaseSettings):
     def is_monday_configured(self) -> bool:
         """Check if Monday.com integration is configured."""
         return bool(self.monday_api_key)
+
+    @property
+    def is_monday_webhook_configured(self) -> bool:
+        """Check if Monday.com webhook is configured."""
+        return bool(self.monday_webhook_secret and self.monday_webhook_enabled)
 
     @property
     def is_redis_configured(self) -> bool:

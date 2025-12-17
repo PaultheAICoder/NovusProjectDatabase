@@ -32,6 +32,12 @@ __all__ = [
     "MondayItemMutationResponse",
     "MondayCreateItemRequest",
     "MondayUpdateItemRequest",
+    # Webhook schemas
+    "MondayWebhookChallenge",
+    "MondayWebhookChallengeResponse",
+    "MondayWebhookEventValue",
+    "MondayWebhookEvent",
+    "MondayWebhookPayload",
 ]
 
 
@@ -159,3 +165,63 @@ class MondayUpdateItemRequest(BaseModel):
     board_id: str = Field(..., description="Board containing the item")
     item_id: str = Field(..., description="Item ID to update")
     column_values: dict[str, Any] = Field(..., description="Column values to update")
+
+
+# Webhook-related schemas
+
+
+class MondayWebhookChallenge(BaseModel):
+    """Monday.com webhook challenge verification request."""
+
+    challenge: str = Field(..., description="Challenge token to echo back")
+
+
+class MondayWebhookChallengeResponse(BaseModel):
+    """Response to Monday.com challenge verification."""
+
+    challenge: str = Field(..., description="Echo of the challenge token")
+
+
+class MondayWebhookEventValue(BaseModel):
+    """Value object within a webhook event."""
+
+    value: Any | None = None
+    name: str | None = None
+    # Other potential fields from Monday.com
+
+    model_config = ConfigDict(extra="allow")
+
+
+class MondayWebhookEvent(BaseModel):
+    """Event payload from Monday.com webhook."""
+
+    type: str = Field(
+        ..., description="Event type: create_item, change_column_value, item_deleted"
+    )
+    pulseId: str | None = Field(
+        None, description="Item ID (called pulse in Monday.com)"
+    )
+    pulseName: str | None = Field(None, description="Item name")
+    boardId: str | None = Field(None, description="Board ID where event occurred")
+    groupId: str | None = Field(None, description="Group ID within the board")
+    groupName: str | None = Field(None, description="Group name")
+    columnId: str | None = Field(None, description="Column ID for column value changes")
+    columnType: str | None = Field(None, description="Column type")
+    columnTitle: str | None = Field(None, description="Column title")
+    value: MondayWebhookEventValue | None = Field(None, description="New value")
+    previousValue: MondayWebhookEventValue | None = Field(
+        None, description="Previous value"
+    )
+    triggerTime: str | None = Field(None, description="When the event was triggered")
+    subscriptionId: str | None = Field(None, description="Webhook subscription ID")
+    triggerUuid: str | None = Field(None, description="Unique event identifier")
+
+    model_config = ConfigDict(extra="allow")
+
+
+class MondayWebhookPayload(BaseModel):
+    """Full Monday.com webhook payload."""
+
+    event: MondayWebhookEvent = Field(..., description="The event data")
+
+    model_config = ConfigDict(extra="allow")
