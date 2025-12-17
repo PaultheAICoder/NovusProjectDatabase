@@ -230,40 +230,62 @@ class SearchService:
                 key=lambda pid: rrf_scores[pid],
                 reverse=(sort_order == "desc"),
             )
-        else:
-            # For non-relevance sorts, we still need to respect the RRF filtering
-            sorted_ids = list(rrf_scores.keys())
 
-        total = len(sorted_ids)
+            total = len(sorted_ids)
 
-        # Pagination
-        offset = (page - 1) * page_size
-        page_ids = sorted_ids[offset : offset + page_size]
+            # Pagination
+            offset = (page - 1) * page_size
+            page_ids = sorted_ids[offset : offset + page_size]
 
-        if not page_ids:
-            return [], total
+            if not page_ids:
+                return [], total
 
-        # Fetch full project objects
-        base_query = (
-            select(Project)
-            .options(
-                selectinload(Project.organization),
-                selectinload(Project.owner),
-                selectinload(Project.project_tags),
+            # Fetch full project objects for relevance sort
+            base_query = (
+                select(Project)
+                .options(
+                    selectinload(Project.organization),
+                    selectinload(Project.owner),
+                    selectinload(Project.project_tags),
+                )
+                .where(Project.id.in_(page_ids))
             )
-            .where(Project.id.in_(page_ids))
-        )
 
-        result = await self.db.execute(base_query)
-        projects_dict = {p.id: p for p in result.scalars().all()}
+            result = await self.db.execute(base_query)
+            projects_dict = {p.id: p for p in result.scalars().all()}
 
-        # Maintain sort order
-        if sort_by == "relevance":
+            # Maintain RRF score order
             projects = [projects_dict[pid] for pid in page_ids if pid in projects_dict]
         else:
-            # Apply non-relevance sorting
-            projects = list(projects_dict.values())
-            projects = self._sort_projects(projects, sort_by, sort_order)
+            # For non-relevance sorts: sort at DB level, then paginate
+            all_matching_ids = list(rrf_scores.keys())
+            total = len(all_matching_ids)
+
+            if not all_matching_ids:
+                return [], 0
+
+            # Build query with sorting at DB level
+            base_query = (
+                select(Project)
+                .options(
+                    selectinload(Project.organization),
+                    selectinload(Project.owner),
+                    selectinload(Project.project_tags),
+                )
+                .where(Project.id.in_(all_matching_ids))
+            )
+
+            # Apply sorting BEFORE pagination
+            base_query = self._apply_sorting(
+                base_query, sort_by, sort_order, ts_query=None
+            )
+
+            # Apply pagination AFTER sorting
+            offset = (page - 1) * page_size
+            base_query = base_query.offset(offset).limit(page_size)
+
+            result = await self.db.execute(base_query)
+            projects = list(result.scalars().all())
 
         # Log performance metrics
         elapsed_ms = (time.perf_counter() - start_time) * 1000

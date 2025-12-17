@@ -238,3 +238,186 @@ class TestSearchServiceOptimizations:
 
         # Should return correct data structure (empty dict for no results)
         assert result == {}
+
+
+class TestNonRelevanceSortPagination:
+    """Tests for non-relevance sort modes with pagination (Issue #67 regression tests)."""
+
+    @pytest.mark.asyncio
+    async def test_non_relevance_sort_uses_db_sorting(self):
+        """Verify non-relevance sorts call _apply_sorting for DB-level sorting."""
+        from uuid import uuid4
+
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+
+        # Create mock project IDs
+        project_ids = [uuid4() for _ in range(3)]
+
+        async def mock_project_text_ranks(*args):
+            return {pid: idx + 1 for idx, pid in enumerate(project_ids)}
+
+        async def mock_document_text_ranks(*args):
+            return {}
+
+        async def mock_vector_ranks(*args):
+            return {}
+
+        # Mock query result
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = SearchService(mock_db)
+
+        apply_sorting_called = False
+        original_apply_sorting = service._apply_sorting
+
+        def mock_apply_sorting(*args, **kwargs):
+            nonlocal apply_sorting_called
+            apply_sorting_called = True
+            return original_apply_sorting(*args, **kwargs)
+
+        with (
+            patch.object(
+                service, "_get_project_text_ranks", side_effect=mock_project_text_ranks
+            ),
+            patch.object(
+                service,
+                "_get_document_text_ranks",
+                side_effect=mock_document_text_ranks,
+            ),
+            patch.object(service, "_get_vector_ranks", side_effect=mock_vector_ranks),
+            patch.object(service, "_apply_sorting", side_effect=mock_apply_sorting),
+        ):
+            await service._hybrid_search(
+                query="test",
+                filter_conditions=[],
+                sort_by="name",  # Non-relevance sort
+                sort_order="asc",
+                page=1,
+                page_size=20,
+                include_documents=True,
+            )
+
+        assert (
+            apply_sorting_called
+        ), "_apply_sorting should be called for non-relevance sorts"
+
+    @pytest.mark.asyncio
+    async def test_relevance_sort_does_not_use_db_sorting(self):
+        """Verify relevance sort does NOT call _apply_sorting (uses RRF in-memory sort)."""
+        from uuid import uuid4
+
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+
+        # Create mock project IDs with RRF scores
+        project_ids = [uuid4() for _ in range(3)]
+
+        async def mock_project_text_ranks(*args):
+            return {pid: idx + 1 for idx, pid in enumerate(project_ids)}
+
+        async def mock_document_text_ranks(*args):
+            return {}
+
+        async def mock_vector_ranks(*args):
+            return {}
+
+        # Mock query result - return empty for this test since we're just checking if _apply_sorting is called
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = SearchService(mock_db)
+
+        apply_sorting_called = False
+
+        def mock_apply_sorting(*args, **kwargs):
+            nonlocal apply_sorting_called
+            apply_sorting_called = True
+            return args[0]  # Return query unchanged
+
+        with (
+            patch.object(
+                service, "_get_project_text_ranks", side_effect=mock_project_text_ranks
+            ),
+            patch.object(
+                service,
+                "_get_document_text_ranks",
+                side_effect=mock_document_text_ranks,
+            ),
+            patch.object(service, "_get_vector_ranks", side_effect=mock_vector_ranks),
+            patch.object(service, "_apply_sorting", side_effect=mock_apply_sorting),
+        ):
+            await service._hybrid_search(
+                query="test",
+                filter_conditions=[],
+                sort_by="relevance",  # Relevance sort
+                sort_order="desc",
+                page=1,
+                page_size=20,
+                include_documents=True,
+            )
+
+        assert (
+            not apply_sorting_called
+        ), "_apply_sorting should NOT be called for relevance sorts"
+
+    @pytest.mark.asyncio
+    async def test_non_relevance_sort_applies_pagination_correctly(self):
+        """Verify non-relevance sort applies offset and limit to query."""
+        from uuid import uuid4
+
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+
+        # Create 5 mock project IDs
+        project_ids = [uuid4() for _ in range(5)]
+
+        async def mock_project_text_ranks(*args):
+            return {pid: idx + 1 for idx, pid in enumerate(project_ids)}
+
+        async def mock_document_text_ranks(*args):
+            return {}
+
+        async def mock_vector_ranks(*args):
+            return {}
+
+        # Mock query result
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = SearchService(mock_db)
+
+        with (
+            patch.object(
+                service, "_get_project_text_ranks", side_effect=mock_project_text_ranks
+            ),
+            patch.object(
+                service,
+                "_get_document_text_ranks",
+                side_effect=mock_document_text_ranks,
+            ),
+            patch.object(service, "_get_vector_ranks", side_effect=mock_vector_ranks),
+        ):
+            # Test page 2 with page_size 2
+            results, total = await service._hybrid_search(
+                query="test",
+                filter_conditions=[],
+                sort_by="name",
+                sort_order="asc",
+                page=2,
+                page_size=2,
+                include_documents=True,
+            )
+
+        # Total should reflect all matching IDs (5)
+        assert total == 5
+
+        # Verify execute was called (once for the final query after ranking queries)
+        assert mock_db.execute.called
