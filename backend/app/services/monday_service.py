@@ -45,6 +45,7 @@ class MondayRateLimitError(MondayAPIError):
 
 
 # Column ID mappings for contacts board (Monday column ID -> NPD field name)
+# Used by inbound webhook sync
 CONTACT_COLUMN_MAPPING = {
     "email": "email",
     "phone": "phone",
@@ -53,10 +54,39 @@ CONTACT_COLUMN_MAPPING = {
 }
 
 # Column ID mappings for organizations board (Monday column ID -> NPD field name)
+# Used by inbound webhook sync
 ORG_COLUMN_MAPPING = {
     "notes": "notes",
     "address": "address",  # Special handling required to parse into components
 }
+
+
+def get_default_contact_field_mapping() -> dict[str, str]:
+    """Get default field mapping for contact manual sync (NPD field -> Monday column ID).
+
+    Returns dict mapping NPD field names to Monday column IDs.
+    These defaults assume standard Monday column IDs that match the field names.
+    Override by configuring column IDs in environment or UI.
+    """
+    return {
+        "email": "email",
+        "phone": "phone",
+        "role_title": "role_title",
+        "notes": "notes",
+        "organization_name": "organization",
+    }
+
+
+def get_default_org_field_mapping() -> dict[str, str]:
+    """Get default field mapping for organization manual sync (NPD field -> Monday column ID).
+
+    Returns dict mapping NPD field names to Monday column IDs.
+    These defaults assume standard Monday column IDs that match the field names.
+    Override by configuring column IDs in environment or UI.
+    """
+    return {
+        "notes": "notes",
+    }
 
 
 class MondayColumnParser:

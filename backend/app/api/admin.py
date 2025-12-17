@@ -49,7 +49,11 @@ from app.schemas.tag import (
 )
 from app.services.conflict_service import ConflictService
 from app.services.import_service import ImportService
-from app.services.monday_service import MondayService
+from app.services.monday_service import (
+    MondayService,
+    get_default_contact_field_mapping,
+    get_default_org_field_mapping,
+)
 from app.services.sync_queue_service import SyncQueueService
 from app.services.tag_suggester import TagSuggester
 
@@ -546,18 +550,17 @@ async def trigger_monday_sync(
         )
 
     try:
-        # Default field mappings - can be enhanced later
         if data.sync_type == MondaySyncType.ORGANIZATIONS:
-            # TODO: Make field mapping configurable via UI
-            field_mapping: dict[str, str] = {}
+            # Use default field mapping for organizations
+            field_mapping = get_default_org_field_mapping()
             sync_log = await service.sync_organizations(
                 board_id=board_id,
                 field_mapping=field_mapping,
                 triggered_by=admin_user.id,
             )
         else:
-            # TODO: Make field mapping configurable via UI
-            field_mapping = {}
+            # Use default field mapping for contacts
+            field_mapping = get_default_contact_field_mapping()
             sync_log = await service.sync_contacts(
                 board_id=board_id,
                 field_mapping=field_mapping,

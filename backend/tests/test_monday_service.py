@@ -540,6 +540,128 @@ class TestMondayServiceMutations:
             assert result["id"] == "12345"
 
 
+class TestDefaultFieldMappings:
+    """Tests for default field mapping functions."""
+
+    def test_get_default_contact_field_mapping(self):
+        """Test default contact field mapping contains required fields."""
+        from app.services.monday_service import get_default_contact_field_mapping
+
+        mapping = get_default_contact_field_mapping()
+
+        # Should contain mappings for core contact fields
+        assert "email" in mapping
+        assert "phone" in mapping
+        assert "role_title" in mapping
+        assert "notes" in mapping
+        assert "organization_name" in mapping
+
+        # All values should be non-empty strings (column IDs)
+        for value in mapping.values():
+            assert isinstance(value, str)
+            assert len(value) > 0
+
+    def test_get_default_org_field_mapping(self):
+        """Test default organization field mapping contains required fields."""
+        from app.services.monday_service import get_default_org_field_mapping
+
+        mapping = get_default_org_field_mapping()
+
+        # Should contain mapping for notes field
+        assert "notes" in mapping
+
+        # All values should be non-empty strings
+        for value in mapping.values():
+            assert isinstance(value, str)
+            assert len(value) > 0
+
+    def test_default_contact_mapping_returns_new_dict(self):
+        """Test that each call returns a new dict instance (not mutable shared state)."""
+        from app.services.monday_service import get_default_contact_field_mapping
+
+        mapping1 = get_default_contact_field_mapping()
+        mapping2 = get_default_contact_field_mapping()
+
+        # Should be equal but not the same object
+        assert mapping1 == mapping2
+        assert mapping1 is not mapping2
+
+    def test_default_org_mapping_returns_new_dict(self):
+        """Test that each call returns a new dict instance (not mutable shared state)."""
+        from app.services.monday_service import get_default_org_field_mapping
+
+        mapping1 = get_default_org_field_mapping()
+        mapping2 = get_default_org_field_mapping()
+
+        # Should be equal but not the same object
+        assert mapping1 == mapping2
+        assert mapping1 is not mapping2
+
+
+class TestDefaultMappingsIntegration:
+    """Integration tests for default field mappings with sync methods."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    def test_apply_contact_field_mapping_with_defaults(self, monday_service):
+        """Test that _apply_contact_field_mapping works with default mapping structure."""
+        from app.models.contact import Contact
+        from app.services.monday_service import get_default_contact_field_mapping
+
+        contact = Contact(
+            name="John Doe",
+            email="john@example.com",
+            organization_id=uuid4(),
+        )
+
+        # Simulate item with Monday column values using default column IDs
+        item = {
+            "column_values": [
+                {"id": "email", "text": "john@example.com"},
+                {"id": "phone", "text": "555-1234"},
+                {"id": "role_title", "text": "Manager"},
+                {"id": "notes", "text": "Test notes"},
+                {"id": "organization", "text": "Acme Corp"},
+            ]
+        }
+
+        mapping = get_default_contact_field_mapping()
+        monday_service._apply_contact_field_mapping(contact, item, mapping)
+
+        # Verify fields were populated
+        assert contact.role_title == "Manager"
+        assert contact.phone == "555-1234"
+        assert contact.notes == "Test notes"
+
+    def test_apply_org_field_mapping_with_defaults(self, monday_service):
+        """Test that _apply_field_mapping works with default org mapping structure."""
+        from app.models.organization import Organization
+        from app.services.monday_service import get_default_org_field_mapping
+
+        org = Organization(name="Test Org")
+
+        # Simulate item with Monday column values using default column IDs
+        item = {
+            "column_values": [
+                {"id": "notes", "text": "Organization notes here"},
+            ]
+        }
+
+        mapping = get_default_org_field_mapping()
+        monday_service._apply_field_mapping(org, item, mapping)
+
+        # Verify notes field was populated
+        assert org.notes == "Organization notes here"
+
+
 class TestMondayServiceRetry:
     """Tests for retry logic with exponential backoff."""
 
