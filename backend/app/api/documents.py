@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.config import get_settings
-from app.core.file_utils import read_file_with_size_limit
+from app.core.file_utils import read_file_with_spooling
 from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter, upload_limit
 from app.core.storage import StorageService
@@ -101,88 +101,101 @@ async def upload_document(
             f"Allowed types: PDF, DOCX, XLSX, XLS, TXT, CSV",
         )
 
-    # Validate file size and read content (streaming to prevent memory exhaustion)
-    content = await read_file_with_size_limit(
+    # Read file with size validation and automatic disk spillover for large files
+    spooled_file = await read_file_with_spooling(
         file=file,
         max_size_bytes=settings.max_file_size_bytes,
+        spool_threshold=5 * 1024 * 1024,  # 5MB threshold
     )
 
-    # Validate file content matches claimed type (magic number check)
-    validator = FileValidationService()
+    try:
+        # Get file size for later
+        spooled_file.seek(0, 2)
+        file_size = spooled_file.tell()
+        spooled_file.seek(0)
 
-    # First, check for dangerous file types
-    if not validator.is_safe_file_type(content):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File type not allowed for security reasons",
+        # Validate file content matches claimed type (magic number check)
+        validator = FileValidationService()
+
+        # First, check for dangerous file types
+        if not validator.is_safe_file_type_from_file(spooled_file):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File type not allowed for security reasons",
+            )
+
+        # Then verify content matches claimed MIME type
+        is_valid, detected_mime = validator.validate_content_type_from_file(
+            spooled_file, file.content_type or "application/octet-stream"
         )
-
-    # Then verify content matches claimed MIME type
-    is_valid, detected_mime = validator.validate_content_type(
-        content, file.content_type or "application/octet-stream"
-    )
-    if not is_valid:
-        logger.warning(
-            "file_type_spoofing_attempt",
-            claimed_type=file.content_type,
-            detected_type=detected_mime,
-            filename=file.filename,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File content does not match the declared file type",
-        )
-
-    # Antivirus scan (if enabled)
-    antivirus = AntivirusService()
-    if antivirus.is_enabled:
-        scan_result = await antivirus.scan_bytes(content, file.filename or "document")
-
-        if scan_result.result == ScanResult.INFECTED:
+        if not is_valid:
             logger.warning(
-                "upload_blocked_malware",
+                "file_type_spoofing_attempt",
+                claimed_type=file.content_type,
+                detected_type=detected_mime,
                 filename=file.filename,
-                threat_name=scan_result.threat_name,
-                user_id=str(current_user.id),
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File rejected: malware detected ({scan_result.threat_name})",
+                detail="File content does not match the declared file type",
             )
 
-        if scan_result.result == ScanResult.ERROR:
-            if not antivirus.fail_open:
+        # Antivirus scan (if enabled)
+        antivirus = AntivirusService()
+        if antivirus.is_enabled:
+            scan_result = await antivirus.scan_file(
+                spooled_file, file.filename or "document"
+            )
+
+            if scan_result.result == ScanResult.INFECTED:
                 logger.warning(
-                    "upload_blocked_scan_error",
+                    "upload_blocked_malware",
                     filename=file.filename,
-                    error=scan_result.message,
+                    threat_name=scan_result.threat_name,
                     user_id=str(current_user.id),
                 )
                 raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Antivirus scanning unavailable. Upload rejected.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"File rejected: malware detected ({scan_result.threat_name})",
                 )
-            else:
-                logger.warning(
-                    "upload_allowed_scan_error",
+
+            if scan_result.result == ScanResult.ERROR:
+                if not antivirus.fail_open:
+                    logger.warning(
+                        "upload_blocked_scan_error",
+                        filename=file.filename,
+                        error=scan_result.message,
+                        user_id=str(current_user.id),
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Antivirus scanning unavailable. Upload rejected.",
+                    )
+                else:
+                    logger.warning(
+                        "upload_allowed_scan_error",
+                        filename=file.filename,
+                        error=scan_result.message,
+                        user_id=str(current_user.id),
+                    )
+
+            if scan_result.result == ScanResult.CLEAN:
+                logger.info(
+                    "antivirus_scan_passed",
                     filename=file.filename,
-                    error=scan_result.message,
-                    user_id=str(current_user.id),
                 )
 
-        if scan_result.result == ScanResult.CLEAN:
-            logger.info(
-                "antivirus_scan_passed",
-                filename=file.filename,
-            )
-
-    # Store file
-    storage = StorageService()
-    file_path = await storage.save(
-        content,
-        filename=file.filename or "document",
-        project_id=str(project_id),
-    )
+        # Store file (reset position before saving)
+        spooled_file.seek(0)
+        storage = StorageService()
+        file_path = await storage.save_file(
+            spooled_file,
+            filename=file.filename or "document",
+            project_id=str(project_id),
+        )
+    finally:
+        # Always close the spooled file
+        spooled_file.close()
 
     # Create document record with pending status
     document = Document(
@@ -190,7 +203,7 @@ async def upload_document(
         file_path=file_path,
         display_name=file.filename or "document",
         mime_type=file.content_type or "application/octet-stream",
-        file_size=len(content),
+        file_size=file_size,
         uploaded_by=current_user.id,
         processing_status="pending",
     )

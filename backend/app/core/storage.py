@@ -131,6 +131,28 @@ class StorageService:
         file_obj = io.BytesIO(content)
         return await self._backend.save(file_obj, filename, UUID(project_id))
 
+    async def save_file(
+        self,
+        file: BinaryIO,
+        filename: str,
+        project_id: str,
+    ) -> str:
+        """
+        Save file object to storage and return storage path.
+
+        More efficient than save() for large files as it avoids
+        creating an intermediate BytesIO wrapper.
+
+        Args:
+            file: File object positioned at start
+            filename: Original filename
+            project_id: Project UUID string
+
+        Returns:
+            Relative storage path
+        """
+        return await self._backend.save(file, filename, UUID(project_id))
+
     async def read(self, path: str) -> bytes:
         """Read file contents."""
         return await self._backend.read(path)

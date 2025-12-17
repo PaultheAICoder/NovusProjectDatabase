@@ -1,5 +1,7 @@
 """File validation service for verifying file content types via magic numbers."""
 
+from typing import IO
+
 import magic
 
 from app.core.logging import get_logger
@@ -119,6 +121,98 @@ class FileValidationService:
         detected_mime = self.get_actual_mime_type(content)
 
         # Reject executable and dangerous types
+        dangerous_types = {
+            "application/x-executable",
+            "application/x-msdos-program",
+            "application/x-msdownload",
+            "application/x-dosexec",
+            "application/x-sharedlib",
+            "application/x-shellscript",
+            "text/x-shellscript",
+            "application/x-php",
+            "text/x-php",
+            "application/javascript",
+            "text/javascript",
+        }
+
+        if detected_mime in dangerous_types:
+            logger.warning(
+                "dangerous_file_type_detected",
+                detected_mime_type=detected_mime,
+            )
+            return False
+
+        return True
+
+    def get_actual_mime_type_from_file(
+        self, file: IO[bytes], read_size: int = 8192
+    ) -> str:
+        """
+        Detect MIME type from a file object.
+
+        Only reads the first read_size bytes (magic numbers are at the start).
+        File position is restored after reading.
+
+        Args:
+            file: File object positioned at start
+            read_size: Number of bytes to read for detection (default 8KB)
+
+        Returns:
+            Detected MIME type string
+        """
+        start_pos = file.tell()
+        try:
+            header = file.read(read_size)
+            return self._magic.from_buffer(header)
+        finally:
+            file.seek(start_pos)
+
+    def validate_content_type_from_file(
+        self,
+        file: IO[bytes],
+        claimed_mime_type: str,
+    ) -> tuple[bool, str]:
+        """
+        Validate that file content matches the claimed MIME type.
+
+        Args:
+            file: File object positioned at start
+            claimed_mime_type: The MIME type claimed by the client
+
+        Returns:
+            Tuple of (is_valid, detected_mime_type)
+        """
+        detected_mime = self.get_actual_mime_type_from_file(file)
+        allowed_detected_types = MAGIC_MIME_MAPPING.get(claimed_mime_type, set())
+        is_valid = detected_mime in allowed_detected_types
+
+        if not is_valid:
+            logger.warning(
+                "file_type_mismatch",
+                claimed_mime_type=claimed_mime_type,
+                detected_mime_type=detected_mime,
+            )
+        else:
+            logger.debug(
+                "file_type_validated",
+                claimed_mime_type=claimed_mime_type,
+                detected_mime_type=detected_mime,
+            )
+
+        return is_valid, detected_mime
+
+    def is_safe_file_type_from_file(self, file: IO[bytes]) -> bool:
+        """
+        Check if the file content is a safe (non-executable) type.
+
+        Args:
+            file: File object positioned at start
+
+        Returns:
+            True if file appears safe, False if potentially dangerous
+        """
+        detected_mime = self.get_actual_mime_type_from_file(file)
+
         dangerous_types = {
             "application/x-executable",
             "application/x-msdos-program",

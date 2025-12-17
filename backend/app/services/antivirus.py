@@ -5,7 +5,7 @@ import time
 from asyncio import Queue, QueueEmpty
 from dataclasses import dataclass
 from enum import Enum
-from typing import NamedTuple
+from typing import IO, NamedTuple
 
 from app.config import get_settings
 from app.core.logging import get_logger
@@ -444,6 +444,176 @@ class AntivirusService:
             result=ScanResult.ERROR,
             message=f"Unknown response: {response}",
         )
+
+    async def scan_file(
+        self, file: IO[bytes], filename: str = "unknown"
+    ) -> ScanResponse:
+        """
+        Scan file content for malware using ClamAV.
+
+        Reads file in chunks, reducing memory usage for large files.
+        File position is restored after scanning.
+
+        Args:
+            file: File object containing content to scan
+            filename: Original filename for logging
+
+        Returns:
+            ScanResponse with result and details
+        """
+        if not self.is_enabled:
+            logger.debug(
+                "antivirus_scan_skipped",
+                reason="disabled",
+                filename=filename,
+            )
+            return ScanResponse(
+                result=ScanResult.SKIPPED,
+                message="Antivirus scanning is disabled",
+            )
+
+        # Get file size
+        start_pos = file.tell()
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(start_pos)  # Restore position
+
+        if file_size > self._max_stream_size:
+            logger.warning(
+                "antivirus_file_too_large",
+                filename=filename,
+                size=file_size,
+                max_size=self._max_stream_size,
+            )
+            return ScanResponse(
+                result=ScanResult.ERROR,
+                message=f"File too large for scanning (max {self._max_stream_size} bytes)",
+            )
+
+        try:
+            return await self._scan_file_with_clamd(file, filename)
+        except Exception as e:
+            logger.exception(
+                "antivirus_scan_error",
+                filename=filename,
+                error=str(e),
+            )
+            return ScanResponse(
+                result=ScanResult.ERROR,
+                message=f"Scan error: {str(e)}",
+            )
+        finally:
+            file.seek(start_pos)  # Restore position
+
+    async def _scan_file_with_clamd(
+        self, file: IO[bytes], filename: str
+    ) -> ScanResponse:
+        """
+        Perform actual scan using ClamAV daemon protocol with file streaming.
+        """
+        pool = get_clamav_pool()
+        reader: asyncio.StreamReader | None = None
+        writer: asyncio.StreamWriter | None = None
+        discard_connection = False
+
+        try:
+            # Acquire connection (from pool or direct)
+            if pool is not None:
+                try:
+                    reader, writer = await pool.acquire()
+                except TimeoutError:
+                    logger.warning(
+                        "clamav_pool_timeout",
+                        filename=filename,
+                        pool_stats=pool.stats,
+                    )
+                    return ScanResponse(
+                        result=ScanResult.ERROR,
+                        message="Connection pool timeout",
+                    )
+            else:
+                # Fallback to direct connection (pool not initialized)
+                try:
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(self._host, self._port),
+                        timeout=self._timeout,
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        "clamav_connection_timeout",
+                        host=self._host,
+                        port=self._port,
+                    )
+                    return ScanResponse(
+                        result=ScanResult.ERROR,
+                        message="Connection to ClamAV timed out",
+                    )
+                except (ConnectionRefusedError, OSError) as e:
+                    logger.warning(
+                        "clamav_connection_failed",
+                        host=self._host,
+                        port=self._port,
+                        error=str(e),
+                    )
+                    return ScanResponse(
+                        result=ScanResult.ERROR,
+                        message=f"Cannot connect to ClamAV: {str(e)}",
+                    )
+        except (ConnectionRefusedError, OSError) as e:
+            logger.warning(
+                "clamav_connection_failed",
+                host=self._host,
+                port=self._port,
+                error=str(e),
+            )
+            return ScanResponse(
+                result=ScanResult.ERROR,
+                message=f"Cannot connect to ClamAV: {str(e)}",
+            )
+
+        try:
+            # Send INSTREAM command
+            writer.write(self.INSTREAM_CMD)
+            await writer.drain()
+
+            # Stream file content in chunks (reads from file object)
+            while True:
+                chunk = file.read(self._chunk_size)
+                if not chunk:
+                    break
+                chunk_size = len(chunk).to_bytes(4, byteorder="big")
+                writer.write(chunk_size + chunk)
+
+            # Send zero-length chunk to signal end
+            writer.write((0).to_bytes(4, byteorder="big"))
+            await writer.drain()
+
+            # Read response
+            response = await asyncio.wait_for(
+                reader.read(4096),
+                timeout=self._timeout,
+            )
+            response_str = response.decode("utf-8").strip()
+
+            logger.debug(
+                "clamav_scan_response",
+                filename=filename,
+                response=response_str,
+            )
+
+            return self._parse_scan_response(response_str, filename)
+
+        except Exception:
+            # On error, discard the connection (may be in bad state)
+            discard_connection = True
+            raise
+        finally:
+            if writer is not None:
+                if pool is not None:
+                    await pool.release(reader, writer, discard=discard_connection)
+                else:
+                    writer.close()
+                    await writer.wait_closed()
 
     async def ping(self) -> bool:
         """
