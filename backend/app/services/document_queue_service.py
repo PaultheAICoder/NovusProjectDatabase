@@ -4,7 +4,7 @@ Manages queuing of document processing operations and processes them
 with the existing document processing logic.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, func, select
@@ -19,6 +19,84 @@ from app.models.document_queue import (
 )
 
 logger = get_logger(__name__)
+
+# Exponential backoff schedule in minutes
+# Attempt 1: Immediate (initial failure queued)
+# Attempt 2: +1 minute
+# Attempt 3: +5 minutes
+# Attempt 4: +15 minutes
+# Attempt 5: +60 minutes (1 hour)
+BACKOFF_SCHEDULE_MINUTES = [0, 1, 5, 15, 60]
+
+# Threshold for detecting stuck items (in minutes)
+STUCK_THRESHOLD_MINUTES = 30
+
+# Error classification
+RETRYABLE_ERROR_PATTERNS = [
+    "timeout",
+    "connection refused",
+    "embedding service unavailable",
+    "temporary failure",
+    "service unavailable",
+    "503",
+    "ConnectionError",
+    "TimeoutError",
+]
+
+NON_RETRYABLE_ERROR_PATTERNS = [
+    "file not found",
+    "unsupported file type",
+    "invalid content",
+    "document not found",
+    "unsupported mime type",
+    "File not found in storage",
+]
+
+
+def calculate_next_retry(attempts: int) -> datetime:
+    """Calculate next retry time based on attempt count.
+
+    Args:
+        attempts: Current number of attempts (0-indexed)
+
+    Returns:
+        datetime for next retry
+    """
+    if attempts >= len(BACKOFF_SCHEDULE_MINUTES):
+        # Use max backoff for any attempts beyond schedule
+        delay_minutes = BACKOFF_SCHEDULE_MINUTES[-1]
+    else:
+        delay_minutes = BACKOFF_SCHEDULE_MINUTES[attempts]
+
+    return datetime.now(UTC) + timedelta(minutes=delay_minutes)
+
+
+def is_retryable_error(error_message: str | None) -> bool:
+    """Determine if an error is retryable based on the error message.
+
+    Args:
+        error_message: The error message string
+
+    Returns:
+        True if the error is retryable, False otherwise
+    """
+    if not error_message:
+        return True  # Default to retryable if no message
+
+    error_lower = error_message.lower()
+
+    # Check non-retryable patterns first
+    for pattern in NON_RETRYABLE_ERROR_PATTERNS:
+        if pattern.lower() in error_lower:
+            return False
+
+    # Check retryable patterns
+    for pattern in RETRYABLE_ERROR_PATTERNS:
+        if pattern.lower() in error_lower:
+            return True
+
+    # Default to retryable for unknown errors
+    return True
 
 
 class DocumentQueueService:
@@ -138,10 +216,10 @@ class DocumentQueueService:
     async def mark_failed(
         self, queue_item: DocumentProcessingQueue, error_message: str
     ) -> None:
-        """Mark a queue item as failed.
+        """Mark a queue item as failed (permanent failure).
 
-        Note: Retry logic will be added in Phase 3 (#98).
-        For now, failures are permanent.
+        This method is kept for backward compatibility.
+        Use mark_failed_retry for retry-aware failure handling.
 
         Args:
             queue_item: The queue item to update
@@ -159,6 +237,111 @@ class DocumentQueueService:
             document_id=str(queue_item.document_id),
             error=error_message[:100] if error_message else None,
         )
+
+    async def mark_failed_retry(
+        self, queue_item: DocumentProcessingQueue, error_message: str
+    ) -> bool:
+        """Mark a queue item for retry or as failed if max attempts reached.
+
+        Uses error classification to determine if the error is retryable.
+        Non-retryable errors are marked as failed immediately.
+
+        Args:
+            queue_item: The queue item to update
+            error_message: Error from the failed attempt
+
+        Returns:
+            True if requeued for retry, False if marked as permanently failed
+        """
+        queue_item.attempts += 1
+        queue_item.last_attempt = datetime.now(UTC)
+        queue_item.error_message = error_message[:500] if error_message else None
+
+        # Check if error is non-retryable
+        if not is_retryable_error(error_message):
+            queue_item.status = DocumentQueueStatus.FAILED
+            queue_item.next_retry = None
+
+            logger.warning(
+                "document_queue_item_non_retryable_error",
+                queue_id=str(queue_item.id),
+                document_id=str(queue_item.document_id),
+                attempts=queue_item.attempts,
+                error=error_message[:100] if error_message else None,
+            )
+            await self.db.flush()
+            return False
+
+        # Check if max attempts reached
+        if queue_item.attempts >= queue_item.max_attempts:
+            queue_item.status = DocumentQueueStatus.FAILED
+            queue_item.next_retry = None
+
+            logger.warning(
+                "document_queue_item_max_retries",
+                queue_id=str(queue_item.id),
+                document_id=str(queue_item.document_id),
+                total_attempts=queue_item.attempts,
+                error=error_message[:100] if error_message else None,
+            )
+            await self.db.flush()
+            return False
+
+        # Requeue for retry
+        queue_item.status = DocumentQueueStatus.PENDING
+        queue_item.next_retry = calculate_next_retry(queue_item.attempts)
+
+        logger.info(
+            "document_queue_item_requeued",
+            queue_id=str(queue_item.id),
+            document_id=str(queue_item.document_id),
+            attempts=queue_item.attempts,
+            next_retry=queue_item.next_retry.isoformat(),
+        )
+        await self.db.flush()
+        return True
+
+    async def recover_stuck_items(self) -> int:
+        """Find items stuck in in_progress and reset them for retry.
+
+        Items in "in_progress" state for longer than STUCK_THRESHOLD_MINUTES
+        are considered stuck and will be reset to pending with immediate retry.
+
+        Returns:
+            Number of items recovered
+        """
+        threshold_time = datetime.now(UTC) - timedelta(minutes=STUCK_THRESHOLD_MINUTES)
+
+        result = await self.db.execute(
+            select(DocumentProcessingQueue).where(
+                and_(
+                    DocumentProcessingQueue.status == DocumentQueueStatus.IN_PROGRESS,
+                    DocumentProcessingQueue.started_at < threshold_time,
+                )
+            )
+        )
+        stuck_items = list(result.scalars().all())
+
+        recovered_count = 0
+        for item in stuck_items:
+            item.status = DocumentQueueStatus.PENDING
+            item.next_retry = datetime.now(UTC)  # Immediate retry
+            item.error_message = (
+                f"Recovered from stuck state after {STUCK_THRESHOLD_MINUTES} minutes"
+            )
+
+            logger.warning(
+                "document_queue_item_stuck_recovered",
+                queue_id=str(item.id),
+                document_id=str(item.document_id),
+                started_at=item.started_at.isoformat() if item.started_at else None,
+            )
+            recovered_count += 1
+
+        if recovered_count > 0:
+            await self.db.flush()
+
+        return recovered_count
 
     async def get_queue_stats(self) -> dict:
         """Get queue statistics.
@@ -203,6 +386,9 @@ async def process_document_queue() -> dict:
         "items_processed": 0,
         "items_succeeded": 0,
         "items_failed": 0,
+        "items_requeued": 0,
+        "items_max_retries": 0,
+        "items_recovered": 0,
         "errors": [],
         "timestamp": datetime.now(UTC).isoformat(),
     }
@@ -210,6 +396,14 @@ async def process_document_queue() -> dict:
     async with async_session_maker() as db:
         try:
             service = DocumentQueueService(db)
+
+            # Recover stuck items first
+            recovered = await service.recover_stuck_items()
+            results["items_recovered"] = recovered
+            if recovered > 0:
+                await db.commit()
+                logger.info("document_queue_stuck_items_recovered", count=recovered)
+
             pending_items = await service.get_pending_items(limit=50)
 
             if not pending_items:
@@ -280,7 +474,7 @@ async def process_document_queue() -> dict:
                         error=error_str,
                     )
 
-                    # Mark as failed with fresh session
+                    # Mark for retry with fresh session
                     try:
                         async with async_session_maker() as error_db:
                             error_service = DocumentQueueService(error_db)
@@ -291,7 +485,13 @@ async def process_document_queue() -> dict:
                             )
                             fresh_item = result.scalar_one_or_none()
                             if fresh_item:
-                                await error_service.mark_failed(fresh_item, error_str)
+                                requeued = await error_service.mark_failed_retry(
+                                    fresh_item, error_str
+                                )
+                                if requeued:
+                                    results["items_requeued"] += 1
+                                else:
+                                    results["items_max_retries"] += 1
                             await error_db.commit()
                     except Exception as inner_e:
                         logger.exception(
@@ -315,6 +515,9 @@ async def process_document_queue() -> dict:
         processed=results["items_processed"],
         succeeded=results["items_succeeded"],
         failed=results["items_failed"],
+        requeued=results["items_requeued"],
+        max_retries=results["items_max_retries"],
+        recovered=results["items_recovered"],
     )
 
     return results

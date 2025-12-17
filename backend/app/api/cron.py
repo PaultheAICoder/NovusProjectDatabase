@@ -546,14 +546,24 @@ async def process_document_queue_endpoint(
 
     Processing flow:
     1. Verify CRON_SECRET bearer token
-    2. Fetch pending queue items where next_retry <= now
-    3. For each item:
+    2. Recover any stuck items (in_progress > 30 minutes)
+    3. Fetch pending queue items where next_retry <= now
+    4. For each item:
        - Mark as in_progress
        - Fetch document and file content
        - Execute document processing
        - On success: mark as completed
-       - On failure: mark as failed (retry logic in Phase 3)
-    4. Return summary
+       - On failure:
+         - If retryable error: requeue with exponential backoff
+         - If non-retryable or max attempts: mark as failed
+    5. Return summary
+
+    Backoff schedule:
+    - Attempt 1: Immediate
+    - Attempt 2: +1 minute
+    - Attempt 3: +5 minutes
+    - Attempt 4: +15 minutes
+    - Attempt 5: +60 minutes (max retries)
     """
     # Verify cron secret
     if not verify_cron_secret(authorization):

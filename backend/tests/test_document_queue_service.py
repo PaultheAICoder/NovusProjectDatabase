@@ -1,5 +1,6 @@
 """Tests for document_queue_service functions."""
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -10,7 +11,10 @@ from app.models.document_queue import (
     DocumentQueueStatus,
 )
 from app.services.document_queue_service import (
+    BACKOFF_SCHEDULE_MINUTES,
     DocumentQueueService,
+    calculate_next_retry,
+    is_retryable_error,
     process_document_queue,
 )
 
@@ -396,3 +400,191 @@ class TestProcessDocumentQueue:
         assert result["items_succeeded"] == 0
         assert result["items_failed"] == 1
         assert len(result["errors"]) == 1
+
+
+class TestCalculateNextRetry:
+    """Tests for calculate_next_retry function."""
+
+    def test_first_attempt_uses_first_backoff(self):
+        """Test that attempt 0 uses immediate retry."""
+        result = calculate_next_retry(0)
+        expected_delay = timedelta(minutes=BACKOFF_SCHEDULE_MINUTES[0])
+        assert (
+            abs(
+                (result - datetime.now(UTC)).total_seconds()
+                - expected_delay.total_seconds()
+            )
+            < 1
+        )
+
+    def test_max_attempt_uses_last_backoff(self):
+        """Test that attempts beyond schedule use last value."""
+        result = calculate_next_retry(100)
+        expected_delay = timedelta(minutes=BACKOFF_SCHEDULE_MINUTES[-1])
+        assert (
+            abs(
+                (result - datetime.now(UTC)).total_seconds()
+                - expected_delay.total_seconds()
+            )
+            < 1
+        )
+
+    def test_each_attempt_increases_backoff(self):
+        """Test that backoff increases with attempts."""
+        results = [
+            calculate_next_retry(i) for i in range(len(BACKOFF_SCHEDULE_MINUTES))
+        ]
+        for i in range(1, len(results)):
+            assert results[i] >= results[i - 1]
+
+
+class TestIsRetryableError:
+    """Tests for is_retryable_error function."""
+
+    def test_timeout_is_retryable(self):
+        """Test that timeout errors are retryable."""
+        assert is_retryable_error("Connection timeout") is True
+        assert is_retryable_error("TimeoutError: API call failed") is True
+
+    def test_connection_errors_are_retryable(self):
+        """Test that connection errors are retryable."""
+        assert is_retryable_error("Connection refused") is True
+        assert is_retryable_error("ConnectionError: server unavailable") is True
+
+    def test_file_not_found_is_non_retryable(self):
+        """Test that file not found errors are not retryable."""
+        assert is_retryable_error("File not found") is False
+        assert is_retryable_error("File not found in storage") is False
+
+    def test_unsupported_type_is_non_retryable(self):
+        """Test that unsupported file type errors are not retryable."""
+        assert is_retryable_error("Unsupported file type") is False
+        assert is_retryable_error("Unsupported MIME type: video/mp4") is False
+
+    def test_unknown_errors_default_retryable(self):
+        """Test that unknown errors default to retryable."""
+        assert is_retryable_error("Some unknown error") is True
+
+    def test_empty_error_is_retryable(self):
+        """Test that empty error message is retryable."""
+        assert is_retryable_error("") is True
+        assert is_retryable_error(None) is True
+
+
+class TestDocumentQueueServiceMarkFailedRetry:
+    """Tests for DocumentQueueService.mark_failed_retry method."""
+
+    @pytest.mark.asyncio
+    async def test_mark_failed_retry_requeues_retryable_error(self):
+        """Test mark_failed_retry requeues when error is retryable."""
+        mock_db = AsyncMock()
+        mock_item = MagicMock()
+        mock_item.id = uuid4()
+        mock_item.document_id = uuid4()
+        mock_item.attempts = 2
+        mock_item.max_attempts = 5
+        mock_item.status = DocumentQueueStatus.IN_PROGRESS
+
+        service = DocumentQueueService(mock_db)
+        result = await service.mark_failed_retry(mock_item, "Connection timeout")
+
+        assert result is True  # Requeued
+        assert mock_item.attempts == 3
+        assert mock_item.status == DocumentQueueStatus.PENDING
+        assert mock_item.next_retry is not None
+
+    @pytest.mark.asyncio
+    async def test_mark_failed_retry_fails_at_max_attempts(self):
+        """Test mark_failed_retry marks failed at max attempts."""
+        mock_db = AsyncMock()
+        mock_item = MagicMock()
+        mock_item.id = uuid4()
+        mock_item.document_id = uuid4()
+        mock_item.attempts = 4
+        mock_item.max_attempts = 5
+        mock_item.status = DocumentQueueStatus.IN_PROGRESS
+
+        service = DocumentQueueService(mock_db)
+        result = await service.mark_failed_retry(mock_item, "Connection timeout")
+
+        assert result is False  # Not requeued
+        assert mock_item.attempts == 5
+        assert mock_item.status == DocumentQueueStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_mark_failed_retry_fails_immediately_for_non_retryable(self):
+        """Test mark_failed_retry fails immediately for non-retryable errors."""
+        mock_db = AsyncMock()
+        mock_item = MagicMock()
+        mock_item.id = uuid4()
+        mock_item.document_id = uuid4()
+        mock_item.attempts = 1
+        mock_item.max_attempts = 5
+        mock_item.status = DocumentQueueStatus.IN_PROGRESS
+
+        service = DocumentQueueService(mock_db)
+        result = await service.mark_failed_retry(mock_item, "File not found")
+
+        assert result is False  # Not requeued (non-retryable)
+        assert mock_item.status == DocumentQueueStatus.FAILED
+
+
+class TestDocumentQueueServiceRecoverStuckItems:
+    """Tests for DocumentQueueService.recover_stuck_items method."""
+
+    @pytest.mark.asyncio
+    async def test_recovers_stuck_items(self):
+        """Test that stuck items are recovered."""
+        mock_db = AsyncMock()
+        stuck_item = MagicMock()
+        stuck_item.id = uuid4()
+        stuck_item.document_id = uuid4()
+        stuck_item.status = DocumentQueueStatus.IN_PROGRESS
+        stuck_item.started_at = datetime.now(UTC) - timedelta(minutes=60)
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [stuck_item]
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.flush = AsyncMock()
+
+        service = DocumentQueueService(mock_db)
+        recovered = await service.recover_stuck_items()
+
+        assert recovered == 1
+        assert stuck_item.status == DocumentQueueStatus.PENDING
+        assert stuck_item.next_retry is not None
+
+    @pytest.mark.asyncio
+    async def test_no_items_to_recover(self):
+        """Test when no items are stuck."""
+        mock_db = AsyncMock()
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        service = DocumentQueueService(mock_db)
+        recovered = await service.recover_stuck_items()
+
+        assert recovered == 0
+        mock_db.flush.assert_not_called()
+
+
+class TestBackoffSchedule:
+    """Tests for backoff schedule constants."""
+
+    def test_backoff_schedule_values(self):
+        """Verify the backoff schedule has expected values."""
+        assert len(BACKOFF_SCHEDULE_MINUTES) == 5
+        assert BACKOFF_SCHEDULE_MINUTES[0] == 0
+        assert BACKOFF_SCHEDULE_MINUTES[1] == 1
+        assert BACKOFF_SCHEDULE_MINUTES[2] == 5
+        assert BACKOFF_SCHEDULE_MINUTES[3] == 15
+        assert BACKOFF_SCHEDULE_MINUTES[4] == 60
+
+    def test_backoff_schedule_increasing(self):
+        """Verify backoff schedule is non-decreasing."""
+        for i in range(1, len(BACKOFF_SCHEDULE_MINUTES)):
+            assert (
+                BACKOFF_SCHEDULE_MINUTES[i] >= BACKOFF_SCHEDULE_MINUTES[i - 1]
+            ), f"Backoff should be non-decreasing at index {i}"

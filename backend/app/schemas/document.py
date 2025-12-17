@@ -81,5 +81,12 @@ class DocumentQueueProcessResult(BaseModel):
     items_processed: int
     items_succeeded: int
     items_failed: int
+    items_requeued: int = Field(default=0, description="Items requeued for retry")
+    items_max_retries: int = Field(
+        default=0, description="Items that hit max retry limit"
+    )
+    items_recovered: int = Field(
+        default=0, description="Items recovered from stuck state"
+    )
     errors: list[str] = Field(default_factory=list)
     timestamp: str
