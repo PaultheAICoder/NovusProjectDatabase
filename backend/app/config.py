@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     clamav_pool_timeout: int = 10  # Seconds to wait for connection from pool
     clamav_connection_max_age: int = 300  # Max connection age in seconds (5 min)
 
+    # ClamAV Streaming Settings
+    clamav_chunk_size: int = 8192  # Bytes per chunk for INSTREAM protocol
+    clamav_max_stream_size: int = 26214400  # Max file size for scanning (25MB default)
+
     # Logging
     log_level: str = "INFO"
 

@@ -81,7 +81,7 @@ class TestAntivirusService:
             AntivirusService, "is_enabled", new_callable=PropertyMock
         ) as mock_enabled:
             mock_enabled.return_value = True
-            large_content = b"x" * (service.MAX_STREAM_SIZE + 1)
+            large_content = b"x" * (service._max_stream_size + 1)
             result = await service.scan_bytes(large_content, "large.bin")
             assert result.result == ScanResult.ERROR
             assert "too large" in result.message.lower()

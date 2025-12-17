@@ -203,8 +203,6 @@ class AntivirusService:
 
     # ClamAV protocol constants
     INSTREAM_CMD = b"zINSTREAM\x00"
-    CHUNK_SIZE = 8192
-    MAX_STREAM_SIZE = 26214400  # 25MB - ClamAV default limit
 
     def __init__(self) -> None:
         """Initialize the antivirus service."""
@@ -212,6 +210,8 @@ class AntivirusService:
         self._host = self.settings.clamav_host
         self._port = self.settings.clamav_port
         self._timeout = self.settings.clamav_timeout
+        self._chunk_size = self.settings.clamav_chunk_size
+        self._max_stream_size = self.settings.clamav_max_stream_size
 
     @property
     def is_enabled(self) -> bool:
@@ -247,16 +247,16 @@ class AntivirusService:
                 message="Antivirus scanning is disabled",
             )
 
-        if len(content) > self.MAX_STREAM_SIZE:
+        if len(content) > self._max_stream_size:
             logger.warning(
                 "antivirus_file_too_large",
                 filename=filename,
                 size=len(content),
-                max_size=self.MAX_STREAM_SIZE,
+                max_size=self._max_stream_size,
             )
             return ScanResponse(
                 result=ScanResult.ERROR,
-                message=f"File too large for scanning (max {self.MAX_STREAM_SIZE} bytes)",
+                message=f"File too large for scanning (max {self._max_stream_size} bytes)",
             )
 
         try:
@@ -348,10 +348,10 @@ class AntivirusService:
             # Format: [4-byte chunk size][chunk data]
             offset = 0
             while offset < len(content):
-                chunk = content[offset : offset + self.CHUNK_SIZE]
+                chunk = content[offset : offset + self._chunk_size]
                 chunk_size = len(chunk).to_bytes(4, byteorder="big")
                 writer.write(chunk_size + chunk)
-                offset += self.CHUNK_SIZE
+                offset += self._chunk_size
 
             # Send zero-length chunk to signal end
             writer.write((0).to_bytes(4, byteorder="big"))
