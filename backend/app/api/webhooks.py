@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import json
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -24,6 +25,10 @@ from app.services.monday_service import MondayService
 
 logger = get_logger(__name__)
 settings = get_settings()
+
+# Maximum payload size for Monday.com webhooks (1MB)
+# Challenge payloads are typically <100 bytes, event payloads <10KB
+MAX_MONDAY_WEBHOOK_PAYLOAD_SIZE = 1 * 1024 * 1024
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -321,43 +326,84 @@ async def handle_monday_webhook(
     - Challenge verification for webhook setup
     - Item events (create, update, delete)
 
-    Requires valid JWT signature when webhook secret is configured.
+    Security: Authentication is verified before processing non-challenge payloads.
     """
-    # Parse JSON payload
-    try:
-        payload = await request.json()
-    except Exception:
+    # Step 1: Check Content-Length header for DoS protection
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_MONDAY_WEBHOOK_PAYLOAD_SIZE:
+                logger.warning(
+                    "monday_webhook_payload_too_large",
+                    content_length=content_length,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Payload too large",
+                )
+        except ValueError:
+            pass  # Invalid Content-Length, will be caught during body read
+
+    # Step 2: Read raw body with size limit
+    body = await request.body()
+    if len(body) > MAX_MONDAY_WEBHOOK_PAYLOAD_SIZE:
+        logger.warning(
+            "monday_webhook_payload_too_large",
+            actual_size=len(body),
+        )
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON payload",
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Payload too large",
         )
 
-    # Handle challenge verification (no auth required)
-    if "challenge" in payload:
-        challenge = MondayWebhookChallenge(**payload)
-        logger.info(
-            "monday_webhook_challenge_received",
-            challenge_length=len(challenge.challenge),
-        )
-        return MondayWebhookChallengeResponse(challenge=challenge.challenge)
+    # Step 3: Quick challenge detection using lightweight check
+    # Monday challenge payloads are simple: {"challenge": "token"}
+    # We can check for this pattern without full JSON parsing
+    is_likely_challenge = b'"challenge"' in body and b'"event"' not in body
 
-    # Check if webhook processing is enabled
+    if is_likely_challenge:
+        # For challenge requests, parse JSON and respond
+        # Challenge requests don't include auth (Monday.com limitation)
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON payload",
+            )
+
+        if "challenge" in payload:
+            challenge = MondayWebhookChallenge(**payload)
+            logger.info(
+                "monday_webhook_challenge_received",
+                challenge_length=len(challenge.challenge),
+            )
+            return MondayWebhookChallengeResponse(challenge=challenge.challenge)
+
+    # Step 4: For non-challenge requests, check webhook enabled
     if not settings.monday_webhook_enabled:
         logger.debug("monday_webhook_disabled")
         return {"status": "ignored", "reason": "webhook processing disabled"}
 
-    # Verify signature (if secret is configured)
+    # Step 5: Verify signature BEFORE parsing payload (security-first)
     if settings.monday_webhook_secret:
         if not verify_monday_signature(authorization):
-            logger.warning(
-                "monday_webhook_invalid_signature",
-            )
+            logger.warning("monday_webhook_invalid_signature")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid webhook signature",
             )
     else:
         logger.warning("monday_webhook_no_secret_configured")
+
+    # Step 6: Now safe to parse full payload
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON payload",
+        )
 
     # Parse and validate webhook payload
     try:

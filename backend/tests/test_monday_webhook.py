@@ -20,11 +20,10 @@ class TestMondayWebhookChallenge:
 
         # Create mock request
         challenge_payload = {"challenge": "test_challenge_token_123"}
+        payload_bytes = json.dumps(challenge_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.body = AsyncMock(
-            return_value=json.dumps(challenge_payload).encode()
-        )
-        mock_request.json = AsyncMock(return_value=challenge_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -41,11 +40,10 @@ class TestMondayWebhookChallenge:
 
         long_token = "a" * 256
         challenge_payload = {"challenge": long_token}
+        payload_bytes = json.dumps(challenge_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.body = AsyncMock(
-            return_value=json.dumps(challenge_payload).encode()
-        )
-        mock_request.json = AsyncMock(return_value=challenge_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -300,8 +298,11 @@ class TestMondayWebhookEndpointIntegration:
 
         from app.api.webhooks import handle_monday_webhook
 
+        # Invalid JSON that looks like a challenge (to trigger parsing path)
+        invalid_json = b'{"challenge": invalid_json}'
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(side_effect=ValueError("Invalid JSON"))
+        mock_request.headers = {"content-length": str(len(invalid_json))}
+        mock_request.body = AsyncMock(return_value=invalid_json)
 
         mock_db = AsyncMock()
 
@@ -325,8 +326,10 @@ class TestMondayWebhookEndpointIntegration:
                 "boardId": "11111111",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -365,8 +368,10 @@ class TestMondayWebhookEndpointIntegration:
                 "boardId": "11111111",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -394,8 +399,10 @@ class TestMondayWebhookEndpointIntegration:
                 "boardId": "11111111",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -426,8 +433,10 @@ class TestMondayWebhookEndpointIntegration:
                 "boardId": "contacts_board_123",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -469,8 +478,10 @@ class TestMondayWebhookEndpointIntegration:
                 "boardId": "orgs_board_456",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -508,8 +519,10 @@ class TestMondayWebhookEndpointIntegration:
                 "boardId": "unknown_board_789",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -524,6 +537,115 @@ class TestMondayWebhookEndpointIntegration:
             )
 
         assert result["board_type"] == "unknown"
+
+
+class TestMondayWebhookSecurity:
+    """Security tests for Monday.com webhook endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_large_payload_rejected_via_content_length(self):
+        """Large payloads should be rejected before processing via Content-Length header."""
+        from fastapi import HTTPException, Request
+
+        from app.api.webhooks import handle_monday_webhook
+
+        # Create a mock request with large Content-Length header
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {"content-length": str(2 * 1024 * 1024)}  # 2MB
+        # body() should not be called if Content-Length check works
+        mock_request.body = AsyncMock(return_value=b'{"data": "not called"}')
+
+        mock_db = AsyncMock()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await handle_monday_webhook(mock_request, mock_db, authorization=None)
+
+        assert exc_info.value.status_code == 413
+        assert "too large" in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_large_body_rejected_even_without_content_length(self):
+        """Large body should be rejected even if Content-Length is missing."""
+        from fastapi import HTTPException, Request
+
+        from app.api.webhooks import handle_monday_webhook
+
+        # Create large payload (over 1MB)
+        large_data = b'{"data": "' + (b"x" * (1024 * 1024 + 100)) + b'"}'
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {}  # No Content-Length
+        mock_request.body = AsyncMock(return_value=large_data)
+
+        mock_db = AsyncMock()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await handle_monday_webhook(mock_request, mock_db, authorization=None)
+
+        assert exc_info.value.status_code == 413
+        assert "too large" in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_auth_checked_before_json_parsing_for_events(self):
+        """Authentication should be checked before parsing event payloads."""
+        from fastapi import HTTPException, Request
+
+        from app.api.webhooks import handle_monday_webhook
+
+        # Event payload (not a challenge)
+        event_payload = {
+            "event": {
+                "type": "create_item",
+                "pulseId": "12345678",
+                "boardId": "11111111",
+            }
+        }
+        payload_bytes = json.dumps(event_payload).encode()
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
+
+        mock_db = AsyncMock()
+
+        with patch("app.api.webhooks.settings") as mock_settings:
+            mock_settings.monday_webhook_enabled = True
+            mock_settings.monday_webhook_secret = "test-secret"
+
+            # Invalid auth should return 401 before any payload processing
+            with pytest.raises(HTTPException) as exc_info:
+                await handle_monday_webhook(
+                    mock_request, mock_db, authorization="Bearer invalid"
+                )
+
+            assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_challenge_request_bypasses_auth(self):
+        """Challenge requests should not require authentication."""
+        from fastapi import Request
+
+        from app.api.webhooks import handle_monday_webhook
+
+        # Challenge payload
+        challenge_payload = {"challenge": "verify_me_12345"}
+        payload_bytes = json.dumps(challenge_payload).encode()
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
+
+        mock_db = AsyncMock()
+
+        # Should succeed without any auth, even with secret configured
+        with patch("app.api.webhooks.settings") as mock_settings:
+            mock_settings.monday_webhook_secret = "test-secret"
+
+            result = await handle_monday_webhook(
+                mock_request, mock_db, authorization=None
+            )
+
+        assert result.challenge == "verify_me_12345"
 
 
 class TestMondayWebhookSyncIntegration:
@@ -544,8 +666,10 @@ class TestMondayWebhookSyncIntegration:
                 "boardId": "orgs_board_456",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -588,8 +712,10 @@ class TestMondayWebhookSyncIntegration:
                 "previousValue": {"text": "Old notes"},
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
@@ -628,8 +754,10 @@ class TestMondayWebhookSyncIntegration:
                 "boardId": "orgs_board_456",
             }
         }
+        payload_bytes = json.dumps(event_payload).encode()
         mock_request = MagicMock(spec=Request)
-        mock_request.json = AsyncMock(return_value=event_payload)
+        mock_request.headers = {"content-length": str(len(payload_bytes))}
+        mock_request.body = AsyncMock(return_value=payload_bytes)
 
         mock_db = AsyncMock()
 
