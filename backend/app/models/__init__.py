@@ -2,6 +2,11 @@
 
 from app.models.contact import Contact
 from app.models.document import Document
+from app.models.document_queue import (
+    DocumentProcessingQueue,
+    DocumentQueueOperation,
+    DocumentQueueStatus,
+)
 from app.models.feedback import EmailMonitorState, Feedback, FeedbackStatus
 from app.models.monday_sync import (
     MondaySyncLog,
@@ -54,4 +59,7 @@ __all__ = [
     "SyncQueueDirection",
     "SyncQueueOperation",
     "SyncQueueStatus",
+    "DocumentProcessingQueue",
+    "DocumentQueueOperation",
+    "DocumentQueueStatus",
 ]
