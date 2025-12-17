@@ -26,7 +26,9 @@ class TestMondayWebhookChallenge:
         )
         mock_request.json = AsyncMock(return_value=challenge_payload)
 
-        result = await handle_monday_webhook(mock_request, authorization=None)
+        mock_db = AsyncMock()
+
+        result = await handle_monday_webhook(mock_request, mock_db, authorization=None)
 
         assert result.challenge == "test_challenge_token_123"
 
@@ -45,7 +47,9 @@ class TestMondayWebhookChallenge:
         )
         mock_request.json = AsyncMock(return_value=challenge_payload)
 
-        result = await handle_monday_webhook(mock_request, authorization=None)
+        mock_db = AsyncMock()
+
+        result = await handle_monday_webhook(mock_request, mock_db, authorization=None)
 
         assert result.challenge == long_token
 
@@ -299,8 +303,10 @@ class TestMondayWebhookEndpointIntegration:
         mock_request = MagicMock(spec=Request)
         mock_request.json = AsyncMock(side_effect=ValueError("Invalid JSON"))
 
+        mock_db = AsyncMock()
+
         with pytest.raises(HTTPException) as exc_info:
-            await handle_monday_webhook(mock_request, authorization=None)
+            await handle_monday_webhook(mock_request, mock_db, authorization=None)
 
         assert exc_info.value.status_code == 400
         assert "Invalid JSON payload" in exc_info.value.detail
@@ -322,13 +328,25 @@ class TestMondayWebhookEndpointIntegration:
         mock_request = MagicMock(spec=Request)
         mock_request.json = AsyncMock(return_value=event_payload)
 
+        mock_db = AsyncMock()
+
         with patch("app.api.webhooks.settings") as mock_settings:
             mock_settings.monday_webhook_enabled = True
             mock_settings.monday_webhook_secret = ""
             mock_settings.monday_contacts_board_id = ""
             mock_settings.monday_organizations_board_id = ""
 
-            result = await handle_monday_webhook(mock_request, authorization=None)
+            with patch("app.api.webhooks.MondayService") as mock_service_class:
+                mock_service = AsyncMock()
+                mock_service.process_monday_create = AsyncMock(
+                    return_value={"action": "skipped", "reason": "unknown_board"}
+                )
+                mock_service.close = AsyncMock()
+                mock_service_class.return_value = mock_service
+
+                result = await handle_monday_webhook(
+                    mock_request, mock_db, authorization=None
+                )
 
         assert result["status"] == "received"
         assert result["event_type"] == "create_item"
@@ -350,10 +368,14 @@ class TestMondayWebhookEndpointIntegration:
         mock_request = MagicMock(spec=Request)
         mock_request.json = AsyncMock(return_value=event_payload)
 
+        mock_db = AsyncMock()
+
         with patch("app.api.webhooks.settings") as mock_settings:
             mock_settings.monday_webhook_enabled = False
 
-            result = await handle_monday_webhook(mock_request, authorization=None)
+            result = await handle_monday_webhook(
+                mock_request, mock_db, authorization=None
+            )
 
         assert result["status"] == "ignored"
         assert result["reason"] == "webhook processing disabled"
@@ -375,13 +397,15 @@ class TestMondayWebhookEndpointIntegration:
         mock_request = MagicMock(spec=Request)
         mock_request.json = AsyncMock(return_value=event_payload)
 
+        mock_db = AsyncMock()
+
         with patch("app.api.webhooks.settings") as mock_settings:
             mock_settings.monday_webhook_enabled = True
             mock_settings.monday_webhook_secret = "test-secret"
 
             with pytest.raises(HTTPException) as exc_info:
                 await handle_monday_webhook(
-                    mock_request, authorization="Bearer invalid"
+                    mock_request, mock_db, authorization="Bearer invalid"
                 )
 
         assert exc_info.value.status_code == 401
@@ -398,11 +422,14 @@ class TestMondayWebhookEndpointIntegration:
             "event": {
                 "type": "create_item",
                 "pulseId": "12345678",
+                "pulseName": "New Contact",
                 "boardId": "contacts_board_123",
             }
         }
         mock_request = MagicMock(spec=Request)
         mock_request.json = AsyncMock(return_value=event_payload)
+
+        mock_db = AsyncMock()
 
         with patch("app.api.webhooks.settings") as mock_settings:
             mock_settings.monday_webhook_enabled = True
@@ -410,7 +437,20 @@ class TestMondayWebhookEndpointIntegration:
             mock_settings.monday_contacts_board_id = "contacts_board_123"
             mock_settings.monday_organizations_board_id = "orgs_board_456"
 
-            result = await handle_monday_webhook(mock_request, authorization=None)
+            with patch("app.api.webhooks.MondayService") as mock_service_class:
+                mock_service = AsyncMock()
+                mock_service.process_monday_create = AsyncMock(
+                    return_value={
+                        "action": "skipped",
+                        "reason": "contact_requires_email",
+                    }
+                )
+                mock_service.close = AsyncMock()
+                mock_service_class.return_value = mock_service
+
+                result = await handle_monday_webhook(
+                    mock_request, mock_db, authorization=None
+                )
 
         assert result["board_type"] == "contacts"
 
@@ -425,11 +465,14 @@ class TestMondayWebhookEndpointIntegration:
             "event": {
                 "type": "create_item",
                 "pulseId": "12345678",
+                "pulseName": "New Org",
                 "boardId": "orgs_board_456",
             }
         }
         mock_request = MagicMock(spec=Request)
         mock_request.json = AsyncMock(return_value=event_payload)
+
+        mock_db = AsyncMock()
 
         with patch("app.api.webhooks.settings") as mock_settings:
             mock_settings.monday_webhook_enabled = True
@@ -437,7 +480,17 @@ class TestMondayWebhookEndpointIntegration:
             mock_settings.monday_contacts_board_id = "contacts_board_123"
             mock_settings.monday_organizations_board_id = "orgs_board_456"
 
-            result = await handle_monday_webhook(mock_request, authorization=None)
+            with patch("app.api.webhooks.MondayService") as mock_service_class:
+                mock_service = AsyncMock()
+                mock_service.process_monday_create = AsyncMock(
+                    return_value={"action": "created", "entity_type": "organization"}
+                )
+                mock_service.close = AsyncMock()
+                mock_service_class.return_value = mock_service
+
+                result = await handle_monday_webhook(
+                    mock_request, mock_db, authorization=None
+                )
 
         assert result["board_type"] == "organizations"
 
@@ -458,12 +511,145 @@ class TestMondayWebhookEndpointIntegration:
         mock_request = MagicMock(spec=Request)
         mock_request.json = AsyncMock(return_value=event_payload)
 
+        mock_db = AsyncMock()
+
         with patch("app.api.webhooks.settings") as mock_settings:
             mock_settings.monday_webhook_enabled = True
             mock_settings.monday_webhook_secret = ""
             mock_settings.monday_contacts_board_id = "contacts_board_123"
             mock_settings.monday_organizations_board_id = "orgs_board_456"
 
-            result = await handle_monday_webhook(mock_request, authorization=None)
+            result = await handle_monday_webhook(
+                mock_request, mock_db, authorization=None
+            )
 
         assert result["board_type"] == "unknown"
+
+
+class TestMondayWebhookSyncIntegration:
+    """Integration tests for webhook sync processing."""
+
+    @pytest.mark.asyncio
+    async def test_create_event_calls_sync_service(self):
+        """Test that create event triggers sync."""
+        from fastapi import Request
+
+        from app.api.webhooks import handle_monday_webhook
+
+        event_payload = {
+            "event": {
+                "type": "create_item",
+                "pulseId": "12345678",
+                "pulseName": "New Org",
+                "boardId": "orgs_board_456",
+            }
+        }
+        mock_request = MagicMock(spec=Request)
+        mock_request.json = AsyncMock(return_value=event_payload)
+
+        mock_db = AsyncMock()
+
+        with patch("app.api.webhooks.settings") as mock_settings:
+            mock_settings.monday_webhook_enabled = True
+            mock_settings.monday_webhook_secret = ""
+            mock_settings.monday_contacts_board_id = "contacts_board_123"
+            mock_settings.monday_organizations_board_id = "orgs_board_456"
+
+            with patch("app.api.webhooks.MondayService") as mock_service_class:
+                mock_service = AsyncMock()
+                mock_service.process_monday_create = AsyncMock(
+                    return_value={"action": "created"}
+                )
+                mock_service.close = AsyncMock()
+                mock_service_class.return_value = mock_service
+
+                result = await handle_monday_webhook(
+                    mock_request, mock_db, authorization=None
+                )
+
+                mock_service.process_monday_create.assert_called_once()
+                assert result["sync_result"]["action"] == "created"
+
+    @pytest.mark.asyncio
+    async def test_update_event_calls_sync_service(self):
+        """Test that update event triggers sync."""
+        from fastapi import Request
+
+        from app.api.webhooks import handle_monday_webhook
+
+        event_payload = {
+            "event": {
+                "type": "change_column_value",
+                "pulseId": "12345678",
+                "pulseName": "Org Name",
+                "boardId": "orgs_board_456",
+                "columnId": "notes",
+                "value": {"text": "New notes"},
+                "previousValue": {"text": "Old notes"},
+            }
+        }
+        mock_request = MagicMock(spec=Request)
+        mock_request.json = AsyncMock(return_value=event_payload)
+
+        mock_db = AsyncMock()
+
+        with patch("app.api.webhooks.settings") as mock_settings:
+            mock_settings.monday_webhook_enabled = True
+            mock_settings.monday_webhook_secret = ""
+            mock_settings.monday_contacts_board_id = "contacts_board_123"
+            mock_settings.monday_organizations_board_id = "orgs_board_456"
+
+            with patch("app.api.webhooks.MondayService") as mock_service_class:
+                mock_service = AsyncMock()
+                mock_service.process_monday_update = AsyncMock(
+                    return_value={"action": "updated"}
+                )
+                mock_service.close = AsyncMock()
+                mock_service_class.return_value = mock_service
+
+                result = await handle_monday_webhook(
+                    mock_request, mock_db, authorization=None
+                )
+
+                mock_service.process_monday_update.assert_called_once()
+                assert result["sync_result"]["action"] == "updated"
+
+    @pytest.mark.asyncio
+    async def test_delete_event_calls_sync_service(self):
+        """Test that delete event triggers sync."""
+        from fastapi import Request
+
+        from app.api.webhooks import handle_monday_webhook
+
+        event_payload = {
+            "event": {
+                "type": "item_deleted",
+                "pulseId": "12345678",
+                "boardId": "orgs_board_456",
+            }
+        }
+        mock_request = MagicMock(spec=Request)
+        mock_request.json = AsyncMock(return_value=event_payload)
+
+        mock_db = AsyncMock()
+
+        with patch("app.api.webhooks.settings") as mock_settings:
+            mock_settings.monday_webhook_enabled = True
+            mock_settings.monday_webhook_secret = ""
+            mock_settings.monday_contacts_board_id = "contacts_board_123"
+            mock_settings.monday_organizations_board_id = "orgs_board_456"
+
+            with patch("app.api.webhooks.MondayService") as mock_service_class:
+                mock_service = AsyncMock()
+                mock_service.process_monday_delete = AsyncMock(
+                    return_value={"action": "unlinked"}
+                )
+                mock_service.close = AsyncMock()
+                mock_service_class.return_value = mock_service
+
+                result = await handle_monday_webhook(
+                    mock_request, mock_db, authorization=None
+                )
+
+                mock_service.process_monday_delete.assert_called_once()
+                assert result["sync_result"]["action"] == "unlinked"

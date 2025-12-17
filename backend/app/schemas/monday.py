@@ -38,6 +38,8 @@ __all__ = [
     "MondayWebhookEventValue",
     "MondayWebhookEvent",
     "MondayWebhookPayload",
+    # Inbound sync result
+    "InboundSyncResult",
 ]
 
 
@@ -225,3 +227,18 @@ class MondayWebhookPayload(BaseModel):
     event: MondayWebhookEvent = Field(..., description="The event data")
 
     model_config = ConfigDict(extra="allow")
+
+
+class InboundSyncResult(BaseModel):
+    """Result from processing a Monday.com inbound sync event."""
+
+    success: bool = Field(..., description="Whether the sync was successful")
+    action: str = Field(
+        ..., description="Action taken: created, updated, deleted, skipped, conflict"
+    )
+    entity_type: str | None = Field(
+        None, description="Type of entity: contact or organization"
+    )
+    entity_id: UUID | None = Field(None, description="NPD entity ID if applicable")
+    monday_item_id: str | None = Field(None, description="Monday.com item ID")
+    message: str | None = Field(None, description="Additional details or error message")

@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import jwt
@@ -19,6 +20,7 @@ from app.schemas.monday import (
     MondayWebhookPayload,
 )
 from app.services import FeedbackService, GraphEmailService
+from app.services.monday_service import MondayService
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -310,8 +312,9 @@ async def monday_webhook_health() -> dict[str, str]:
 @router.post("/monday")
 async def handle_monday_webhook(
     request: Request,
+    db: DbSession,
     authorization: str | None = Header(None),
-) -> dict[str, str] | MondayWebhookChallengeResponse:
+) -> dict[str, Any] | MondayWebhookChallengeResponse:
     """Handle incoming Monday.com webhook events.
 
     Supports:
@@ -399,10 +402,69 @@ async def handle_monday_webhook(
         board_type=board_type,
     )
 
-    # Return acknowledgment (actual sync logic will be in issue #58)
-    return {
-        "status": "received",
-        "event_type": event_type,
-        "board_type": board_type or "unknown",
-        "item_id": event.pulseId or "unknown",
-    }
+    # Process the event based on type
+    result: dict[str, Any] = {"status": "received", "event_type": event_type}
+
+    if board_type in ("contacts", "organizations"):
+        monday_service = MondayService(db)
+        try:
+            if event_type == "create_item":
+                sync_result = await monday_service.process_monday_create(
+                    board_id=event.boardId or "",
+                    monday_item_id=event.pulseId or "",
+                    item_name=event.pulseName or "",
+                    board_type=board_type,
+                )
+                result["sync_result"] = sync_result
+
+            elif event_type in ("change_column_value", "update_column_value"):
+                # Extract value from event
+                value_dict = None
+                if event.value:
+                    value_dict = event.value.model_dump()
+
+                previous_dict = None
+                if event.previousValue:
+                    previous_dict = event.previousValue.model_dump()
+
+                sync_result = await monday_service.process_monday_update(
+                    board_id=event.boardId or "",
+                    monday_item_id=event.pulseId or "",
+                    column_id=event.columnId or "",
+                    new_value=value_dict,
+                    previous_value=previous_dict,
+                    board_type=board_type,
+                )
+                result["sync_result"] = sync_result
+
+            elif event_type in ("item_deleted", "delete_item"):
+                sync_result = await monday_service.process_monday_delete(
+                    board_id=event.boardId or "",
+                    monday_item_id=event.pulseId or "",
+                    board_type=board_type,
+                )
+                result["sync_result"] = sync_result
+
+            else:
+                result["sync_result"] = {
+                    "action": "skipped",
+                    "reason": f"unhandled_event_type:{event_type}",
+                }
+
+        except Exception as e:
+            logger.exception(
+                "monday_webhook_sync_failed",
+                event_type=event_type,
+                monday_item_id=event.pulseId,
+                error=str(e),
+            )
+            result["sync_result"] = {"action": "error", "message": str(e)}
+        finally:
+            await monday_service.close()
+    else:
+        result["sync_result"] = {"action": "skipped", "reason": "unknown_board"}
+
+    result["board_type"] = board_type or "unknown"
+    result["item_id"] = event.pulseId or "unknown"
+
+    return result

@@ -14,7 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.models.contact import Contact
-from app.models.monday_sync import MondaySyncLog, MondaySyncStatus, MondaySyncType
+from app.models.monday_sync import (
+    MondaySyncLog,
+    MondaySyncStatus,
+    MondaySyncType,
+    RecordSyncStatus,
+    SyncConflict,
+    SyncDirection,
+)
 from app.models.organization import Organization
 
 logger = get_logger(__name__)
@@ -35,6 +42,61 @@ class MondayRateLimitError(MondayAPIError):
     def __init__(self, message: str, retry_after_seconds: float | None = None):
         super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
+
+
+# Column ID mappings for contacts board (Monday column ID -> NPD field name)
+CONTACT_COLUMN_MAPPING = {
+    "email": "email",
+    "phone": "phone",
+    "role_title": "role_title",
+    "notes": "notes",
+}
+
+# Column ID mappings for organizations board (Monday column ID -> NPD field name)
+ORG_COLUMN_MAPPING = {
+    "notes": "notes",
+    "address": "address",  # Special handling required to parse into components
+}
+
+
+class MondayColumnParser:
+    """Utility class for parsing Monday.com webhook column values back to NPD fields."""
+
+    @staticmethod
+    def parse_email(value: dict | None) -> str | None:
+        """Parse email column value from webhook.
+
+        Email columns come as {"email": "x@y.com", "text": "x@y.com"}
+        """
+        if not value:
+            return None
+        if isinstance(value, dict):
+            return value.get("email") or value.get("text")
+        return None
+
+    @staticmethod
+    def parse_phone(value: dict | None) -> str | None:
+        """Parse phone column value from webhook.
+
+        Phone columns come as {"phone": "+12025550169", "countryShortName": "US"}
+        """
+        if not value:
+            return None
+        if isinstance(value, dict):
+            return value.get("phone")
+        return None
+
+    @staticmethod
+    def parse_text(value: Any) -> str | None:
+        """Parse text column value from webhook.
+
+        Text columns may come as {"text": "value"} or just a string.
+        """
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value.get("value") or value.get("text")
+        return str(value)
 
 
 class MondayColumnFormatter:
@@ -738,3 +800,339 @@ class MondayService:
             notes = self._get_column_value(item, mapping["notes"])
             if notes:
                 contact.notes = notes
+
+    # --- Inbound Sync Methods (Monday -> NPD) ---
+
+    async def process_monday_create(
+        self,
+        board_id: str,
+        monday_item_id: str,
+        item_name: str,
+        board_type: str,
+    ) -> dict[str, Any]:
+        """Process a create_item event from Monday.com.
+
+        Creates a new record in NPD if it doesn't already exist.
+
+        Args:
+            board_id: Monday.com board ID
+            monday_item_id: Monday.com item (pulse) ID
+            item_name: Name of the created item
+            board_type: "contacts" or "organizations"
+
+        Returns:
+            Dict with action result
+        """
+        logger.info(
+            "process_monday_create_started",
+            board_id=board_id,
+            monday_item_id=monday_item_id,
+            item_name=item_name,
+            board_type=board_type,
+        )
+
+        if board_type == "contacts":
+            # Check if already exists
+            existing = await self.db.execute(
+                select(Contact).where(Contact.monday_id == monday_item_id)
+            )
+            if existing.scalar_one_or_none():
+                logger.debug(
+                    "contact_already_exists_skipping", monday_item_id=monday_item_id
+                )
+                return {"action": "skipped", "reason": "already_exists"}
+
+            # For contacts, we need email and org - log and skip
+            # A subsequent update event will fill in fields
+            logger.warning(
+                "contact_create_needs_full_item_data",
+                monday_item_id=monday_item_id,
+                message="Contact creation from webhook requires fetching full item data",
+            )
+            return {
+                "action": "skipped",
+                "reason": "contact_requires_email_and_org",
+                "message": "Create events need full item fetch - use update events for field sync",
+            }
+
+        elif board_type == "organizations":
+            # Check if already exists
+            existing = await self.db.execute(
+                select(Organization).where(Organization.monday_id == monday_item_id)
+            )
+            if existing.scalar_one_or_none():
+                logger.debug(
+                    "organization_already_exists_skipping",
+                    monday_item_id=monday_item_id,
+                )
+                return {"action": "skipped", "reason": "already_exists"}
+
+            # Organizations just need a name
+            org = Organization(
+                name=item_name,
+                monday_id=monday_item_id,
+                monday_last_synced=datetime.now(UTC),
+                sync_status=RecordSyncStatus.SYNCED,
+                sync_enabled=True,
+                sync_direction=SyncDirection.BIDIRECTIONAL,
+            )
+            self.db.add(org)
+            await self.db.flush()
+
+            logger.info(
+                "organization_created_from_monday",
+                organization_id=str(org.id),
+                monday_item_id=monday_item_id,
+                name=item_name,
+            )
+
+            return {
+                "action": "created",
+                "entity_id": str(org.id),
+                "entity_type": "organization",
+            }
+
+        return {"action": "skipped", "reason": f"unknown_board_type:{board_type}"}
+
+    async def process_monday_update(
+        self,
+        board_id: str,
+        monday_item_id: str,
+        column_id: str,
+        new_value: dict | None,
+        previous_value: dict | None,  # noqa: ARG002
+        board_type: str,
+    ) -> dict[str, Any]:
+        """Process a change_column_value event from Monday.com.
+
+        Updates the corresponding NPD field. Detects conflicts if the NPD
+        record was modified more recently than the last sync.
+
+        Args:
+            board_id: Monday.com board ID
+            monday_item_id: Monday.com item (pulse) ID
+            column_id: The column that was changed
+            new_value: New value object from webhook
+            previous_value: Previous value object from webhook (reserved for conflict UI)
+            board_type: "contacts" or "organizations"
+
+        Returns:
+            Dict with action result
+        """
+        logger.info(
+            "process_monday_update_started",
+            board_id=board_id,
+            monday_item_id=monday_item_id,
+            column_id=column_id,
+            board_type=board_type,
+        )
+
+        if board_type == "contacts":
+            result = await self.db.execute(
+                select(Contact).where(Contact.monday_id == monday_item_id)
+            )
+            record = result.scalar_one_or_none()
+            entity_type = "contact"
+            column_mapping = CONTACT_COLUMN_MAPPING
+        elif board_type == "organizations":
+            result = await self.db.execute(
+                select(Organization).where(Organization.monday_id == monday_item_id)
+            )
+            record = result.scalar_one_or_none()
+            entity_type = "organization"
+            column_mapping = ORG_COLUMN_MAPPING
+        else:
+            return {"action": "skipped", "reason": f"unknown_board_type:{board_type}"}
+
+        if not record:
+            logger.debug(
+                "record_not_found_for_monday_update",
+                monday_item_id=monday_item_id,
+                board_type=board_type,
+            )
+            return {"action": "skipped", "reason": "record_not_found"}
+
+        # Check if sync is enabled
+        if not record.sync_enabled:
+            logger.debug("sync_disabled_for_record", monday_item_id=monday_item_id)
+            return {"action": "skipped", "reason": "sync_disabled"}
+
+        # Check sync direction - skip if sync is NPD to Monday only
+        if record.sync_direction in (SyncDirection.NPD_TO_MONDAY, SyncDirection.NONE):
+            logger.debug(
+                "sync_direction_prevents_inbound",
+                monday_item_id=monday_item_id,
+                sync_direction=record.sync_direction.value,
+            )
+            return {
+                "action": "skipped",
+                "reason": f"sync_direction:{record.sync_direction.value}",
+            }
+
+        # Conflict detection: if record was modified in NPD after last sync from Monday
+        if record.monday_last_synced and record.updated_at > record.monday_last_synced:
+            logger.warning(
+                "potential_sync_conflict_detected",
+                monday_item_id=monday_item_id,
+                entity_type=entity_type,
+                entity_id=str(record.id),
+                npd_updated_at=record.updated_at.isoformat(),
+                monday_last_synced=record.monday_last_synced.isoformat(),
+            )
+
+            # Get the NPD value for the conflicting field
+            npd_field_value = None
+            if column_id in column_mapping:
+                npd_field = column_mapping[column_id]
+                if hasattr(record, npd_field):
+                    npd_field_value = getattr(record, npd_field)
+
+            # Create conflict record
+            conflict = SyncConflict(
+                entity_type=entity_type,
+                entity_id=record.id,
+                monday_item_id=monday_item_id,
+                npd_data={column_id: npd_field_value},
+                monday_data={column_id: new_value},
+                conflict_fields=[column_id],
+            )
+            self.db.add(conflict)
+
+            # Set status to conflict
+            record.sync_status = RecordSyncStatus.CONFLICT
+            await self.db.flush()
+
+            return {
+                "action": "conflict",
+                "entity_id": str(record.id),
+                "entity_type": entity_type,
+                "conflict_id": str(conflict.id),
+            }
+
+        # Parse the new value and update the field
+        parsed_value = self._parse_webhook_column_value(column_id, new_value)
+
+        # Map column_id to NPD field and update
+        if column_id in column_mapping:
+            npd_field = column_mapping[column_id]
+            if hasattr(record, npd_field):
+                setattr(record, npd_field, parsed_value)
+            else:
+                logger.debug(
+                    "npd_field_not_found_on_record",
+                    column_id=column_id,
+                    npd_field=npd_field,
+                    entity_type=entity_type,
+                )
+                return {"action": "skipped", "reason": f"field_not_found:{npd_field}"}
+        else:
+            # Column not mapped - could be the name field which uses pulseName
+            logger.debug(
+                "column_not_mapped",
+                column_id=column_id,
+                entity_type=entity_type,
+            )
+            return {"action": "skipped", "reason": f"unmapped_column:{column_id}"}
+
+        # Update sync status and timestamp
+        record.sync_status = RecordSyncStatus.SYNCED
+        record.monday_last_synced = datetime.now(UTC)
+        await self.db.flush()
+
+        logger.info(
+            "record_updated_from_monday",
+            entity_type=entity_type,
+            entity_id=str(record.id),
+            column_id=column_id,
+        )
+
+        return {
+            "action": "updated",
+            "entity_id": str(record.id),
+            "entity_type": entity_type,
+            "field": column_id,
+        }
+
+    async def process_monday_delete(
+        self,
+        board_id: str,
+        monday_item_id: str,
+        board_type: str,
+    ) -> dict[str, Any]:
+        """Process an item_deleted event from Monday.com.
+
+        Instead of deleting the NPD record, we clear the monday_id and
+        set sync_status to DISABLED. This preserves the NPD data while
+        breaking the sync link.
+
+        Args:
+            board_id: Monday.com board ID
+            monday_item_id: Monday.com item (pulse) ID
+            board_type: "contacts" or "organizations"
+
+        Returns:
+            Dict with action result
+        """
+        logger.info(
+            "process_monday_delete_started",
+            board_id=board_id,
+            monday_item_id=monday_item_id,
+            board_type=board_type,
+        )
+
+        if board_type == "contacts":
+            result = await self.db.execute(
+                select(Contact).where(Contact.monday_id == monday_item_id)
+            )
+            record = result.scalar_one_or_none()
+            entity_type = "contact"
+        elif board_type == "organizations":
+            result = await self.db.execute(
+                select(Organization).where(Organization.monday_id == monday_item_id)
+            )
+            record = result.scalar_one_or_none()
+            entity_type = "organization"
+        else:
+            return {"action": "skipped", "reason": f"unknown_board_type:{board_type}"}
+
+        if not record:
+            logger.debug(
+                "record_not_found_for_monday_delete",
+                monday_item_id=monday_item_id,
+                board_type=board_type,
+            )
+            return {"action": "skipped", "reason": "record_not_found"}
+
+        # Clear monday link and disable sync
+        entity_id = record.id
+        record.monday_id = None
+        record.sync_status = RecordSyncStatus.DISABLED
+        record.sync_enabled = False
+        await self.db.flush()
+
+        logger.info(
+            "record_unlinked_from_monday",
+            entity_type=entity_type,
+            entity_id=str(entity_id),
+            monday_item_id=monday_item_id,
+        )
+
+        return {
+            "action": "unlinked",
+            "entity_id": str(entity_id),
+            "entity_type": entity_type,
+            "message": "Monday item deleted - NPD record preserved with sync disabled",
+        }
+
+    def _parse_webhook_column_value(self, column_id: str, value: dict | None) -> Any:
+        """Parse a webhook column value based on column type."""
+        if value is None:
+            return None
+
+        # Handle different column types
+        if column_id == "email":
+            return MondayColumnParser.parse_email(value)
+        elif column_id == "phone":
+            return MondayColumnParser.parse_phone(value)
+        else:
+            return MondayColumnParser.parse_text(value)
