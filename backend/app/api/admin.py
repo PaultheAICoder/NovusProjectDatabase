@@ -10,7 +10,12 @@ from app.api.deps import AdminUser, DbSession
 from app.core.rate_limit import admin_limit, limiter
 from app.models import Tag, TagType
 from app.models.document import Document
-from app.models.monday_sync import MondaySyncLog, MondaySyncType
+from app.models.monday_sync import (
+    MondaySyncLog,
+    MondaySyncType,
+    SyncQueueDirection,
+    SyncQueueStatus,
+)
 from app.models.organization import Organization
 from app.models.project import Project, ProjectStatus
 from app.models.saved_search import SavedSearch
@@ -30,6 +35,9 @@ from app.schemas.monday import (
     MondaySyncStatusResponse,
     MondaySyncTriggerRequest,
     SyncConflictResponse,
+    SyncQueueItemResponse,
+    SyncQueueListResponse,
+    SyncQueueStatsResponse,
 )
 from app.schemas.search import SavedSearchResponse
 from app.schemas.tag import (
@@ -42,6 +50,7 @@ from app.schemas.tag import (
 from app.services.conflict_service import ConflictService
 from app.services.import_service import ImportService
 from app.services.monday_service import MondayService
+from app.services.sync_queue_service import SyncQueueService
 from app.services.tag_suggester import TagSuggester
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -694,3 +703,117 @@ async def resolve_sync_conflict(
         )
 
     return SyncConflictResponse.model_validate(conflict)
+
+
+# ============== Sync Queue Management (Admin Only) ==============
+
+
+@router.get("/sync/queue", response_model=SyncQueueListResponse)
+@limiter.limit(admin_limit)
+async def list_sync_queue(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    entity_type: str | None = Query(
+        None, description="Filter by entity type: 'contact' or 'organization'"
+    ),
+    direction: str | None = Query(
+        None, description="Filter by direction: 'to_monday' or 'to_npd'"
+    ),
+    queue_status: str | None = Query(
+        None,
+        alias="status",
+        description="Filter by status: 'pending', 'in_progress', 'completed', 'failed'",
+    ),
+) -> SyncQueueListResponse:
+    """List sync queue items with filtering and pagination. Admin only.
+
+    Returns paginated list of sync queue items that can be filtered by
+    entity type, direction, and status.
+    """
+    # Convert string filters to enums
+    direction_enum = None
+    if direction:
+        try:
+            direction_enum = SyncQueueDirection(direction)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid direction: {direction}. Must be 'to_monday' or 'to_npd'",
+            )
+
+    status_enum = None
+    if queue_status:
+        try:
+            status_enum = SyncQueueStatus(queue_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {queue_status}. Must be 'pending', 'in_progress', 'completed', or 'failed'",
+            )
+
+    service = SyncQueueService(db)
+    items, total = await service.get_all_items(
+        page=page,
+        page_size=page_size,
+        entity_type=entity_type,
+        direction=direction_enum,
+        status=status_enum,
+    )
+
+    return SyncQueueListResponse(
+        items=[SyncQueueItemResponse.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < total,
+    )
+
+
+@router.get("/sync/queue/stats", response_model=SyncQueueStatsResponse)
+@limiter.limit(admin_limit)
+async def get_sync_queue_stats(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> SyncQueueStatsResponse:
+    """Get sync queue statistics. Admin only.
+
+    Returns counts of queue items by status.
+    """
+    service = SyncQueueService(db)
+    stats = await service.get_queue_stats()
+    return SyncQueueStatsResponse(**stats)
+
+
+@router.post(
+    "/sync/queue/{queue_id}/retry",
+    response_model=SyncQueueItemResponse,
+)
+@limiter.limit(admin_limit)
+async def retry_sync_queue_item(
+    request: Request,
+    queue_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+    reset_attempts: bool = Query(
+        False, description="If True, reset attempt count to 0"
+    ),
+) -> SyncQueueItemResponse:
+    """Manually retry a sync queue item. Admin only.
+
+    Resets the queue item to pending status so it will be processed
+    on the next queue run. Optionally resets the attempt counter.
+    """
+    service = SyncQueueService(db)
+    item = await service.manual_retry(queue_id, reset_attempts=reset_attempts)
+
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queue item not found",
+        )
+
+    return SyncQueueItemResponse.model_validate(item)

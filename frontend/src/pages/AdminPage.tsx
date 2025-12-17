@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Settings, Tag as TagIcon, Trash2, Edit, Loader2, Merge } from "lucide-react";
 import { ConflictCard } from "@/components/admin/ConflictCard";
 import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
+import { SyncQueueCard } from "@/components/admin/SyncQueueCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -297,6 +298,9 @@ export function AdminPage() {
 
       {/* Sync Conflicts Section */}
       <ConflictCard />
+
+      {/* Sync Queue Section */}
+      <SyncQueueCard />
 
       {/* Monday.com Integration Section */}
       <MondayConfigCard />

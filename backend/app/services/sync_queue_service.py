@@ -7,7 +7,7 @@ with exponential backoff.
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -292,12 +292,10 @@ class SyncQueueService:
         Returns:
             Dict with counts by status
         """
-        from sqlalchemy import func as sqla_func
-
         result = await self.db.execute(
             select(
                 SyncQueue.status,
-                sqla_func.count(SyncQueue.id).label("count"),
+                func.count(SyncQueue.id).label("count"),
             ).group_by(SyncQueue.status)
         )
         stats = {row.status.value: row.count for row in result.all()}
@@ -308,6 +306,56 @@ class SyncQueueService:
             "completed": stats.get("completed", 0),
             "failed": stats.get("failed", 0),
         }
+
+    async def get_all_items(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        entity_type: str | None = None,
+        direction: SyncQueueDirection | None = None,
+        status: SyncQueueStatus | None = None,
+    ) -> tuple[list[SyncQueue], int]:
+        """Get all queue items with filtering and pagination.
+
+        Args:
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+            entity_type: Filter by entity type ('contact' or 'organization')
+            direction: Filter by sync direction
+            status: Filter by status
+
+        Returns:
+            Tuple of (list of queue items, total count)
+        """
+        # Build base query with filters
+        filters = []
+        if entity_type:
+            filters.append(SyncQueue.entity_type == entity_type)
+        if direction:
+            filters.append(SyncQueue.direction == direction)
+        if status:
+            filters.append(SyncQueue.status == status)
+
+        base_query = select(SyncQueue)
+        count_query = select(func.count(SyncQueue.id))
+
+        if filters:
+            base_query = base_query.where(and_(*filters))
+            count_query = count_query.where(and_(*filters))
+
+        # Get total count
+        total = await self.db.scalar(count_query) or 0
+
+        # Get paginated items
+        offset = (page - 1) * page_size
+        result = await self.db.execute(
+            base_query.order_by(SyncQueue.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        items = list(result.scalars().all())
+
+        return items, total
 
 
 async def process_sync_queue() -> dict:

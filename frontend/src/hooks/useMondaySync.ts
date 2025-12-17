@@ -14,6 +14,11 @@ import type {
   MondaySyncStatusResponse,
   MondaySyncTriggerRequest,
   SyncConflict,
+  SyncQueueItem,
+  SyncQueueListResponse,
+  SyncQueueStats,
+  SyncQueueStatus,
+  SyncQueueDirection,
 } from "@/types/monday";
 
 export function useMondaySyncStatus() {
@@ -117,6 +122,63 @@ export function useResolveSyncConflict() {
       queryClient.invalidateQueries({ queryKey: ["sync", "conflicts"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+// ============== Sync Queue Hooks ==============
+
+interface SyncQueueParams {
+  page?: number;
+  pageSize?: number;
+  entityType?: "contact" | "organization" | null;
+  direction?: SyncQueueDirection | null;
+  status?: SyncQueueStatus | null;
+}
+
+export function useSyncQueue(params: SyncQueueParams = {}) {
+  return useQuery({
+    queryKey: ["sync", "queue", params],
+    queryFn: () => {
+      const searchParams = new URLSearchParams();
+      if (params.page) searchParams.set("page", String(params.page));
+      if (params.pageSize) searchParams.set("page_size", String(params.pageSize));
+      if (params.entityType) searchParams.set("entity_type", params.entityType);
+      if (params.direction) searchParams.set("direction", params.direction);
+      if (params.status) searchParams.set("status", params.status);
+      const queryString = searchParams.toString();
+      return api.get<SyncQueueListResponse>(
+        `/admin/sync/queue${queryString ? `?${queryString}` : ""}`
+      );
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+}
+
+export function useSyncQueueStats() {
+  return useQuery({
+    queryKey: ["sync", "queue", "stats"],
+    queryFn: () => api.get<SyncQueueStats>("/admin/sync/queue/stats"),
+    refetchInterval: 30000,
+  });
+}
+
+export function useRetrySyncQueueItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      queueId,
+      resetAttempts = false,
+    }: {
+      queueId: string;
+      resetAttempts?: boolean;
+    }) =>
+      api.post<SyncQueueItem>(
+        `/admin/sync/queue/${queueId}/retry?reset_attempts=${resetAttempts}`
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync", "queue"] });
     },
   });
 }

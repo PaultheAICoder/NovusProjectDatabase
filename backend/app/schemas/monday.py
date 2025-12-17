@@ -64,6 +64,9 @@ __all__ = [
     "ConflictResolutionType",
     "ConflictResolveRequest",
     "ConflictListResponse",
+    # Sync queue list response
+    "SyncQueueListResponse",
+    "SyncQueueStatsResponse",
 ]
 
 
@@ -334,3 +337,22 @@ class ConflictListResponse(BaseModel):
     page: int
     page_size: int
     has_more: bool
+
+
+class SyncQueueListResponse(BaseModel):
+    """Paginated list of sync queue items."""
+
+    items: list[SyncQueueItemResponse]
+    total: int
+    page: int
+    page_size: int
+    has_more: bool
+
+
+class SyncQueueStatsResponse(BaseModel):
+    """Sync queue statistics."""
+
+    pending: int
+    in_progress: int
+    completed: int
+    failed: int

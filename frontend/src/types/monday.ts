@@ -100,3 +100,47 @@ export interface ConflictStats {
   resolved: number;
   total: number;
 }
+
+// ============== Sync Queue Types ==============
+
+/** Status for sync queue items. */
+export type SyncQueueStatus = "pending" | "in_progress" | "completed" | "failed";
+
+/** Direction for sync queue operations. */
+export type SyncQueueDirection = "to_monday" | "to_npd";
+
+/** Operation type for sync queue items. */
+export type SyncQueueOperation = "create" | "update" | "delete";
+
+/** Sync queue item from backend. */
+export interface SyncQueueItem {
+  id: string;
+  entity_type: "contact" | "organization";
+  entity_id: string;
+  direction: SyncQueueDirection;
+  operation: SyncQueueOperation;
+  status: SyncQueueStatus;
+  attempts: number;
+  max_attempts: number;
+  last_attempt: string | null;
+  next_retry: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+/** Paginated list of sync queue items response. */
+export interface SyncQueueListResponse {
+  items: SyncQueueItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+/** Sync queue statistics. */
+export interface SyncQueueStats {
+  pending: number;
+  in_progress: number;
+  completed: number;
+  failed: number;
+}
