@@ -1,16 +1,18 @@
 """Authentication routes for Azure AD SSO."""
 
+import hmac
 from datetime import datetime, timedelta
+from secrets import token_urlsafe
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
 from app.config import get_settings
-from app.core.auth import get_or_create_user
+from app.core.auth import azure_scheme, get_or_create_user
 from app.core.logging import get_logger
 from app.database import get_db
 from app.schemas.user import UserResponse
@@ -43,8 +45,12 @@ async def login() -> RedirectResponse:
     """Initiate Azure AD SSO login.
 
     Redirects to Azure AD for authentication.
+    Generates CSRF state token stored in secure cookie.
     """
-    # Build Azure AD authorization URL
+    # Generate CSRF state token
+    state = token_urlsafe(32)
+
+    # Build Azure AD authorization URL with state
     auth_url = (
         f"https://login.microsoftonline.com/{settings.azure_ad_tenant_id}"
         f"/oauth2/v2.0/authorize"
@@ -53,20 +59,38 @@ async def login() -> RedirectResponse:
         f"&redirect_uri={settings.azure_ad_redirect_uri}"
         f"&scope=openid profile email"
         f"&response_mode=query"
+        f"&state={state}"
     )
     logger.info("auth_login_redirect", auth_url=auth_url)
-    return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+
+    # Create response with state cookie
+    response = RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+
+    # Set state cookie (HTTP-only, 5 minute expiry)
+    is_https = settings.azure_ad_redirect_uri.startswith("https://")
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        max_age=300,  # 5 minutes
+        path="/api/v1/auth",
+    )
+
+    return response
 
 
 @router.get("/callback")
 async def auth_callback(
+    request: Request,
     code: str,
-    state: str | None = None,  # noqa: ARG001 - Reserved for CSRF protection
+    state: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Handle Azure AD OAuth callback.
 
-    Processes the authorization code and creates a session.
+    Validates CSRF state and processes the authorization code.
     """
     logger.info("auth_callback_started", code_length=len(code) if code else 0)
 
@@ -83,6 +107,30 @@ async def auth_callback(
         )
     )
     logger.info("auth_callback_frontend_url", frontend_url=frontend_url)
+
+    # Validate CSRF state parameter
+    expected_state = request.cookies.get("oauth_state")
+
+    if not state or not expected_state:
+        logger.warning(
+            "auth_callback_missing_state",
+            has_param=bool(state),
+            has_cookie=bool(expected_state),
+        )
+        return RedirectResponse(
+            url=f"{frontend_url}/login?error=invalid_state",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # Use constant-time comparison to prevent timing attacks
+    if not hmac.compare_digest(state, expected_state):
+        logger.warning("auth_callback_state_mismatch")
+        return RedirectResponse(
+            url=f"{frontend_url}/login?error=invalid_state",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    logger.info("auth_callback_state_validated")
 
     # 1. Exchange code for tokens
     token_url = f"https://login.microsoftonline.com/{settings.azure_ad_tenant_id}/oauth2/v2.0/token"
@@ -119,10 +167,64 @@ async def auth_callback(
             status_code=status.HTTP_302_FOUND,
         )
 
-    # 2. Decode ID token (without verification for now - Azure already validated it)
+    # 2. Verify and decode ID token using Azure AD public keys
     try:
-        claims = jwt.get_unverified_claims(id_token)
-    except Exception as e:
+        # Get the key ID from token header
+        unverified_header = jwt.get_unverified_header(id_token)
+        kid = unverified_header.get("kid")
+
+        if not kid:
+            logger.warning("oauth_token_missing_kid")
+            return RedirectResponse(
+                url=f"{frontend_url}/login?error=invalid_token",
+                status_code=status.HTTP_302_FOUND,
+            )
+
+        # Get signing key from Azure AD JWKS
+        signing_key = azure_scheme.openid_config.signing_keys.get(kid)
+
+        if not signing_key:
+            logger.warning("oauth_token_unknown_kid", kid=kid)
+            return RedirectResponse(
+                url=f"{frontend_url}/login?error=invalid_token",
+                status_code=status.HTTP_302_FOUND,
+            )
+
+        # Verify and decode the token
+        claims = jwt.decode(
+            id_token,
+            signing_key,
+            algorithms=["RS256"],
+            audience=settings.azure_ad_client_id,
+            issuer=azure_scheme.openid_config.issuer,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_iat": True,
+                "verify_aud": True,
+                "verify_iss": True,
+            },
+        )
+
+        logger.info(
+            "oauth_token_verified",
+            sub=claims.get("sub"),
+            iss=claims.get("iss"),
+        )
+
+    except jwt.ExpiredSignatureError:
+        logger.warning("oauth_token_expired")
+        return RedirectResponse(
+            url=f"{frontend_url}/login?error=token_expired",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except jwt.JWTClaimsError as e:
+        logger.warning("oauth_token_claims_error", error=str(e))
+        return RedirectResponse(
+            url=f"{frontend_url}/login?error=invalid_token",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except jwt.JWTError as e:
         logger.warning(
             "oauth_token_decode_failed",
             error=str(e),
@@ -188,6 +290,13 @@ async def auth_callback(
         samesite="lax",
         max_age=JWT_EXPIRATION_HOURS * 3600,
     )
+
+    # Delete the one-time state cookie
+    response.delete_cookie(
+        key="oauth_state",
+        path="/api/v1/auth",
+    )
+
     return response
 
 

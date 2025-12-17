@@ -105,6 +105,8 @@ function LoginPage() {
     token_exchange_failed: "Authentication failed. Please try again.",
     no_id_token: "Authentication failed. Please try again.",
     invalid_token: "Invalid authentication response. Please try again.",
+    invalid_state: "Authentication session expired or invalid. Please try again.",
+    token_expired: "Your authentication session has expired. Please sign in again.",
     missing_user_info: "Could not retrieve your user information.",
     domain_not_allowed: "Your email domain is not authorized to access this application.",
   };
