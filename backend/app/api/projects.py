@@ -158,13 +158,16 @@ async def create_project(
 
     # Verify all contacts exist and belong to the organization
     contact_result = await db.execute(
-        select(Contact).where(Contact.id.in_(data.contact_ids))
+        select(Contact).where(
+            Contact.id.in_(data.contact_ids),
+            Contact.organization_id == data.organization_id,
+        )
     )
     contacts = contact_result.scalars().all()
     if len(contacts) != len(data.contact_ids):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="One or more contacts not found",
+            detail="One or more contacts not found or do not belong to the selected organization",
         )
 
     # Verify all tags exist
@@ -341,6 +344,28 @@ async def update_project(
             detail=f"Invalid status transition from {project.status.value} to {data.status.value}",
         )
 
+    # Validate existing contacts if organization is changing but contacts list not provided
+    if (
+        data.organization_id
+        and data.organization_id != project.organization_id
+        and data.contact_ids is None
+    ):
+        # Get existing contact IDs
+        existing_contact_ids = [pc.contact_id for pc in project.project_contacts]
+        if existing_contact_ids:
+            # Verify existing contacts belong to the new organization
+            valid_count = await db.scalar(
+                select(func.count()).where(
+                    Contact.id.in_(existing_contact_ids),
+                    Contact.organization_id == data.organization_id,
+                )
+            )
+            if valid_count != len(existing_contact_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot change organization: existing contacts do not belong to the new organization. Please update contacts first.",
+                )
+
     # Update scalar fields
     update_data = data.model_dump(
         exclude_unset=True,
@@ -359,15 +384,24 @@ async def update_project(
 
     # Update contacts if provided
     if data.contact_ids is not None:
-        # Verify contacts exist
+        # Determine which organization to validate against
+        # If org is being changed, validate against new org; otherwise use existing
+        target_org_id = (
+            data.organization_id if data.organization_id else project.organization_id
+        )
+
+        # Verify contacts exist AND belong to the organization
         contact_result = await db.execute(
-            select(Contact).where(Contact.id.in_(data.contact_ids))
+            select(Contact).where(
+                Contact.id.in_(data.contact_ids),
+                Contact.organization_id == target_org_id,
+            )
         )
         contacts = contact_result.scalars().all()
         if len(contacts) != len(data.contact_ids):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="One or more contacts not found",
+                detail="One or more contacts not found or do not belong to the selected organization",
             )
 
         # Remove old contacts
