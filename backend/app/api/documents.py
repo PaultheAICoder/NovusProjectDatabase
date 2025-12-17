@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.config import get_settings
+from app.core.file_utils import read_file_with_size_limit
 from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter, upload_limit
 from app.core.storage import StorageService
@@ -100,15 +101,11 @@ async def upload_document(
             f"Allowed types: PDF, DOCX, XLSX, XLS, TXT, CSV",
         )
 
-    # Read file content
-    content = await file.read()
-
-    # Validate file size
-    if len(content) > settings.max_file_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large. Maximum size is {settings.max_file_size_mb}MB",
-        )
+    # Validate file size and read content (streaming to prevent memory exhaustion)
+    content = await read_file_with_size_limit(
+        file=file,
+        max_size_bytes=settings.max_file_size_bytes,
+    )
 
     # Validate file content matches claimed type (magic number check)
     validator = FileValidationService()

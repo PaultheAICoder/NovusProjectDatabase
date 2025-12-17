@@ -217,9 +217,7 @@ class TestValidateEditedRows:
         assert results[1].validation.is_valid is False
 
     @pytest.mark.asyncio
-    async def test_empty_rows_returns_empty(
-        self, import_service, mock_db
-    ):  # noqa: ARG002
+    async def test_empty_rows_returns_empty(self, import_service):
         """Empty rows list returns empty results."""
         results = await import_service.validate_edited_rows([])
         assert len(results) == 0

@@ -7,6 +7,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import AdminUser, DbSession
+from app.core.file_utils import read_file_with_size_limit
 from app.core.rate_limit import admin_limit, limiter
 from app.models import Tag, TagType
 from app.models.document import Document
@@ -330,8 +331,13 @@ async def preview_import(
             detail="Only CSV files are supported",
         )
 
-    # Read file content
-    content = await file.read()
+    # Validate file size and read content (streaming to prevent memory exhaustion)
+    # Use 10MB limit for CSV imports (should be much smaller than document uploads)
+    import_max_size = 10 * 1024 * 1024  # 10MB
+    content = await read_file_with_size_limit(
+        file=file,
+        max_size_bytes=import_max_size,
+    )
     if len(content) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
