@@ -22,10 +22,12 @@ TARGET="${1:-production}"
 if [ "$TARGET" = "production" ]; then
     CONTAINER="npd-db"
     DB="npd"
+    DB_USER="npd"
     echo "Fixing PRODUCTION database..."
 elif [ "$TARGET" = "test" ]; then
     CONTAINER="npd-db-test"
     DB="npd_test"
+    DB_USER="npd_test"
     echo "Fixing TEST database..."
 else
     echo "Usage: $0 [production|test]"
@@ -37,17 +39,17 @@ echo ""
 
 # Check current values
 echo "Current sync_status values in organizations:"
-docker exec "$CONTAINER" psql -U npd -d "$DB" -c "SELECT DISTINCT sync_status FROM organizations;" 2>/dev/null || echo "(table may not exist)"
+docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB" -c "SELECT DISTINCT sync_status FROM organizations;" 2>/dev/null || echo "(table may not exist)"
 
 echo ""
 echo "Current sync_status values in contacts:"
-docker exec "$CONTAINER" psql -U npd -d "$DB" -c "SELECT DISTINCT sync_status FROM contacts;" 2>/dev/null || echo "(table may not exist)"
+docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB" -c "SELECT DISTINCT sync_status FROM contacts;" 2>/dev/null || echo "(table may not exist)"
 
 echo ""
 echo "Applying fixes..."
 
 # Fix sync_status values (lowercase -> uppercase)
-docker exec "$CONTAINER" psql -U npd -d "$DB" -c "
+docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB" -c "
 UPDATE organizations SET sync_status = 'PENDING' WHERE sync_status = 'pending';
 UPDATE organizations SET sync_status = 'SYNCED' WHERE sync_status = 'synced';
 UPDATE organizations SET sync_status = 'CONFLICT' WHERE sync_status = 'conflict';
@@ -60,7 +62,7 @@ UPDATE contacts SET sync_status = 'DISABLED' WHERE sync_status = 'disabled';
 "
 
 # Fix sync_direction values (lowercase -> uppercase)
-docker exec "$CONTAINER" psql -U npd -d "$DB" -c "
+docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB" -c "
 UPDATE organizations SET sync_direction = 'BIDIRECTIONAL' WHERE sync_direction = 'bidirectional';
 UPDATE organizations SET sync_direction = 'NPD_TO_MONDAY' WHERE sync_direction = 'npd_to_monday';
 UPDATE organizations SET sync_direction = 'MONDAY_TO_NPD' WHERE sync_direction = 'monday_to_npd';
@@ -73,7 +75,7 @@ UPDATE contacts SET sync_direction = 'NONE' WHERE sync_direction = 'none';
 "
 
 # Update default values
-docker exec "$CONTAINER" psql -U npd -d "$DB" -c "
+docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB" -c "
 ALTER TABLE organizations ALTER COLUMN sync_status SET DEFAULT 'PENDING';
 ALTER TABLE organizations ALTER COLUMN sync_direction SET DEFAULT 'BIDIRECTIONAL';
 ALTER TABLE contacts ALTER COLUMN sync_status SET DEFAULT 'PENDING';
@@ -84,7 +86,7 @@ echo ""
 echo "Fix complete. Verifying..."
 echo ""
 echo "Organizations sync_status values:"
-docker exec "$CONTAINER" psql -U npd -d "$DB" -c "SELECT DISTINCT sync_status, sync_direction FROM organizations;"
+docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB" -c "SELECT DISTINCT sync_status, sync_direction FROM organizations;"
 echo ""
 echo "Contacts sync_status values:"
-docker exec "$CONTAINER" psql -U npd -d "$DB" -c "SELECT DISTINCT sync_status, sync_direction FROM contacts;"
+docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB" -c "SELECT DISTINCT sync_status, sync_direction FROM contacts;"

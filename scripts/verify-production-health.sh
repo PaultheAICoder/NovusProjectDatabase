@@ -197,6 +197,49 @@ echo -e "  ${GREEN}[OK]${NC} Database has expected data"
 echo ""
 
 # ============================================================================
+# CHECK 5: Data integrity - enum values valid for SQLAlchemy
+# ============================================================================
+echo "Check 5: Verifying data integrity (enum values)..."
+
+# SQLAlchemy SAEnum(native_enum=False) expects uppercase enum NAMES, not values
+# Valid sync_status values: SYNCED, PENDING, CONFLICT, DISABLED
+# Valid sync_direction values: BIDIRECTIONAL, NPD_TO_MONDAY, MONDAY_TO_NPD, NONE
+
+INVALID_SYNC_STATUS=$(docker exec "$PROD_DB_CONTAINER" psql -U "$PROD_DB_USER" -d "$PROD_DB_NAME" -t -c "
+    SELECT COUNT(*) FROM (
+        SELECT sync_status FROM organizations WHERE sync_status NOT IN ('SYNCED', 'PENDING', 'CONFLICT', 'DISABLED')
+        UNION ALL
+        SELECT sync_status FROM contacts WHERE sync_status NOT IN ('SYNCED', 'PENDING', 'CONFLICT', 'DISABLED')
+    ) invalid;
+" 2>/dev/null | xargs || echo "0")
+
+INVALID_SYNC_DIRECTION=$(docker exec "$PROD_DB_CONTAINER" psql -U "$PROD_DB_USER" -d "$PROD_DB_NAME" -t -c "
+    SELECT COUNT(*) FROM (
+        SELECT sync_direction FROM organizations WHERE sync_direction NOT IN ('BIDIRECTIONAL', 'NPD_TO_MONDAY', 'MONDAY_TO_NPD', 'NONE')
+        UNION ALL
+        SELECT sync_direction FROM contacts WHERE sync_direction NOT IN ('BIDIRECTIONAL', 'NPD_TO_MONDAY', 'MONDAY_TO_NPD', 'NONE')
+    ) invalid;
+" 2>/dev/null | xargs || echo "0")
+
+if [ "$INVALID_SYNC_STATUS" != "0" ]; then
+    echo -e "  ${RED}[FAIL]${NC} Found $INVALID_SYNC_STATUS records with invalid sync_status"
+    echo "       Expected: SYNCED, PENDING, CONFLICT, DISABLED (uppercase)"
+    echo "       Run: ./scripts/fix-sync-enum-case.sh production"
+    ERRORS=$((ERRORS + 1))
+    ERROR_MESSAGES="${ERROR_MESSAGES}\n- Invalid sync_status enum values (likely lowercase)"
+elif [ "$INVALID_SYNC_DIRECTION" != "0" ]; then
+    echo -e "  ${RED}[FAIL]${NC} Found $INVALID_SYNC_DIRECTION records with invalid sync_direction"
+    echo "       Expected: BIDIRECTIONAL, NPD_TO_MONDAY, MONDAY_TO_NPD, NONE (uppercase)"
+    echo "       Run: ./scripts/fix-sync-enum-case.sh production"
+    ERRORS=$((ERRORS + 1))
+    ERROR_MESSAGES="${ERROR_MESSAGES}\n- Invalid sync_direction enum values (likely lowercase)"
+else
+    echo -e "  ${GREEN}[OK]${NC} All enum values are valid"
+fi
+
+echo ""
+
+# ============================================================================
 # FINAL RESULT
 # ============================================================================
 if [ "$ERRORS" -gt 0 ]; then
