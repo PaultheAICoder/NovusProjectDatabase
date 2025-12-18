@@ -9,6 +9,7 @@ import { ConflictCard } from "@/components/admin/ConflictCard";
 import { DocumentQueueCard } from "@/components/admin/DocumentQueueCard";
 import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
 import { SyncQueueCard } from "@/components/admin/SyncQueueCard";
+import { TokenManagementCard } from "@/components/admin/TokenManagementCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -310,6 +311,9 @@ export function AdminPage() {
 
       {/* Document Processing Queue Section */}
       <DocumentQueueCard />
+
+      {/* API Token Management Section */}
+      <TokenManagementCard isAdminView />
 
       {/* Monday.com Integration Section */}
       <MondayConfigCard />
