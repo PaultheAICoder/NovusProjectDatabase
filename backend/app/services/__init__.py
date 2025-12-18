@@ -18,6 +18,7 @@ from .feedback_service import FeedbackService
 from .graph_email import GraphEmailService
 from .search_service import SearchService
 from .sync_queue_service import SyncQueueService, process_sync_queue
+from .token_service import TokenService
 
 __all__ = [
     "AIEnhancementService",
@@ -32,6 +33,7 @@ __all__ = [
     "ParseResult",
     "SearchService",
     "SyncQueueService",
+    "TokenService",
     "extract_issue_number",
     "extract_project_marker",
     "is_reply_email",
