@@ -1,11 +1,12 @@
 """Azure AD SSO authentication with fastapi-azure-auth.
 
-Supports two authentication methods:
+Supports three authentication methods:
 1. Session cookies (for browser clients via OAuth callback)
-2. Bearer tokens (for programmatic API access)
+2. API tokens (Bearer tokens with npd_ prefix for personal access tokens)
+3. Azure AD Bearer tokens (for programmatic API access)
 
-The get_current_user dependency tries session cookie first, then falls back
-to Bearer token validation using Azure AD.
+The get_current_user dependency tries session cookie first, then API token,
+then falls back to Azure AD Bearer token validation.
 """
 
 from datetime import datetime
@@ -22,6 +23,7 @@ from app.config import get_settings
 from app.core.logging import get_logger
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.services.token_service import TOKEN_PREFIX, TokenService
 
 logger = get_logger(__name__)
 
@@ -230,15 +232,75 @@ async def get_user_from_bearer_token(
         return None
 
 
+async def get_user_from_api_token(
+    request: Request,
+    db: AsyncSession,
+) -> User | None:
+    """Get user from API token if present and valid.
+
+    Validates Bearer tokens that start with the npd_ prefix using TokenService.
+    This is for API tokens (personal access tokens) as opposed to Azure AD tokens.
+
+    Args:
+        request: The incoming HTTP request
+        db: Database session for token validation
+
+    Returns:
+        User object if API token is valid, None otherwise
+    """
+    # Extract Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return None
+
+    # Check for Bearer token format
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    token = parts[1]
+
+    # Check if this is an API token (starts with npd_ prefix)
+    if not token.startswith(TOKEN_PREFIX):
+        return None
+
+    # Validate via TokenService
+    try:
+        token_service = TokenService(db)
+        user = await token_service.validate_token(token)
+
+        if user:
+            logger.info(
+                "api_token_authenticated",
+                user_id=str(user.id),
+                email=user.email,
+            )
+        else:
+            logger.debug(
+                "api_token_validation_failed",
+                reason="invalid_or_expired",
+            )
+
+        return user
+    except Exception as e:
+        logger.debug(
+            "api_token_unexpected_error",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return None
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Get current authenticated user from session cookie or Bearer token.
+    """Get current authenticated user from session cookie, API token, or Azure AD Bearer token.
 
     Authentication is attempted in the following order:
     1. Session cookie (for browser clients using OAuth callback)
-    2. Bearer token in Authorization header (for programmatic API access)
+    2. API token (Bearer tokens starting with npd_ prefix)
+    3. Azure AD Bearer token (for programmatic API access with Azure AD)
 
     Args:
         request: The incoming HTTP request
@@ -260,7 +322,17 @@ async def get_current_user(
             )
         return user
 
-    # Try Bearer token (for programmatic API access)
+    # Try API token (for npd_* Bearer tokens)
+    user = await get_user_from_api_token(request, db)
+    if user:
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is disabled",
+            )
+        return user
+
+    # Try Azure AD Bearer token (for programmatic API access)
     user = await get_user_from_bearer_token(request, db)
     if user:
         if not user.is_active:

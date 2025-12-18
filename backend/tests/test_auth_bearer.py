@@ -339,9 +339,11 @@ class TestGetCurrentUserBearerFallback:
 
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = session_user
+            mock_api_token.return_value = None
             mock_bearer.return_value = bearer_user
 
             # Create a mock db session
@@ -351,12 +353,13 @@ class TestGetCurrentUserBearerFallback:
 
             assert result == session_user
             mock_session.assert_called_once()
-            # Bearer should not be called because session succeeded
+            # API token and Bearer should not be called because session succeeded
+            mock_api_token.assert_not_called()
             mock_bearer.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_falls_back_to_bearer_when_no_session(self):
-        """Falls back to Bearer token when no valid session cookie."""
+        """Falls back to Bearer token when no valid session cookie or API token."""
         from app.core.auth import get_current_user
         from app.models.user import UserRole
 
@@ -370,9 +373,11 @@ class TestGetCurrentUserBearerFallback:
 
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = None  # No valid session
+            mock_api_token.return_value = None  # Not an API token
             mock_bearer.return_value = bearer_user
 
             mock_db = AsyncMock()
@@ -381,20 +386,23 @@ class TestGetCurrentUserBearerFallback:
 
             assert result == bearer_user
             mock_session.assert_called_once()
+            mock_api_token.assert_called_once()
             mock_bearer.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_raises_401_when_no_session_and_no_bearer(self):
-        """Raises 401 when both session and Bearer auth fail."""
+        """Raises 401 when all auth methods fail."""
         from app.core.auth import get_current_user
 
         mock_request = MagicMock()
 
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = None
+            mock_api_token.return_value = None
             mock_bearer.return_value = None
 
             mock_db = AsyncMock()
@@ -439,9 +447,11 @@ class TestGetCurrentUserBearerFallback:
 
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = None
+            mock_api_token.return_value = None
             mock_bearer.return_value = inactive_user
 
             mock_db = AsyncMock()
@@ -483,9 +493,11 @@ class TestBearerTokenIntegration:
 
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = None
+            mock_api_token.return_value = None
             mock_bearer.return_value = mock_user
 
             client = TestClient(app)
@@ -514,9 +526,11 @@ class TestBearerTokenIntegration:
 
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = None
+            mock_api_token.return_value = None
             mock_bearer.return_value = None  # Invalid token
 
             client = TestClient(app)
@@ -529,8 +543,8 @@ class TestBearerTokenIntegration:
             assert response.json()["detail"] == "Not authenticated"
 
     @pytest.mark.asyncio
-    async def test_protected_endpoint_works_with_both_auth_methods(self):
-        """Same endpoint works with both session cookie and Bearer token."""
+    async def test_protected_endpoint_works_with_all_auth_methods(self):
+        """Same endpoint works with session cookie, API token, and Bearer token."""
         from uuid import uuid4
 
         from fastapi import Depends, FastAPI
@@ -560,9 +574,11 @@ class TestBearerTokenIntegration:
         # Test with session cookie
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = session_user
+            mock_api_token.return_value = None
             mock_bearer.return_value = None
 
             client = TestClient(app)
@@ -574,9 +590,11 @@ class TestBearerTokenIntegration:
         # Test with Bearer token
         with (
             patch("app.core.auth.get_user_from_session") as mock_session,
+            patch("app.core.auth.get_user_from_api_token") as mock_api_token,
             patch("app.core.auth.get_user_from_bearer_token") as mock_bearer,
         ):
             mock_session.return_value = None
+            mock_api_token.return_value = None
             mock_bearer.return_value = bearer_user
 
             client = TestClient(app)
