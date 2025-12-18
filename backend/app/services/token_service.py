@@ -315,3 +315,139 @@ class TokenService:
             )
         )
         return result.scalar_one_or_none()
+
+    async def update_token(
+        self,
+        token_id: UUID,
+        user_id: UUID,
+        name: str | None = None,
+        is_active: bool | None = None,
+    ) -> APIToken | None:
+        """Update a token's metadata (name or active status).
+
+        Args:
+            token_id: UUID of the token to update
+            user_id: UUID of the token owner (for authorization)
+            name: New name for the token (optional)
+            is_active: New active status (optional)
+
+        Returns:
+            Updated APIToken or None if not found/unauthorized
+        """
+        result = await self.db.execute(
+            select(APIToken).where(
+                APIToken.id == token_id,
+                APIToken.user_id == user_id,
+            )
+        )
+        api_token = result.scalar_one_or_none()
+
+        if not api_token:
+            logger.debug(
+                "api_token_update_failed",
+                token_id=str(token_id),
+                user_id=str(user_id),
+                reason="not_found_or_unauthorized",
+            )
+            return None
+
+        if name is not None:
+            api_token.name = name
+        if is_active is not None:
+            api_token.is_active = is_active
+
+        await self.db.flush()
+
+        logger.info(
+            "api_token_updated",
+            token_id=str(token_id),
+            user_id=str(user_id),
+            name_changed=name is not None,
+            is_active_changed=is_active is not None,
+        )
+
+        return api_token
+
+    async def list_all_tokens(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        user_id: UUID | None = None,
+        is_active: bool | None = None,
+    ) -> tuple[list[APIToken], int]:
+        """List all tokens with optional filters (admin only).
+
+        Args:
+            page: Page number (1-indexed)
+            page_size: Items per page
+            user_id: Filter by specific user
+            is_active: Filter by active status
+
+        Returns:
+            Tuple of (tokens list, total count)
+        """
+        from sqlalchemy import func
+
+        query = select(APIToken)
+
+        if user_id is not None:
+            query = query.where(APIToken.user_id == user_id)
+        if is_active is not None:
+            query = query.where(APIToken.is_active == is_active)
+
+        # Get total count
+        count_query = select(func.count()).select_from(query.subquery())
+        total = await self.db.scalar(count_query) or 0
+
+        # Apply pagination and ordering
+        query = (
+            query.order_by(APIToken.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+
+        result = await self.db.execute(query)
+        tokens = list(result.scalars().all())
+
+        logger.debug(
+            "api_tokens_listed_admin",
+            count=len(tokens),
+            total=total,
+            filters={
+                "user_id": str(user_id) if user_id else None,
+                "is_active": is_active,
+            },
+        )
+
+        return tokens, total
+
+    async def admin_delete_token(self, token_id: UUID) -> bool:
+        """Hard delete any token (admin only, no user check).
+
+        Args:
+            token_id: UUID of the token to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        result = await self.db.execute(select(APIToken).where(APIToken.id == token_id))
+        api_token = result.scalar_one_or_none()
+
+        if not api_token:
+            logger.debug(
+                "api_token_admin_delete_failed",
+                token_id=str(token_id),
+                reason="not_found",
+            )
+            return False
+
+        await self.db.delete(api_token)
+        await self.db.flush()
+
+        logger.info(
+            "api_token_admin_deleted",
+            token_id=str(token_id),
+            user_id=str(api_token.user_id),
+        )
+
+        return True

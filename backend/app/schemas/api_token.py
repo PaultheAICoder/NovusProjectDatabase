@@ -40,3 +40,19 @@ class APITokenCreateResponse(BaseModel):
 
     token: str = Field(..., description="Plaintext token - shown only once")
     token_info: APITokenResponse
+
+
+class APITokenUpdate(BaseModel):
+    """Schema for updating an API token (name and is_active only)."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    is_active: bool | None = None
+
+
+class APITokenListResponse(BaseModel):
+    """Paginated list of API tokens."""
+
+    items: list[APITokenResponse]
+    total: int
+    page: int
+    page_size: int

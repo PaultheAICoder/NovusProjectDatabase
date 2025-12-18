@@ -416,3 +416,215 @@ class TestGetTokenById:
         result = await service.get_token_by_id(uuid4(), uuid4())
 
         assert result is None
+
+
+class TestUpdateToken:
+    """Tests for update_token method."""
+
+    @pytest.mark.asyncio
+    async def test_update_token_name(self):
+        """Update changes token name."""
+        token_id = uuid4()
+        user_id = uuid4()
+
+        mock_token = MagicMock(spec=APIToken)
+        mock_token.id = token_id
+        mock_token.user_id = user_id
+        mock_token.name = "Old Name"
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_token
+        mock_db.execute.return_value = mock_result
+        mock_db.flush = AsyncMock()
+
+        service = TokenService(mock_db)
+        result = await service.update_token(
+            token_id=token_id,
+            user_id=user_id,
+            name="New Name",
+        )
+
+        assert result is not None
+        assert mock_token.name == "New Name"
+
+    @pytest.mark.asyncio
+    async def test_update_token_is_active(self):
+        """Update changes is_active status."""
+        token_id = uuid4()
+        user_id = uuid4()
+
+        mock_token = MagicMock(spec=APIToken)
+        mock_token.id = token_id
+        mock_token.user_id = user_id
+        mock_token.is_active = True
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_token
+        mock_db.execute.return_value = mock_result
+        mock_db.flush = AsyncMock()
+
+        service = TokenService(mock_db)
+        result = await service.update_token(
+            token_id=token_id,
+            user_id=user_id,
+            is_active=False,
+        )
+
+        assert result is not None
+        assert mock_token.is_active is False
+
+    @pytest.mark.asyncio
+    async def test_update_token_returns_none_for_wrong_user(self):
+        """Update returns None if user doesn't own token."""
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        service = TokenService(mock_db)
+        result = await service.update_token(
+            token_id=uuid4(),
+            user_id=uuid4(),
+            name="New Name",
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_update_token_both_fields(self):
+        """Update can change both name and is_active."""
+        token_id = uuid4()
+        user_id = uuid4()
+
+        mock_token = MagicMock(spec=APIToken)
+        mock_token.id = token_id
+        mock_token.user_id = user_id
+        mock_token.name = "Old Name"
+        mock_token.is_active = True
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_token
+        mock_db.execute.return_value = mock_result
+        mock_db.flush = AsyncMock()
+
+        service = TokenService(mock_db)
+        result = await service.update_token(
+            token_id=token_id,
+            user_id=user_id,
+            name="New Name",
+            is_active=False,
+        )
+
+        assert result is not None
+        assert mock_token.name == "New Name"
+        assert mock_token.is_active is False
+
+
+class TestListAllTokens:
+    """Tests for list_all_tokens method (admin)."""
+
+    @pytest.mark.asyncio
+    async def test_list_all_tokens_returns_paginated_results(self):
+        """List returns tokens with total count."""
+        mock_token1 = MagicMock(spec=APIToken)
+        mock_token2 = MagicMock(spec=APIToken)
+
+        mock_db = AsyncMock()
+        mock_db.scalar.return_value = 2
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_token1, mock_token2]
+        mock_db.execute.return_value = mock_result
+
+        service = TokenService(mock_db)
+        tokens, total = await service.list_all_tokens(page=1, page_size=20)
+
+        assert len(tokens) == 2
+        assert total == 2
+
+    @pytest.mark.asyncio
+    async def test_list_all_tokens_filters_by_user_id(self):
+        """List filters by user_id when provided."""
+        user_id = uuid4()
+        mock_db = AsyncMock()
+        mock_db.scalar.return_value = 0
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = TokenService(mock_db)
+        tokens, total = await service.list_all_tokens(user_id=user_id)
+
+        # Verify query was built (implementation detail)
+        assert mock_db.execute.called
+
+    @pytest.mark.asyncio
+    async def test_list_all_tokens_filters_by_is_active(self):
+        """List filters by is_active when provided."""
+        mock_db = AsyncMock()
+        mock_db.scalar.return_value = 0
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = TokenService(mock_db)
+        tokens, total = await service.list_all_tokens(is_active=False)
+
+        # Verify query was built
+        assert mock_db.execute.called
+
+    @pytest.mark.asyncio
+    async def test_list_all_tokens_empty_results(self):
+        """List returns empty list when no tokens exist."""
+        mock_db = AsyncMock()
+        mock_db.scalar.return_value = 0
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = TokenService(mock_db)
+        tokens, total = await service.list_all_tokens()
+
+        assert tokens == []
+        assert total == 0
+
+
+class TestAdminDeleteToken:
+    """Tests for admin_delete_token method."""
+
+    @pytest.mark.asyncio
+    async def test_admin_delete_removes_token(self):
+        """Admin delete removes any token."""
+        token_id = uuid4()
+
+        mock_token = MagicMock(spec=APIToken)
+        mock_token.id = token_id
+        mock_token.user_id = uuid4()
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_token
+        mock_db.execute.return_value = mock_result
+        mock_db.delete = AsyncMock()
+        mock_db.flush = AsyncMock()
+
+        service = TokenService(mock_db)
+        result = await service.admin_delete_token(token_id)
+
+        assert result is True
+        mock_db.delete.assert_called_once_with(mock_token)
+
+    @pytest.mark.asyncio
+    async def test_admin_delete_returns_false_for_not_found(self):
+        """Admin delete returns False if token not found."""
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        service = TokenService(mock_db)
+        result = await service.admin_delete_token(uuid4())
+
+        assert result is False

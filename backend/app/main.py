@@ -19,6 +19,7 @@ from app.api import (
     projects,
     search,
     tags,
+    tokens,
     webhooks,
 )
 from app.config import get_settings
@@ -140,6 +141,8 @@ app.include_router(admin.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(cron.router, prefix="/api/v1")
+app.include_router(tokens.router, prefix="/api/v1")
+app.include_router(tokens.admin_router, prefix="/api/v1")
 
 
 @app.get("/health")
