@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     rate_limit_auth: str = "20/minute"
     rate_limit_default: str = "60/minute"
     rate_limit_feedback: str = "5/hour"  # Feedback submission limit
+    rate_limit_webhook: str = "100/minute"  # Webhook endpoint limit (external systems)
 
     # Embedding Cache (Redis - Optional)
     redis_url: str = ""  # Optional - falls back to in-memory if not set

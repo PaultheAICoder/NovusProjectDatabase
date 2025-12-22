@@ -143,9 +143,16 @@ class TestWebhookHealthEndpoint:
     @pytest.mark.asyncio
     async def test_health_returns_ok(self):
         """Health endpoint should return ok status."""
+        from unittest.mock import MagicMock
+
+        from fastapi import Request
+
         from app.api.webhooks import webhook_health
 
-        result = await webhook_health()
+        # Create mock request for rate limiting
+        mock_request = MagicMock(spec=Request)
+
+        result = await webhook_health(request=mock_request)
 
         assert result["status"] == "ok"
         assert result["service"] == "github-webhook"

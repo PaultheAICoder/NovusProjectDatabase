@@ -14,6 +14,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 from app.api.deps import DbSession
 from app.config import get_settings
 from app.core.logging import get_logger
+from app.core.rate_limit import limiter, webhook_limit
 from app.models.feedback import FeedbackStatus
 from app.schemas.monday import (
     MondayWebhookChallenge,
@@ -117,7 +118,8 @@ def extract_submitter_from_body(body: str) -> dict[str, str] | None:
 
 
 @router.get("/github")
-async def webhook_health() -> dict[str, str]:
+@limiter.limit(webhook_limit)
+async def webhook_health(request: Request) -> dict[str, str]:
     """Health check endpoint for GitHub webhook configuration.
 
     This is a public endpoint used by GitHub to verify the webhook URL.
@@ -126,6 +128,7 @@ async def webhook_health() -> dict[str, str]:
 
 
 @router.post("/github")
+@limiter.limit(webhook_limit)
 async def handle_github_webhook(
     request: Request,
     db: DbSession,
@@ -306,7 +309,8 @@ async def handle_github_webhook(
 
 
 @router.get("/monday")
-async def monday_webhook_health() -> dict[str, str]:
+@limiter.limit(webhook_limit)
+async def monday_webhook_health(request: Request) -> dict[str, str]:
     """Health check endpoint for Monday.com webhook configuration.
 
     This endpoint can be used to verify the webhook URL is accessible.
@@ -315,6 +319,7 @@ async def monday_webhook_health() -> dict[str, str]:
 
 
 @router.post("/monday")
+@limiter.limit(webhook_limit)
 async def handle_monday_webhook(
     request: Request,
     db: DbSession,

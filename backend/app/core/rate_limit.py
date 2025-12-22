@@ -84,3 +84,8 @@ def auth_limit() -> str:
 def feedback_limit() -> str:
     """Get feedback endpoint rate limit."""
     return settings.rate_limit_feedback
+
+
+def webhook_limit() -> str:
+    """Get webhook endpoint rate limit."""
+    return settings.rate_limit_webhook
