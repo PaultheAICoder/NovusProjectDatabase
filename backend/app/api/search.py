@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.core.logging import get_logger
 from app.core.rate_limit import limiter, search_limit
-from app.models.project import ProjectStatus
+from app.models.project import Project, ProjectStatus
 from app.models.saved_search import SavedSearch
 from app.models.user import User
 from app.schemas.search import (
@@ -29,10 +29,13 @@ from app.schemas.search import (
     SemanticSearchFilters,
     SemanticSearchRequest,
     SemanticSearchResponse,
+    SummarizationRequest,
+    SummarizationResponse,
 )
 from app.services.nl_query_parser import NLQueryParser
 from app.services.search_cache import generate_cache_key, get_search_cache
 from app.services.search_service import SearchService
+from app.services.summarization_service import SummarizationService
 
 logger = get_logger(__name__)
 
@@ -221,6 +224,85 @@ async def semantic_search(
         query=body.query,
         parsed_query=parsed_metadata,
     )
+
+
+@router.post("/summarize", response_model=SummarizationResponse)
+@limiter.limit(search_limit)
+async def summarize_search_results(
+    request: Request,
+    body: SummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SummarizationResponse | StreamingResponse:
+    """
+    Generate an AI summary over search results.
+
+    Uses the query to find relevant projects and documents, then generates
+    a natural language summary answering the user's question.
+
+    If stream=True, returns a streaming response with Server-Sent Events.
+    """
+    summarization_service = SummarizationService(db)
+
+    # Get projects to summarize
+    if body.project_ids:
+        # Fetch specific projects
+        projects = await _fetch_projects_by_ids(db, body.project_ids)
+    else:
+        # Use semantic search to find relevant projects
+        parser = NLQueryParser(db)
+        parse_result = await parser.parse_query(body.query)
+        search_service = SearchService(db)
+        projects, _ = await search_service.search_projects(
+            query=parse_result.parsed_intent.search_text,
+            page=1,
+            page_size=10,
+        )
+
+    if body.stream:
+        # Return streaming response
+        return StreamingResponse(
+            summarization_service.summarize_stream(
+                query=body.query,
+                projects=projects,
+                max_chunks=body.max_chunks,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+
+    # Non-streaming response
+    result = await summarization_service.summarize(
+        query=body.query,
+        projects=projects,
+        max_chunks=body.max_chunks,
+    )
+
+    return SummarizationResponse(
+        summary=result.summary,
+        query=body.query,
+        context_used=result.context_used,
+        truncated=result.truncated,
+    )
+
+
+async def _fetch_projects_by_ids(db: AsyncSession, project_ids: list[UUID]) -> list:
+    """Fetch projects by their IDs."""
+    from sqlalchemy.orm import selectinload
+
+    stmt = (
+        select(Project)
+        .options(
+            selectinload(Project.organization),
+            selectinload(Project.owner),
+        )
+        .where(Project.id.in_(project_ids))
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 @router.get("/suggest", response_model=SearchSuggestionsResponse)

@@ -156,3 +156,46 @@ class SemanticSearchResponse(BaseModel):
     page_size: int
     query: str
     parsed_query: ParsedQueryMetadata
+
+
+# ============== Summarization ==============
+
+
+class SummarizationRequest(BaseModel):
+    """Request for generating a summary over search results."""
+
+    query: str = Field(..., min_length=1, description="Natural language query")
+    project_ids: list[UUID] | None = Field(
+        default=None,
+        description="Specific project IDs to summarize (optional, uses search if not provided)",
+    )
+    max_chunks: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum document chunks to include in context",
+    )
+    stream: bool = Field(
+        default=False,
+        description="Enable streaming response",
+    )
+
+
+class SummarizationResponse(BaseModel):
+    """Response containing the generated summary."""
+
+    summary: str
+    query: str
+    context_used: int = Field(description="Number of projects/chunks used for context")
+    truncated: bool = Field(
+        description="Whether context was truncated due to token limits"
+    )
+
+
+class SemanticSearchWithSummaryResponse(SemanticSearchResponse):
+    """Semantic search response with optional summary."""
+
+    summary: SummarizationResponse | None = Field(
+        default=None,
+        description="AI-generated summary (if requested)",
+    )
