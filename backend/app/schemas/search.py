@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.project import ProjectStatus
+from app.schemas.nl_query import ParsedQueryIntent
 from app.schemas.project import ProjectResponse
 
 
@@ -112,3 +113,46 @@ class SavedSearchListResponse(BaseModel):
 
     my_searches: list[SavedSearchResponse]
     global_searches: list[SavedSearchResponse]
+
+
+# ============== Semantic Search ==============
+
+
+class SemanticSearchFilters(BaseModel):
+    """Optional filter overrides for semantic search."""
+
+    status: list[ProjectStatus] | None = None
+    organization_id: UUID | None = None
+    tag_ids: list[UUID] | None = None
+    owner_id: UUID | None = None
+
+
+class SemanticSearchRequest(BaseModel):
+    """Request for semantic search endpoint."""
+
+    query: str = Field(..., min_length=1, description="Natural language search query")
+    filters: SemanticSearchFilters | None = Field(
+        default=None,
+        description="Optional filter overrides (take precedence over parsed filters)",
+    )
+    page: int = Field(default=1, ge=1, description="Page number")
+    page_size: int = Field(default=20, ge=1, le=100, description="Items per page")
+
+
+class ParsedQueryMetadata(BaseModel):
+    """Metadata about how the query was parsed."""
+
+    parsed_intent: ParsedQueryIntent
+    fallback_used: bool
+    parse_explanation: str | None = None
+
+
+class SemanticSearchResponse(BaseModel):
+    """Response for semantic search endpoint."""
+
+    items: list[SearchResultItem]
+    total: int
+    page: int
+    page_size: int
+    query: str
+    parsed_query: ParsedQueryMetadata

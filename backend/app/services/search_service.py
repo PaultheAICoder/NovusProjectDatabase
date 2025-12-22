@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, literal_column, select, text
@@ -34,6 +35,8 @@ class SearchService:
         organization_id: UUID | None = None,
         tag_ids: list[UUID] | None = None,
         owner_id: UUID | None = None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
         sort_by: str = "relevance",
         sort_order: str = "desc",
         page: int = 1,
@@ -65,6 +68,8 @@ class SearchService:
             organization_id=organization_id,
             tag_ids=tag_ids,
             owner_id=owner_id,
+            start_date_from=start_date_from,
+            start_date_to=start_date_to,
         )
 
         # If no query, just return filtered projects
@@ -94,6 +99,8 @@ class SearchService:
         organization_id: UUID | None,
         tag_ids: list[UUID] | None,
         owner_id: UUID | None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
     ) -> list:
         """Build filter conditions for search queries."""
         conditions = []
@@ -119,6 +126,12 @@ class SearchService:
 
         if owner_id:
             conditions.append(Project.owner_id == owner_id)
+
+        if start_date_from:
+            conditions.append(Project.start_date >= start_date_from)
+
+        if start_date_to:
+            conditions.append(Project.start_date <= start_date_to)
 
         return conditions
 

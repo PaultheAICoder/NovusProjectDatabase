@@ -17,6 +17,7 @@ from app.models.project import ProjectStatus
 from app.models.saved_search import SavedSearch
 from app.models.user import User
 from app.schemas.search import (
+    ParsedQueryMetadata,
     SavedSearchCreate,
     SavedSearchListResponse,
     SavedSearchResponse,
@@ -25,7 +26,11 @@ from app.schemas.search import (
     SearchResultItem,
     SearchSuggestion,
     SearchSuggestionsResponse,
+    SemanticSearchFilters,
+    SemanticSearchRequest,
+    SemanticSearchResponse,
 )
+from app.services.nl_query_parser import NLQueryParser
 from app.services.search_cache import generate_cache_key, get_search_cache
 from app.services.search_service import SearchService
 
@@ -133,6 +138,89 @@ async def search_projects(
         )
 
     return response
+
+
+@router.post("/semantic", response_model=SemanticSearchResponse)
+@limiter.limit(search_limit)
+async def semantic_search(
+    request: Request,
+    body: SemanticSearchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SemanticSearchResponse:
+    """
+    Search projects using natural language query.
+
+    The query is parsed by an LLM to extract:
+    - Search keywords
+    - Time ranges (e.g., "last 2 years")
+    - Organizations/clients
+    - Technologies
+    - Status filters
+
+    Optional filter overrides can be provided to override parsed values.
+    Response includes parsed_query metadata showing how the query was interpreted.
+    """
+    # Parse natural language query
+    parser = NLQueryParser(db)
+    parse_result = await parser.parse_query(body.query)
+
+    parsed = parse_result.parsed_intent
+
+    # Determine effective filters (overrides take precedence)
+    filters = body.filters or SemanticSearchFilters()
+
+    effective_status = (
+        filters.status if filters.status is not None else parsed.status or None
+    )
+    effective_org_id = (
+        filters.organization_id
+        if filters.organization_id is not None
+        else parsed.organization_id
+    )
+    effective_tag_ids = (
+        filters.tag_ids if filters.tag_ids is not None else parsed.tag_ids or None
+    )
+    effective_owner_id = filters.owner_id
+
+    # Extract date range from parsed intent
+    start_date_from = parsed.date_range.start_date if parsed.date_range else None
+    start_date_to = parsed.date_range.end_date if parsed.date_range else None
+
+    # Execute search with combined filters
+    search_service = SearchService(db)
+
+    projects, total = await search_service.search_projects(
+        query=parsed.search_text,
+        status=effective_status if effective_status else None,
+        organization_id=effective_org_id,
+        tag_ids=effective_tag_ids if effective_tag_ids else None,
+        owner_id=effective_owner_id,
+        start_date_from=start_date_from,
+        start_date_to=start_date_to,
+        sort_by="relevance",
+        sort_order="desc",
+        page=body.page,
+        page_size=body.page_size,
+    )
+
+    # Build response
+    items = [SearchResultItem.model_validate(p) for p in projects]
+
+    parsed_metadata = ParsedQueryMetadata(
+        parsed_intent=parsed,
+        fallback_used=parse_result.fallback_used,
+        parse_explanation=parse_result.parse_explanation,
+    )
+
+    return SemanticSearchResponse(
+        items=items,
+        total=total,
+        page=body.page,
+        page_size=body.page_size,
+        query=body.query,
+        parsed_query=parsed_metadata,
+    )
 
 
 @router.get("/suggest", response_model=SearchSuggestionsResponse)
