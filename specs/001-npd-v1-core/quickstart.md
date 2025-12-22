@@ -1,6 +1,6 @@
 # Quickstart: Novus Project Database v1 Core
 
-**Branch**: `001-npd-v1-core` | **Date**: 2025-12-01
+**Branch**: `main` | **Date**: 2025-12-22
 
 This guide provides setup instructions for local development of NPD v1.
 
@@ -68,6 +68,10 @@ docker compose logs -f
 | `backend` | 6701 | FastAPI application |
 | `db` | 6702 | PostgreSQL with pgvector |
 | `ollama` | 6703 | Local embedding/LLM service |
+| `clamav` | 6704 | Antivirus scanning (optional, requires enablement) |
+| `redis` | 6705 | Caching for embeddings and search results |
+
+> **Note**: The ClamAV container takes 2-3 minutes to download virus definitions on first start. Check its health with `docker compose ps`.
 
 ### Authentication Note
 
@@ -190,6 +194,12 @@ MAX_FILE_SIZE_MB=50
 CORS_ORIGINS=["http://localhost:6700"]
 ```
 
+> See `backend/.env.example` for all available configuration options including:
+> - ClamAV antivirus settings
+> - Redis caching configuration
+> - Rate limiting options
+> - GitHub integration for feedback system
+
 ### Frontend (.env.local)
 
 ```bash
@@ -299,6 +309,12 @@ pytest -v
 ```bash
 cd frontend
 
+# Install Playwright browsers (first time only)
+npx playwright install chromium
+
+# Or install all browsers
+npx playwright install
+
 # Run unit tests
 pnpm test
 
@@ -312,6 +328,32 @@ pnpm test:e2e
 pnpm test:e2e:ui
 ```
 
+### E2E Test Environment
+
+E2E tests run against a separate test environment to avoid affecting development data:
+
+```bash
+# Start test environment
+docker compose -f docker-compose.test.yml up -d
+
+# Wait for services to be healthy
+docker compose -f docker-compose.test.yml ps
+
+# Run E2E tests
+cd frontend
+pnpm test:e2e
+```
+
+Test environment ports:
+| Service | Port |
+|---------|------|
+| Frontend | 6710 |
+| Backend | 6711 |
+| Database | 6712 |
+| Ollama | 6713 |
+
+See `frontend/tests/e2e/README.md` for detailed E2E testing documentation.
+
 ---
 
 ## Code Quality
@@ -323,10 +365,12 @@ cd backend
 
 # Format code
 black app tests
-isort app tests
 
-# Lint
+# Lint (includes import sorting via ruff)
 ruff check app tests
+
+# Auto-fix linting issues
+ruff check --fix app tests
 
 # Type checking
 mypy app
@@ -429,6 +473,31 @@ docker compose logs ollama
 1. Check CORS_ORIGINS in backend .env includes frontend URL
 2. Verify VITE_API_URL in frontend .env.local
 3. Check browser network tab for actual errors
+
+### ClamAV Not Starting
+
+ClamAV needs time to download virus definitions on first start:
+
+```bash
+# Check ClamAV status
+docker compose logs clamav
+
+# Wait for healthy status (can take 2-3 minutes)
+docker compose ps clamav
+```
+
+If you don't need antivirus scanning, set `CLAMAV_ENABLED=false` in backend `.env`.
+
+### Redis Connection Issues
+
+```bash
+# Check Redis is running
+docker compose ps redis
+
+# Test Redis connection
+docker exec npd-redis redis-cli ping
+# Should return: PONG
+```
 
 ---
 
