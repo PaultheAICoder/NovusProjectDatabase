@@ -86,7 +86,7 @@ class TestTagCooccurrenceSchema:
         from app.schemas.tag import CooccurrenceTagSuggestion
 
         field_info = CooccurrenceTagSuggestion.model_fields["co_occurrence_count"]
-        assert field_info.annotation == int
+        assert field_info.annotation is int
 
 
 class TestTagCooccurrenceEndpoint:

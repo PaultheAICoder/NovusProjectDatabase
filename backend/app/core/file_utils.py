@@ -98,7 +98,10 @@ async def read_file_with_spooling(
             detail=f"File too large. Maximum size is {max_mb:.0f}MB",
         )
 
-    spooled = tempfile.SpooledTemporaryFile(max_size=spool_threshold, mode="w+b")
+    # Intentionally not using context manager - file is returned to caller
+    spooled = tempfile.SpooledTemporaryFile(  # noqa: SIM115
+        max_size=spool_threshold, mode="w+b"
+    )
     total_size = 0
 
     try:
