@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Ollama
     ollama_base_url: str = "http://localhost:6703"
     ollama_embedding_model: str = "nomic-embed-text"
+    ollama_chat_model: str = "mistral"  # LLM for NL query parsing
 
     # File Storage
     upload_dir: str = "./uploads"

@@ -16,6 +16,7 @@ from .email_parsing import (
 from .embedding_service import EmbeddingService
 from .feedback_service import FeedbackService
 from .graph_email import GraphEmailService
+from .nl_query_parser import NLQueryParser
 from .search_service import SearchService
 from .sync_queue_service import SyncQueueService, process_sync_queue
 from .token_service import TokenService
@@ -28,6 +29,7 @@ __all__ = [
     "EmbeddingService",
     "FeedbackService",
     "GraphEmailService",
+    "NLQueryParser",
     "ParseAction",
     "ParseConfidence",
     "ParseResult",
