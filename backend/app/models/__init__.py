@@ -1,6 +1,7 @@
 """SQLAlchemy models."""
 
 from app.models.api_token import APIToken
+from app.models.audit import AuditAction, AuditLog
 from app.models.contact import Contact
 from app.models.document import Document
 from app.models.document_queue import (
@@ -36,6 +37,8 @@ from app.models.user import User, UserRole
 
 __all__ = [
     "APIToken",
+    "AuditAction",
+    "AuditLog",
     "User",
     "UserRole",
     "Organization",
