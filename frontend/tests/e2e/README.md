@@ -7,14 +7,14 @@ End-to-end tests using Playwright for the Novus Project Database frontend.
 1. Install Playwright browsers:
 
    ```bash
-   # Install chromium only (fastest, matches CI)
-   npx playwright install chromium
-
-   # Or install all browsers (chromium, firefox, webkit)
+   # Install all browsers (recommended - matches CI)
    npx playwright install
+
+   # Or install specific browsers
+   npx playwright install chromium firefox webkit
    ```
 
-   > **Note**: The CI pipeline only runs chromium tests. Firefox and WebKit are optional for local development.
+   > **Note**: The CI pipeline runs Chromium, Firefox, and WebKit tests.
 
 2. Start test environment:
 
