@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     monday_webhook_secret: str = ""  # Signing secret for webhook JWT verification
     monday_webhook_enabled: bool = True  # Enable/disable webhook processing
 
+    # Jira Integration
+    jira_base_url: str = ""  # e.g., "https://company.atlassian.net"
+    jira_user_email: str = ""  # User email for basic auth
+    jira_api_token: str = ""  # API token from Atlassian account
+
     # E2E Testing (only enable in test environment)
     # SECURITY: These settings have defense-in-depth protections:
     # 1. e2e_test_mode is blocked in production environment (validated below)
@@ -268,6 +273,11 @@ class Settings(BaseSettings):
     def is_monday_webhook_configured(self) -> bool:
         """Check if Monday.com webhook is configured."""
         return bool(self.monday_webhook_secret and self.monday_webhook_enabled)
+
+    @property
+    def is_jira_configured(self) -> bool:
+        """Check if Jira integration is configured."""
+        return bool(self.jira_base_url and self.jira_user_email and self.jira_api_token)
 
     @property
     def is_redis_configured(self) -> bool:
