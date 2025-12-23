@@ -37,6 +37,13 @@ from app.schemas.import_ import (
     ImportRowsValidateResponse,
 )
 from app.schemas.job import JobListResponse, JobResponse, JobStatsResponse
+from app.schemas.metrics import (
+    CacheMetrics,
+    DatabaseMetrics,
+    EndpointMetrics,
+    ErrorRateMetrics,
+    SystemMetricsResponse,
+)
 from app.schemas.monday import (
     AutoResolutionRuleCreate,
     AutoResolutionRuleListResponse,
@@ -1732,3 +1739,69 @@ async def cancel_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found or cannot be cancelled (only pending jobs can be cancelled)",
         )
+
+
+# ============== Performance Metrics (Admin Only) ==============
+
+
+@router.get("/metrics", response_model=SystemMetricsResponse)
+@limiter.limit(admin_limit)
+async def get_system_metrics(
+    request: Request,
+    admin_user: AdminUser,
+    top_endpoints: int = Query(
+        20, ge=1, le=100, description="Number of top endpoints to return"
+    ),
+) -> SystemMetricsResponse:
+    """Get comprehensive system performance metrics. Admin only.
+
+    Returns:
+    - Request timing percentiles (P50, P95, P99) by endpoint
+    - Error rates (4xx and 5xx)
+    - Cache statistics
+    - Database pool configuration
+    """
+    from datetime import UTC, datetime
+
+    from app.config import get_settings
+    from app.services.cache_service import (
+        get_dashboard_cache,
+        get_org_cache,
+        get_tag_cache,
+    )
+    from app.services.metrics_service import get_metrics_service
+    from app.services.search_cache import get_search_cache
+
+    settings = get_settings()
+    metrics = get_metrics_service()
+
+    # Get endpoint metrics
+    endpoint_data = metrics.get_endpoint_metrics(top_n=top_endpoints)
+    endpoints = [EndpointMetrics(**ep) for ep in endpoint_data]
+
+    # Get error rates
+    error_rates = metrics.get_error_rates()
+
+    # Get cache stats
+    cache_metrics = CacheMetrics(
+        tag_cache=get_tag_cache().stats,
+        org_cache=get_org_cache().stats,
+        dashboard_cache=get_dashboard_cache().stats,
+        search_cache=get_search_cache().stats,
+    )
+
+    # Database config
+    db_metrics = DatabaseMetrics(
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+    )
+
+    return SystemMetricsResponse(
+        collected_at=datetime.now(UTC),
+        uptime_seconds=metrics.get_uptime_seconds(),
+        request_metrics=ErrorRateMetrics(**error_rates),
+        endpoints=endpoints,
+        cache=cache_metrics,
+        database=db_metrics,
+        slow_request_threshold_ms=500.0,
+    )

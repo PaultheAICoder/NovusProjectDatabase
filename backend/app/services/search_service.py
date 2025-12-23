@@ -339,6 +339,17 @@ class SearchService:
 
         # Log performance metrics
         elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+        # Log slow search warning
+        if elapsed_ms > 500:
+            logger.warning(
+                "slow_search_query",
+                query_length=len(query),
+                total_results=total,
+                elapsed_ms=round(elapsed_ms, 2),
+                include_documents=include_documents,
+            )
+
         logger.info(
             "hybrid_search_complete",
             query_length=len(query),

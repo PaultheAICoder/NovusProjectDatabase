@@ -33,6 +33,7 @@ from app.core.logging import (
     request_id_ctx,
 )
 from app.core.rate_limit import limiter
+from app.middleware.timing import TimingMiddleware
 from app.services.antivirus import close_clamav_pool, init_clamav_pool
 
 settings = get_settings()
@@ -119,6 +120,9 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Performance timing middleware
+app.add_middleware(TimingMiddleware)
+
 
 # Request correlation ID middleware
 @app.middleware("http")
@@ -150,9 +154,36 @@ app.include_router(jobs.router, prefix="/api/v1")
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy"}
+async def health_check() -> dict:
+    """Enhanced health check endpoint with system metrics."""
+    from app.services.cache_service import get_tag_cache
+    from app.services.metrics_service import get_metrics_service
+
+    metrics = get_metrics_service()
+    error_rates = metrics.get_error_rates()
+    avg_response = metrics.get_average_response_time()
+    uptime = metrics.get_uptime_seconds()
+
+    # Determine status
+    status = "healthy"
+    if error_rates["error_rate_percent"] > 5.0 or avg_response > 1000:
+        status = "degraded"
+
+    # Check cache type
+    cache_stats = get_tag_cache().stats
+    cache_type = cache_stats.get("type", "unknown")
+    if cache_stats.get("fallback_active", False):
+        cache_type = "in_memory (fallback)"
+
+    return {
+        "status": status,
+        "version": "1.0.0",
+        "uptime_seconds": uptime,
+        "database": "connected",  # Will add actual check in future
+        "cache": cache_type,
+        "error_rate_percent": error_rates["error_rate_percent"],
+        "avg_response_time_ms": avg_response,
+    }
 
 
 @app.get("/")
