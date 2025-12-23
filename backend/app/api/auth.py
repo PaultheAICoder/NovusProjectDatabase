@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from secrets import token_urlsafe
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -337,6 +337,7 @@ async def get_current_user_info(
 @limiter.limit(auth_limit)
 async def create_test_token(
     request: Request,
+    admin: bool = Query(False, description="Create admin user instead of regular user"),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Create a test session token for E2E testing.
@@ -346,6 +347,9 @@ async def create_test_token(
     - Valid E2E_TEST_SECRET header is provided (except in development)
 
     This endpoint is for Playwright E2E tests only.
+
+    Args:
+        admin: If True, creates a user with admin role. Default is regular user.
     """
     # Layer 1: Hard block in production - defense in depth
     # This blocks even if e2e_test_mode is accidentally enabled
@@ -388,22 +392,31 @@ async def create_test_token(
                 detail="Invalid test secret",
             )
 
+    # Create or get test user based on admin parameter
+    if admin:
+        test_azure_id = "e2e-test-admin-00000000-0000-0000-0000-000000000001"
+        test_email = "e2e-admin@example.com"
+        test_display_name = "E2E Admin User"
+        roles = ["admin"]
+    else:
+        test_azure_id = "e2e-test-user-00000000-0000-0000-0000-000000000000"
+        test_email = "e2e-test@example.com"
+        test_display_name = "E2E Test User"
+        roles = ["user"]
+
     logger.info(
         "e2e_test_token_created",
         environment=settings.environment,
+        is_admin=admin,
+        user_email=test_email,
     )
-
-    # Create or get test user
-    test_azure_id = "e2e-test-user-00000000-0000-0000-0000-000000000000"
-    test_email = "e2e-test@example.com"
-    test_display_name = "E2E Test User"
 
     user = await get_or_create_user(
         db=db,
         azure_id=test_azure_id,
         email=test_email,
         display_name=test_display_name,
-        roles=["user"],
+        roles=roles,
     )
     await db.commit()
 
@@ -426,6 +439,7 @@ async def create_test_token(
                 "id": str(user.id),
                 "email": user.email,
                 "display_name": user.display_name,
+                "role": user.role.value,
             },
         }
     )

@@ -129,6 +129,27 @@ test('my authenticated test', async ({ authenticatedPage }) => {
 - **Email**: e2e-test@example.com
 - **Role**: user (not admin)
 
+### Admin Authentication
+
+For tests requiring admin privileges (e.g., admin page features), use the admin auth fixture:
+
+```typescript
+import { adminTest, expect } from './fixtures/admin-auth';
+
+adminTest('admin can access admin page', async ({ authenticatedAdminPage }) => {
+  await authenticatedAdminPage.goto('/admin');
+  await expect(authenticatedAdminPage.getByRole('heading', { name: 'Admin' })).toBeVisible();
+});
+```
+
+The admin fixture creates a test user with admin role via `POST /api/v1/auth/test-token?admin=true`.
+
+### Admin Test User Details
+
+- **Display Name**: E2E Admin User
+- **Email**: e2e-admin@example.com
+- **Role**: admin
+
 ### Mixing Auth and Unauth Tests
 
 For tests that don't need authentication, import from Playwright directly:
@@ -164,11 +185,14 @@ E2E_TEST_MODE=true
 ```
 tests/e2e/
   fixtures/
-    auth.ts        # Authentication fixtures (test-token endpoint)
-  smoke.spec.ts    # Basic app loading and rendering tests
-  auth.spec.ts     # Authentication flow tests
-  navigation.spec.ts # Page navigation tests (uses auth fixture)
-  README.md        # This file
+    auth.ts           # User authentication fixtures (test-token endpoint)
+    admin-auth.ts     # Admin authentication fixtures (test-token?admin=true)
+  smoke.spec.ts       # Basic app loading and rendering tests
+  auth.spec.ts        # Authentication flow tests
+  navigation.spec.ts  # Page navigation tests (uses auth fixture)
+  admin-tokens.spec.ts      # Admin token management tests (uses admin-auth fixture)
+  admin-document-queue.spec.ts  # Admin document queue tests (uses admin-auth fixture)
+  README.md           # This file
 ```
 
 ## Adding New Tests
