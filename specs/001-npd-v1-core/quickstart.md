@@ -47,6 +47,7 @@ docker compose up -d
 
 # Wait for services to be healthy, then seed initial data
 docker exec npd-backend python -m app.scripts.seed_tags
+docker exec npd-backend python -m app.scripts.seed_synonyms
 
 # Pull the embedding model for RAG features
 docker exec npd-ollama ollama pull nomic-embed-text
@@ -124,8 +125,9 @@ cp .env.example .env
 # Run database migrations
 alembic upgrade head
 
-# Seed initial data (structured tags)
+# Seed initial data (structured tags and synonyms)
 python -m app.scripts.seed_tags
+python -m app.scripts.seed_synonyms
 
 # Start development server
 uvicorn app.main:app --reload --port 6701
@@ -403,6 +405,7 @@ docker compose down -v
 docker compose up -d db
 cd backend && alembic upgrade head
 python -m app.scripts.seed_tags
+python -m app.scripts.seed_synonyms
 ```
 
 ### View API Documentation
