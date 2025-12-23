@@ -74,6 +74,7 @@ from app.schemas.tag import (
     TagUpdate,
     TagWithSynonyms,
 )
+from app.services.audit_service import AuditService
 from app.services.auto_resolution_service import AutoResolutionService
 from app.services.conflict_service import ConflictService
 from app.services.document_queue_service import DocumentQueueService
@@ -135,6 +136,15 @@ async def create_structured_tag(
             detail=f"Tag '{data.name}' already exists",
         )
 
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_create(
+        entity_type="tag",
+        entity_id=tag.id,
+        entity_data=AuditService.serialize_entity(tag),
+        user_id=admin_user.id,
+    )
+
     return TagResponse.model_validate(tag)
 
 
@@ -157,6 +167,9 @@ async def update_tag(
             detail="Tag not found",
         )
 
+    # Capture old state for audit
+    old_tag_data = AuditService.serialize_entity(tag)
+
     if data.name is not None:
         # Check for duplicate name
         suggester = TagSuggester(db)
@@ -173,6 +186,18 @@ async def update_tag(
         tag.type = data.type
 
     await db.flush()
+
+    # Audit logging
+    audit_service = AuditService(db)
+    new_tag_data = AuditService.serialize_entity(tag)
+    await audit_service.log_update(
+        entity_type="tag",
+        entity_id=tag.id,
+        old_data=old_tag_data,
+        new_data=new_tag_data,
+        user_id=admin_user.id,
+    )
+
     return TagResponse.model_validate(tag)
 
 
@@ -194,7 +219,19 @@ async def delete_tag(
             detail="Tag not found",
         )
 
+    # Capture data for audit before deletion
+    tag_data = AuditService.serialize_entity(tag)
+
     await db.execute(delete(Tag).where(Tag.id == tag_id))
+
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_delete(
+        entity_type="tag",
+        entity_id=tag_id,
+        entity_data=tag_data,
+        user_id=admin_user.id,
+    )
 
 
 @router.get("/tags/{tag_id}/usage")
@@ -265,10 +302,27 @@ async def merge_tags(
             detail="Source and target tags must be different",
         )
 
+    # Capture source tag data for audit
+    source_tag_data = AuditService.serialize_entity(source_tag)
+
     suggester = TagSuggester(db)
     merged_count = await suggester.merge_tags(
         source_tag_id=data.source_tag_id,
         target_tag_id=data.target_tag_id,
+    )
+
+    # Audit logging - record the merge as a special action
+    audit_service = AuditService(db)
+    await audit_service.log_delete(
+        entity_type="tag",
+        entity_id=data.source_tag_id,
+        entity_data=source_tag_data,
+        user_id=admin_user.id,
+        metadata={
+            "action": "merge",
+            "merged_into": str(data.target_tag_id),
+            "projects_updated": merged_count,
+        },
     )
 
     return TagMergeResponse(

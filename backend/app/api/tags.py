@@ -20,6 +20,7 @@ from app.schemas.tag import (
     TagSuggestion,
     TagSuggestionsResponse,
 )
+from app.services.audit_service import AuditService
 from app.services.tag_suggester import TagSuggester
 
 router = APIRouter(prefix="/tags", tags=["tags"])
@@ -137,6 +138,15 @@ async def create_freeform_tag(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Tag '{data.name}' already exists as a freeform tag",
         )
+
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_create(
+        entity_type="tag",
+        entity_id=tag.id,
+        entity_data=AuditService.serialize_entity(tag),
+        user_id=current_user.id,
+    )
 
     return TagResponse.model_validate(tag)
 

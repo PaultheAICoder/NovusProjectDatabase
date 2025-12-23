@@ -20,6 +20,7 @@ from app.schemas.organization import (
     OrganizationUpdate,
     ProjectSummaryForOrg,
 )
+from app.services.audit_service import AuditService
 from app.services.sync_service import sync_organization_to_monday
 
 settings = get_settings()
@@ -100,6 +101,18 @@ async def create_organization(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Organization '{data.name}' already exists",
         )
+
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_create(
+        entity_type="organization",
+        entity_id=org.id,
+        entity_data=AuditService.serialize_entity(
+            org,
+            exclude_fields=["projects", "contacts", "billing_contact"],
+        ),
+        user_id=current_user.id,
+    )
 
     # Queue sync to Monday.com if configured
     if settings.is_monday_configured and settings.monday_organizations_board_id:
@@ -217,6 +230,12 @@ async def update_organization(
             detail="Organization not found",
         )
 
+    # Capture old state for audit
+    old_org_data = AuditService.serialize_entity(
+        org,
+        exclude_fields=["projects", "contacts", "billing_contact"],
+    )
+
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(org, field, value)
@@ -228,6 +247,20 @@ async def update_organization(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Organization name already exists",
         )
+
+    # Audit logging
+    audit_service = AuditService(db)
+    new_org_data = AuditService.serialize_entity(
+        org,
+        exclude_fields=["projects", "contacts", "billing_contact"],
+    )
+    await audit_service.log_update(
+        entity_type="organization",
+        entity_id=org.id,
+        old_data=old_org_data,
+        new_data=new_org_data,
+        user_id=current_user.id,
+    )
 
     # Queue sync to Monday.com if configured
     if settings.is_monday_configured and settings.monday_organizations_board_id:

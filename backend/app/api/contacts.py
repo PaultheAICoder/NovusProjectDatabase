@@ -21,6 +21,7 @@ from app.schemas.contact import (
     ContactWithOrganization,
     ProjectSummaryForContact,
 )
+from app.services.audit_service import AuditService
 from app.services.sync_service import sync_contact_to_monday
 
 settings = get_settings()
@@ -109,6 +110,18 @@ async def create_contact(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contact with this email already exists in this organization",
         )
+
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_create(
+        entity_type="contact",
+        entity_id=contact.id,
+        entity_data=AuditService.serialize_entity(
+            contact,
+            exclude_fields=["organization", "project_contacts"],
+        ),
+        user_id=current_user.id,
+    )
 
     # Queue sync to Monday.com if configured
     if settings.is_monday_configured and settings.monday_contacts_board_id:
@@ -205,6 +218,12 @@ async def update_contact(
             detail="Contact not found",
         )
 
+    # Capture old state for audit
+    old_contact_data = AuditService.serialize_entity(
+        contact,
+        exclude_fields=["organization", "project_contacts"],
+    )
+
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(contact, field, value)
@@ -216,6 +235,20 @@ async def update_contact(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contact with this email already exists in this organization",
         )
+
+    # Audit logging
+    audit_service = AuditService(db)
+    new_contact_data = AuditService.serialize_entity(
+        contact,
+        exclude_fields=["organization", "project_contacts"],
+    )
+    await audit_service.log_update(
+        entity_type="contact",
+        entity_id=contact.id,
+        old_data=old_contact_data,
+        new_data=new_contact_data,
+        user_id=current_user.id,
+    )
 
     # Queue sync to Monday.com if configured
     if settings.is_monday_configured and settings.monday_contacts_board_id:

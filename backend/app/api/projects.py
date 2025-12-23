@@ -41,6 +41,7 @@ from app.schemas.project import (
     ProjectUpdate,
 )
 from app.schemas.tag import TagResponse
+from app.services.audit_service import AuditService
 from app.services.import_service import ImportService
 from app.services.jira_service import JiraService
 from app.services.monday_service import MondayService
@@ -267,6 +268,25 @@ async def create_project(
     result = await db.execute(_build_project_query().where(Project.id == project.id))
     project = result.scalar_one()
 
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_create(
+        entity_type="project",
+        entity_id=project.id,
+        entity_data=AuditService.serialize_entity(
+            project,
+            exclude_fields=[
+                "project_tags",
+                "project_contacts",
+                "organization",
+                "owner",
+                "creator",
+                "updater",
+            ],
+        ),
+        user_id=current_user.id,
+    )
+
     # Invalidate search cache
     await invalidate_search_cache()
 
@@ -372,6 +392,21 @@ async def update_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
+
+    # Capture old state for audit
+    old_project_data = AuditService.serialize_entity(
+        project,
+        exclude_fields=[
+            "project_tags",
+            "project_contacts",
+            "organization",
+            "owner",
+            "creator",
+            "updater",
+            "search_vector",
+        ],
+    )
+    old_tag_ids = [str(pt.tag_id) for pt in project.project_tags]
 
     # Validate status transition if status is being changed
     if (
@@ -507,6 +542,40 @@ async def update_project(
     result = await db.execute(_build_project_query().where(Project.id == project.id))
     project = result.scalar_one()
 
+    # Audit logging
+    audit_service = AuditService(db)
+    new_project_data = AuditService.serialize_entity(
+        project,
+        exclude_fields=[
+            "project_tags",
+            "project_contacts",
+            "organization",
+            "owner",
+            "creator",
+            "updater",
+            "search_vector",
+        ],
+    )
+    await audit_service.log_update(
+        entity_type="project",
+        entity_id=project.id,
+        old_data=old_project_data,
+        new_data=new_project_data,
+        user_id=current_user.id,
+    )
+
+    # Log tag changes separately if tags were modified
+    if data.tag_ids is not None:
+        new_tag_ids = [str(pt.tag_id) for pt in project.project_tags]
+        if set(old_tag_ids) != set(new_tag_ids):
+            await audit_service.log_update(
+                entity_type="project_tags",
+                entity_id=project.id,
+                old_data={"tag_ids": old_tag_ids},
+                new_data={"tag_ids": new_tag_ids},
+                user_id=current_user.id,
+            )
+
     # Invalidate search cache
     await invalidate_search_cache()
 
@@ -550,10 +619,24 @@ async def delete_project(
             detail="Project not found",
         )
 
+    # Capture state for audit (this is a soft delete via status change)
+    old_status = project.status.value
+
     # Soft delete - set status to cancelled
     project.status = ProjectStatus.CANCELLED
     project.updated_by = current_user.id
     await db.flush()
+
+    # Audit logging - log as status update (soft delete)
+    audit_service = AuditService(db)
+    await audit_service.log_update(
+        entity_type="project",
+        entity_id=project.id,
+        old_data={"status": old_status},
+        new_data={"status": ProjectStatus.CANCELLED.value},
+        user_id=current_user.id,
+        metadata={"action": "soft_delete"},
+    )
 
     # Invalidate search cache
     await invalidate_search_cache()

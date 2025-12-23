@@ -38,6 +38,7 @@ from app.schemas.document import (
 )
 from app.schemas.tag import TagResponse
 from app.services.antivirus import AntivirusService, ScanResult
+from app.services.audit_service import AuditService
 from app.services.document_processor import DocumentProcessor
 from app.services.document_queue_service import DocumentQueueService
 from app.services.file_validation import FileValidationService
@@ -209,6 +210,21 @@ async def upload_document(
     db.add(document)
     await db.commit()
     await db.refresh(document)
+
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_create(
+        entity_type="document",
+        entity_id=document.id,
+        entity_data={
+            "id": str(document.id),
+            "project_id": str(document.project_id),
+            "display_name": document.display_name,
+            "mime_type": document.mime_type,
+            "file_size": document.file_size,
+        },
+        user_id=current_user.id,
+    )
 
     # Queue document for processing (durable queue survives restarts)
     processor = DocumentProcessor()
@@ -453,6 +469,15 @@ async def delete_document(
             detail="Document not found",
         )
 
+    # Capture data for audit before deletion
+    document_data = {
+        "id": str(document.id),
+        "project_id": str(document.project_id),
+        "display_name": document.display_name,
+        "mime_type": document.mime_type,
+        "file_size": document.file_size,
+    }
+
     # Delete file from storage
     storage = StorageService()
     try:
@@ -469,6 +494,15 @@ async def delete_document(
     # Delete from database (cascade will delete chunks)
     await db.delete(document)
     await db.commit()
+
+    # Audit logging
+    audit_service = AuditService(db)
+    await audit_service.log_delete(
+        entity_type="document",
+        entity_id=document_id,
+        entity_data=document_data,
+        user_id=current_user.id,
+    )
 
     # Invalidate search cache
     await invalidate_search_cache()
