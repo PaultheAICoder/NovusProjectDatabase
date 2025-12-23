@@ -11,11 +11,28 @@ import type {
 } from "@/types/document";
 import type { Tag } from "@/types/tag";
 
-export function useDocuments(projectId: string | undefined) {
+interface UseDocumentsParams {
+  projectId: string | undefined;
+  page?: number;
+  pageSize?: number;
+}
+
+export function useDocuments({
+  projectId,
+  page = 1,
+  pageSize = 20,
+}: UseDocumentsParams) {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+
   return useQuery({
-    queryKey: ["documents", projectId],
+    queryKey: ["documents", projectId, { page, pageSize }],
     queryFn: () =>
-      api.get<DocumentListResponse>(`/projects/${projectId}/documents`),
+      api.get<DocumentListResponse>(
+        `/projects/${projectId}/documents?${params.toString()}`
+      ),
     enabled: !!projectId,
     // Poll every 3 seconds if any document is pending (processing in progress)
     refetchInterval: (query) => {

@@ -2,6 +2,7 @@
  * Project detail page.
  */
 
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { format } from "date-fns";
 import {
@@ -86,6 +87,8 @@ export function ProjectDetailPage() {
   const { data: project, isLoading, isError } = useProject(id);
   const deleteProject = useDeleteProject();
   const { data: mondayBoard } = useProjectMondayBoard(id);
+  const [docPage, setDocPage] = useState(1);
+  const [docPageSize, setDocPageSize] = useState(20);
 
   const handleDelete = async () => {
     if (!id) return;
@@ -304,7 +307,13 @@ export function ProjectDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <DocumentUpload projectId={id!} />
-              <DocumentList projectId={id!} />
+              <DocumentList
+                projectId={id!}
+                page={docPage}
+                pageSize={docPageSize}
+                onPageChange={setDocPage}
+                onPageSizeChange={setDocPageSize}
+              />
             </CardContent>
           </Card>
         </div>

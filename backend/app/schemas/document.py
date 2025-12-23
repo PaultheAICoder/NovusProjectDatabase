@@ -44,10 +44,13 @@ class DocumentDetail(DocumentResponse):
 
 
 class DocumentListResponse(BaseModel):
-    """Response for document list."""
+    """Response for document list with pagination."""
 
     items: list[DocumentResponse]
     total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 class DocumentStatusResponse(BaseModel):

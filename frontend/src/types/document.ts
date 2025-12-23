@@ -31,6 +31,9 @@ export interface DocumentDetail extends Document {
 export interface DocumentListResponse {
   items: Document[];
   total: number;
+  page: number;
+  page_size: number;
+  pages: number;
 }
 
 export interface DocumentTagSuggestionsResponse {

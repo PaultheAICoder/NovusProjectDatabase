@@ -8,6 +8,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -264,31 +265,34 @@ async def upload_document(
 async def list_documents(
     request: Request,
     project_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DocumentListResponse:
-    """List all documents for a project."""
+    """List documents for a project with pagination."""
     await get_project(project_id, db)
 
-    # Get documents
-    result = await db.execute(
-        select(Document)
-        .where(Document.project_id == project_id)
-        .order_by(Document.uploaded_at.desc())
-    )
-    documents = result.scalars().all()
+    # Build base query
+    query = select(Document).where(Document.project_id == project_id)
 
-    # Get count
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(Document)
-        .where(Document.project_id == project_id)
-    )
-    total = count_result.scalar() or 0
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Apply pagination
+    query = query.order_by(Document.uploaded_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    result = await db.execute(query)
+    documents = result.scalars().all()
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in documents],
         total=total,
+        page=page,
+        page_size=page_size,
+        pages=(total + page_size - 1) // page_size if total > 0 else 0,
     )
 
 

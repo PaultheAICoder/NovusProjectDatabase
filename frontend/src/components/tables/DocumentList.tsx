@@ -3,9 +3,25 @@
  */
 
 import { format } from "date-fns";
-import { Download, FileText, Trash2, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileText,
+  Trash2,
+  AlertCircle,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -58,10 +74,20 @@ const statusConfig: Record<
 
 interface DocumentListProps {
   projectId: string;
+  page?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
-export function DocumentList({ projectId }: DocumentListProps) {
-  const { data, isLoading, isError } = useDocuments(projectId);
+export function DocumentList({
+  projectId,
+  page = 1,
+  pageSize = 20,
+  onPageChange,
+  onPageSizeChange,
+}: DocumentListProps) {
+  const { data, isLoading, isError } = useDocuments({ projectId, page, pageSize });
   const deleteDocument = useDeleteDocument(projectId);
   const reprocessDocument = useReprocessDocument(projectId);
 
@@ -94,6 +120,7 @@ export function DocumentList({ projectId }: DocumentListProps) {
   }
 
   return (
+    <>
     <Table>
       <TableHeader>
         <TableRow>
@@ -200,5 +227,67 @@ export function DocumentList({ projectId }: DocumentListProps) {
         })}
       </TableBody>
     </Table>
+
+    {/* Pagination Controls */}
+    {data && data.total > 0 && (
+      <div className="flex items-center justify-between pt-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">
+            Showing {(page - 1) * pageSize + 1}-
+            {Math.min(page * pageSize, data.total)} of {data.total} documents
+          </span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {onPageSizeChange && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Per page</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  onPageSizeChange(Number(value));
+                  onPageChange?.(1);
+                }}
+              >
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {data.pages > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                Page {page} of {data.pages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => onPageChange?.(page - 1)}
+                disabled={page === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => onPageChange?.(page + 1)}
+                disabled={page >= data.pages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+  </>
   );
 }
