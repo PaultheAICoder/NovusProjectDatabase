@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { Settings, Tag as TagIcon, Trash2, Edit, Loader2, Merge } from "lucide-react";
+import { AuditLogCard } from "@/components/admin/AuditLogCard";
 import { AutoResolutionCard } from "@/components/admin/AutoResolutionCard";
 import { ConflictCard } from "@/components/admin/ConflictCard";
 import { DocumentQueueCard } from "@/components/admin/DocumentQueueCard";
@@ -318,6 +319,9 @@ export function AdminPage() {
 
       {/* API Token Management Section */}
       <TokenManagementCard isAdminView />
+
+      {/* Audit Log Section */}
+      <AuditLogCard />
 
       {/* Monday.com Integration Section */}
       <MondayConfigCard />

@@ -12,6 +12,7 @@ import {
   Calendar,
   User,
   FileText,
+  History,
 } from "lucide-react";
 import { useProject, useDeleteProject } from "@/hooks/useProjects";
 import { useProjectMondayBoard } from "@/hooks/useMondaySync";
@@ -38,6 +39,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import type { ProjectLocation, ProjectStatus } from "@/types/project";
 
 const statusVariants: Record<
@@ -169,11 +172,21 @@ export function ProjectDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Description</CardTitle>
+      <Tabs defaultValue="details" className="w-full">
+        <TabsList>
+          <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="history">
+            <History className="mr-2 h-4 w-4" />
+            History
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="details">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Description</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="whitespace-pre-wrap">{project.description}</p>
@@ -435,8 +448,18 @@ export function ProjectDetailPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
-      </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history">
+          <Card>
+            <CardContent className="pt-6">
+              <AuditTimeline entityType="project" entityId={id!} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
