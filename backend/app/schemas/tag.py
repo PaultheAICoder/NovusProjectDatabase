@@ -162,3 +162,30 @@ class TagWithSynonyms(TagResponse):
     synonyms: list[TagResponse] = Field(
         default_factory=list, description="All synonymous tags"
     )
+
+
+# Tag Synonym Admin Schemas
+
+
+class TagSynonymListResponse(BaseModel):
+    """Paginated list of synonym relationships."""
+
+    items: list[TagSynonymDetail]
+    total: int
+    page: int
+    page_size: int
+    has_more: bool
+
+
+class TagSynonymImportRequest(BaseModel):
+    """Request for importing synonyms."""
+
+    synonyms: list[TagSynonymCreate]
+
+
+class TagSynonymImportResponse(BaseModel):
+    """Response for synonym import operation."""
+
+    total_requested: int
+    created: int
+    skipped: int

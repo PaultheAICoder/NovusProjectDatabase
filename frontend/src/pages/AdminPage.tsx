@@ -9,6 +9,7 @@ import { ConflictCard } from "@/components/admin/ConflictCard";
 import { DocumentQueueCard } from "@/components/admin/DocumentQueueCard";
 import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
 import { SyncQueueCard } from "@/components/admin/SyncQueueCard";
+import { SynonymManagementCard } from "@/components/admin/SynonymManagementCard";
 import { TokenManagementCard } from "@/components/admin/TokenManagementCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -299,6 +300,9 @@ export function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Tag Synonyms Section */}
+      <SynonymManagementCard />
 
       {/* Sync Conflicts Section */}
       <ConflictCard />

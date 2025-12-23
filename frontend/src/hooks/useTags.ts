@@ -15,8 +15,14 @@ import type {
   TagMergeRequest,
   TagMergeResponse,
   TagSuggestionsResponse,
+  TagSynonymCreate,
+  TagSynonymDetail,
+  TagSynonymImportRequest,
+  TagSynonymImportResponse,
+  TagSynonymListResponse,
   TagType,
   TagUpdate,
+  TagWithSynonyms,
 } from "@/types/tag";
 
 interface UseTagsParams {
@@ -206,5 +212,69 @@ export function useTagSearch({
       api.get<PaginatedResponse<Tag>>(`/tags/list?${params.toString()}`),
     enabled: search.length >= 1,
     staleTime: 1000 * 60, // 1 minute cache
+  });
+}
+
+// ============== Tag Synonym Hooks (Admin) ==============
+
+interface UseSynonymsParams {
+  page?: number;
+  pageSize?: number;
+}
+
+export function useSynonyms({ page = 1, pageSize = 20 }: UseSynonymsParams = {}) {
+  return useQuery({
+    queryKey: ["synonyms", { page, pageSize }],
+    queryFn: () =>
+      api.get<TagSynonymListResponse>(
+        `/admin/synonyms?page=${page}&page_size=${pageSize}`
+      ),
+  });
+}
+
+export function useTagWithSynonyms(tagId: string | null) {
+  return useQuery({
+    queryKey: ["tags", "synonyms", tagId],
+    queryFn: () => api.get<TagWithSynonyms>(`/admin/synonyms/${tagId}`),
+    enabled: !!tagId,
+  });
+}
+
+export function useCreateSynonym() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: TagSynonymCreate) =>
+      api.post<TagSynonymDetail>("/admin/synonyms", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["synonyms"] });
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+    },
+  });
+}
+
+export function useDeleteSynonym() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ tagId, synonymTagId }: { tagId: string; synonymTagId: string }) =>
+      api.delete(`/admin/synonyms/${tagId}/${synonymTagId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["synonyms"] });
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+    },
+  });
+}
+
+export function useImportSynonyms() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: TagSynonymImportRequest) =>
+      api.post<TagSynonymImportResponse>("/admin/synonyms/import", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["synonyms"] });
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+    },
   });
 }

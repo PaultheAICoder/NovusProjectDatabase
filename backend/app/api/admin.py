@@ -5,11 +5,12 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import AdminUser, DbSession
 from app.core.file_utils import read_file_with_size_limit
 from app.core.rate_limit import admin_limit, limiter
-from app.models import Tag, TagType
+from app.models import Tag, TagSynonym, TagType
 from app.models.document import Document
 from app.models.document_queue import DocumentQueueStatus
 from app.models.monday_sync import (
@@ -63,7 +64,13 @@ from app.schemas.tag import (
     TagMergeRequest,
     TagMergeResponse,
     TagResponse,
+    TagSynonymCreate,
+    TagSynonymDetail,
+    TagSynonymImportRequest,
+    TagSynonymImportResponse,
+    TagSynonymListResponse,
     TagUpdate,
+    TagWithSynonyms,
 )
 from app.services.auto_resolution_service import AutoResolutionService
 from app.services.conflict_service import ConflictService
@@ -76,6 +83,7 @@ from app.services.monday_service import (
 )
 from app.services.sync_queue_service import SyncQueueService
 from app.services.tag_suggester import TagSuggester
+from app.services.tag_synonym_service import TagSynonymService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -1256,4 +1264,126 @@ async def reorder_auto_resolution_rules(
     return AutoResolutionRuleListResponse(
         rules=[AutoResolutionRuleResponse.model_validate(r) for r in rules],
         total=len(rules),
+    )
+
+
+# ============== Tag Synonym Management (Admin Only) ==============
+
+
+@router.get("/synonyms", response_model=TagSynonymListResponse)
+@limiter.limit(admin_limit)
+async def list_tag_synonyms(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> TagSynonymListResponse:
+    """List all tag synonym relationships with pagination. Admin only."""
+    # Count total
+    count_query = select(func.count()).select_from(TagSynonym)
+    total = await db.scalar(count_query) or 0
+
+    # Fetch with pagination, include related tags
+    query = (
+        select(TagSynonym)
+        .options(selectinload(TagSynonym.tag), selectinload(TagSynonym.synonym_tag))
+        .order_by(TagSynonym.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    return TagSynonymListResponse(
+        items=[TagSynonymDetail.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < total,
+    )
+
+
+@router.get("/synonyms/{tag_id}", response_model=TagWithSynonyms)
+@limiter.limit(admin_limit)
+async def get_tag_synonyms(
+    request: Request,
+    tag_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> TagWithSynonyms:
+    """Get a tag with all its synonyms. Admin only."""
+    service = TagSynonymService(db)
+    result = await service.get_tag_with_synonyms(tag_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    return result
+
+
+@router.post("/synonyms", response_model=TagSynonymDetail, status_code=201)
+@limiter.limit(admin_limit)
+async def create_tag_synonym(
+    request: Request,
+    data: TagSynonymCreate,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> TagSynonymDetail:
+    """Create a synonym relationship between two tags. Admin only."""
+    service = TagSynonymService(db)
+    synonym = await service.add_synonym(
+        tag_id=data.tag_id,
+        synonym_tag_id=data.synonym_tag_id,
+        confidence=data.confidence,
+        created_by=admin_user.id,
+    )
+    if not synonym:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create synonym (tags not found, same tag, or already exists)",
+        )
+
+    # Re-fetch with full tag details for response
+    result = await db.execute(
+        select(TagSynonym)
+        .where(TagSynonym.id == synonym.id)
+        .options(selectinload(TagSynonym.tag), selectinload(TagSynonym.synonym_tag))
+    )
+    synonym_with_tags = result.scalar_one()
+    return TagSynonymDetail.model_validate(synonym_with_tags)
+
+
+@router.delete("/synonyms/{tag_id}/{synonym_tag_id}", status_code=204)
+@limiter.limit(admin_limit)
+async def delete_tag_synonym(
+    request: Request,
+    tag_id: UUID,
+    synonym_tag_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> None:
+    """Delete a synonym relationship. Admin only."""
+    service = TagSynonymService(db)
+    deleted = await service.remove_synonym(tag_id, synonym_tag_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Synonym relationship not found")
+
+
+@router.post("/synonyms/import", response_model=TagSynonymImportResponse)
+@limiter.limit(admin_limit)
+async def import_tag_synonyms(
+    request: Request,
+    data: TagSynonymImportRequest,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> TagSynonymImportResponse:
+    """Bulk import synonym relationships. Admin only."""
+    service = TagSynonymService(db)
+    created = await service.bulk_import_synonyms(
+        synonyms=data.synonyms,
+        created_by=admin_user.id,
+    )
+    return TagSynonymImportResponse(
+        total_requested=len(data.synonyms),
+        created=created,
+        skipped=len(data.synonyms) - created,
     )

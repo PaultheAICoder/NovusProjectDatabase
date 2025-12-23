@@ -69,3 +69,47 @@ export interface TagMergeResponse {
   merged_count: number;
   target_tag: Tag;
 }
+
+// Tag Synonym Types
+
+export interface TagSynonymCreate {
+  tag_id: string;
+  synonym_tag_id: string;
+  confidence?: number;
+}
+
+export interface TagSynonymResponse {
+  id: string;
+  tag_id: string;
+  synonym_tag_id: string;
+  confidence: number;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface TagSynonymDetail extends TagSynonymResponse {
+  tag: Tag;
+  synonym_tag: Tag;
+}
+
+export interface TagSynonymListResponse {
+  items: TagSynonymDetail[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+export interface TagWithSynonyms extends Tag {
+  synonyms: Tag[];
+}
+
+export interface TagSynonymImportRequest {
+  synonyms: TagSynonymCreate[];
+}
+
+export interface TagSynonymImportResponse {
+  total_requested: number;
+  created: number;
+  skipped: number;
+}
