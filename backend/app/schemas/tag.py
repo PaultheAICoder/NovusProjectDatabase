@@ -111,3 +111,54 @@ class CooccurrenceTagsResponse(BaseModel):
     selected_tag_ids: list[UUID] = Field(
         ..., description="The tag IDs used as input for suggestions"
     )
+
+
+# Tag Synonym Schemas
+
+
+class TagSynonymBase(BaseModel):
+    """Base schema for tag synonym."""
+
+    confidence: float = Field(
+        default=1.0, ge=0.0, le=1.0, description="1.0 = manual, <1.0 = AI-suggested"
+    )
+
+
+class TagSynonymCreate(TagSynonymBase):
+    """Schema for creating a tag synonym relationship."""
+
+    tag_id: UUID = Field(..., description="First tag in the synonym pair")
+    synonym_tag_id: UUID = Field(..., description="Second tag in the synonym pair")
+
+
+class TagSynonymResponse(TagSynonymBase):
+    """Tag synonym response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tag_id: UUID
+    synonym_tag_id: UUID
+    created_at: datetime
+    created_by: UUID | None = None
+
+
+class TagSynonymDetail(TagSynonymResponse):
+    """Detailed synonym response with full tag information."""
+
+    tag: TagResponse
+    synonym_tag: TagResponse
+
+
+class TagSynonymBulkCreate(BaseModel):
+    """Schema for creating multiple synonym relationships at once."""
+
+    synonyms: list[TagSynonymCreate] = Field(..., min_length=1, max_length=100)
+
+
+class TagWithSynonyms(TagResponse):
+    """Tag response with its synonyms included."""
+
+    synonyms: list[TagResponse] = Field(
+        default_factory=list, description="All synonymous tags"
+    )

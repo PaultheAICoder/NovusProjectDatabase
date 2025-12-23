@@ -30,7 +30,7 @@ from app.models.project import (
     ProjectStatus,
     ProjectTag,
 )
-from app.models.tag import Tag, TagType
+from app.models.tag import Tag, TagSynonym, TagType
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -40,6 +40,7 @@ __all__ = [
     "Organization",
     "Contact",
     "Tag",
+    "TagSynonym",
     "TagType",
     "Project",
     "ProjectContact",
