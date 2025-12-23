@@ -11,6 +11,7 @@ from app.models.document_queue import (
 )
 from app.models.feedback import EmailMonitorState, Feedback, FeedbackStatus
 from app.models.jira_link import ProjectJiraLink
+from app.models.job import Job, JobStatus, JobType
 from app.models.monday_sync import (
     MondaySyncLog,
     MondaySyncStatus,
@@ -70,4 +71,7 @@ __all__ = [
     "DocumentProcessingQueue",
     "DocumentQueueOperation",
     "DocumentQueueStatus",
+    "Job",
+    "JobStatus",
+    "JobType",
 ]

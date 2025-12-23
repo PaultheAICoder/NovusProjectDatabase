@@ -16,6 +16,7 @@ from app.api import (
     cron,
     documents,
     feedback,
+    jobs,
     organizations,
     projects,
     search,
@@ -145,6 +146,7 @@ app.include_router(cron.router, prefix="/api/v1")
 app.include_router(tokens.router, prefix="/api/v1")
 app.include_router(tokens.admin_router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
+app.include_router(jobs.router, prefix="/api/v1")
 
 
 @app.get("/health")

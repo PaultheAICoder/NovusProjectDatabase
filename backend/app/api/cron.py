@@ -8,7 +8,7 @@ import re
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.api.deps import DbSession
@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.core.logging import get_logger
 from app.models.feedback import FeedbackStatus
 from app.schemas.document import DocumentQueueProcessResult
+from app.schemas.job import JobQueueProcessResult
 from app.schemas.monday import SyncQueueProcessResult
 from app.services import (
     FeedbackService,
@@ -643,6 +644,81 @@ async def process_jira_refresh_endpoint(
             refreshed=0,
             failed=0,
             skipped=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+
+
+@router.get("/jobs", response_model=JobQueueProcessResult)
+async def process_jobs_endpoint(
+    authorization: str | None = Header(None),
+    job_type: str | None = Query(None, description="Filter by job type"),
+) -> JobQueueProcessResult:
+    """Process pending background jobs.
+
+    This endpoint should be called by an external cron job every minute.
+    Protected by CRON_SECRET bearer token.
+
+    Processing flow:
+    1. Verify CRON_SECRET bearer token
+    2. Recover any stuck jobs (in_progress > 30 minutes)
+    3. Fetch pending jobs where next_retry <= now
+    4. For each job:
+       - Mark as in_progress
+       - Execute registered handler
+       - On success: mark as completed
+       - On failure:
+         - If retryable error: requeue with exponential backoff
+         - If non-retryable or max attempts: mark as failed
+    5. Return summary
+
+    Backoff schedule:
+    - Attempt 1: Immediate
+    - Attempt 2: +1 minute
+    - Attempt 3: +5 minutes
+    - Attempt 4: +15 minutes
+    - Attempt 5: +60 minutes (max retries)
+    """
+    # Verify cron secret
+    if not verify_cron_secret(authorization):
+        logger.warning("cron_jobs_unauthorized")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing CRON_SECRET",
+        )
+
+    logger.info("cron_jobs_triggered", job_type=job_type)
+
+    try:
+        # Import job handlers to register them
+        import app.services.job_handlers  # noqa: F401
+        from app.models.job import JobType
+        from app.services.job_service import process_job_queue
+
+        job_type_enum = None
+        if job_type:
+            try:
+                job_type_enum = JobType(job_type)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid job_type: {job_type}. Valid types: {[t.value for t in JobType]}",
+                )
+
+        result = await process_job_queue(job_type=job_type_enum)
+        return JobQueueProcessResult(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("cron_jobs_error", error=str(e))
+        return JobQueueProcessResult(
+            status="error",
+            jobs_processed=0,
+            jobs_succeeded=0,
+            jobs_failed=0,
+            jobs_requeued=0,
+            jobs_max_retries=0,
+            jobs_recovered=0,
             errors=[str(e)],
             timestamp=datetime.now(UTC).isoformat(),
         )

@@ -36,6 +36,7 @@ from app.schemas.import_ import (
     ImportRowsValidateRequest,
     ImportRowsValidateResponse,
 )
+from app.schemas.job import JobListResponse, JobResponse, JobStatsResponse
 from app.schemas.monday import (
     AutoResolutionRuleCreate,
     AutoResolutionRuleListResponse,
@@ -84,6 +85,7 @@ from app.services.cache_service import (
 from app.services.conflict_service import ConflictService
 from app.services.document_queue_service import DocumentQueueService
 from app.services.import_service import ImportService
+from app.services.job_service import JobService
 from app.services.monday_service import (
     MondayAPIError,
     MondayRateLimitError,
@@ -1601,3 +1603,132 @@ async def import_tag_synonyms(
         created=created,
         skipped=len(data.synonyms) - created,
     )
+
+
+# ============== Background Jobs (Admin Only) ==============
+
+
+@router.get("/jobs", response_model=JobListResponse)
+@limiter.limit(admin_limit)
+async def list_jobs(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    job_type: str | None = Query(None, description="Filter by job type"),
+    queue_status: str | None = Query(
+        None,
+        alias="status",
+        description="Filter by status: 'pending', 'in_progress', 'completed', 'failed'",
+    ),
+) -> JobListResponse:
+    """List background jobs with filtering and pagination. Admin only.
+
+    Returns paginated list of jobs that can be filtered by job type and status.
+    """
+    from app.models.job import JobStatus, JobType
+
+    # Convert string filters to enums
+    job_type_enum = None
+    if job_type:
+        try:
+            job_type_enum = JobType(job_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid job_type: {job_type}. Valid types: {[t.value for t in JobType]}",
+            )
+
+    status_enum = None
+    if queue_status:
+        try:
+            status_enum = JobStatus(queue_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {queue_status}. Must be 'pending', 'in_progress', 'completed', or 'failed'",
+            )
+
+    service = JobService(db)
+    items, total = await service.get_all_jobs(
+        page=page,
+        page_size=page_size,
+        job_type=job_type_enum,
+        status=status_enum,
+    )
+
+    return JobListResponse(
+        items=[JobResponse.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < total,
+    )
+
+
+@router.get("/jobs/stats", response_model=JobStatsResponse)
+@limiter.limit(admin_limit)
+async def get_job_stats(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> JobStatsResponse:
+    """Get job queue statistics. Admin only.
+
+    Returns counts of jobs by status and by job type.
+    """
+    service = JobService(db)
+    stats = await service.get_job_stats()
+    return JobStatsResponse(**stats)
+
+
+@router.post("/jobs/{job_id}/retry", response_model=JobResponse)
+@limiter.limit(admin_limit)
+async def retry_job(
+    request: Request,
+    job_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+    reset_attempts: bool = Query(
+        False, description="If True, reset attempt count to 0"
+    ),
+) -> JobResponse:
+    """Manually retry a failed job. Admin only.
+
+    Resets the job to pending status so it will be processed
+    on the next queue run. Optionally resets the attempt counter.
+    """
+    service = JobService(db)
+    job = await service.manual_retry(job_id, reset_attempts=reset_attempts)
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    return JobResponse.model_validate(job)
+
+
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(admin_limit)
+async def cancel_job(
+    request: Request,
+    job_id: UUID,
+    db: DbSession,
+    admin_user: AdminUser,
+) -> None:
+    """Cancel a pending job. Admin only.
+
+    Removes the job from the queue. Only pending jobs can be cancelled.
+    In-progress, completed, or failed jobs cannot be cancelled.
+    """
+    service = JobService(db)
+    cancelled = await service.cancel_job(job_id)
+
+    if not cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found or cannot be cancelled (only pending jobs can be cancelled)",
+        )
