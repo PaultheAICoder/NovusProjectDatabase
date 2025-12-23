@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useProject, useDeleteProject } from "@/hooks/useProjects";
 import { useProjectMondayBoard } from "@/hooks/useMondaySync";
+import { JiraLinksSection } from "@/components/jira/JiraLinksSection";
 import { DocumentUpload } from "@/components/forms/DocumentUpload";
 import { DocumentList } from "@/components/tables/DocumentList";
 import { DocumentTagSuggestions } from "@/components/features/DocumentTagSuggestions";
@@ -301,6 +302,9 @@ export function ProjectDetailPage() {
             projectId={id!}
             currentTagIds={project.tags?.map((t) => t.id) || []}
           />
+
+          {/* Jira Links Section */}
+          <JiraLinksSection projectId={id!} />
 
           {project.tags && project.tags.length > 0 && (
             <Card>
