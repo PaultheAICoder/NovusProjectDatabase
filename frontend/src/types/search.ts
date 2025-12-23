@@ -76,3 +76,67 @@ export interface SavedSearchListResponse {
   my_searches: SavedSearch[];
   global_searches: SavedSearch[];
 }
+
+// Semantic Search Types
+
+export interface DateRange {
+  start_date: string | null;
+  end_date: string | null;
+  original_expression: string | null;
+}
+
+export interface ParsedQueryIntent {
+  search_text: string;
+  date_range: DateRange | null;
+  organization_name: string | null;
+  organization_id: string | null;
+  technology_keywords: string[];
+  tag_ids: string[];
+  status: string[];
+  confidence: number;
+}
+
+export interface ParsedQueryMetadata {
+  parsed_intent: ParsedQueryIntent;
+  fallback_used: boolean;
+  parse_explanation: string | null;
+}
+
+export interface SemanticSearchFilters {
+  status?: string[];
+  organization_id?: string;
+  tag_ids?: string[];
+  owner_id?: string;
+}
+
+export interface SemanticSearchRequest {
+  query: string;
+  filters?: SemanticSearchFilters;
+  page?: number;
+  page_size?: number;
+}
+
+export interface SemanticSearchResponse {
+  items: SearchResultItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  query: string;
+  parsed_query: ParsedQueryMetadata;
+}
+
+// Summarization Types
+
+export interface SummarizationRequest {
+  query: string;
+  project_ids?: string[];
+  max_chunks?: number;
+  stream?: boolean;
+}
+
+export interface SummarizationResponse {
+  summary: string;
+  query: string;
+  context_used: number;
+  truncated: boolean;
+}

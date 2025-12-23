@@ -8,6 +8,10 @@ import type {
   SearchParams,
   SearchResponse,
   SearchSuggestionsResponse,
+  SemanticSearchRequest,
+  SemanticSearchResponse,
+  SummarizationRequest,
+  SummarizationResponse,
 } from "@/types/search";
 
 export function useSearch({
@@ -58,5 +62,27 @@ export function useSearchSuggestions(query: string) {
         `/search/suggest?q=${encodeURIComponent(query)}`,
       ),
     enabled: query.length >= 2,
+  });
+}
+
+export function useSemanticSearch(params: SemanticSearchRequest | null) {
+  return useQuery({
+    queryKey: ["search", "semantic", params],
+    queryFn: () =>
+      api.post<SemanticSearchResponse>("/search/semantic", params),
+    enabled: !!params && params.query.length > 0,
+    // Cache semantic results for 2 minutes like classic search
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useSummarization(params: SummarizationRequest | null) {
+  return useQuery({
+    queryKey: ["search", "summarize", params],
+    queryFn: () =>
+      api.post<SummarizationResponse>("/search/summarize", params),
+    enabled: !!params && params.query.length > 0,
+    // Summaries are expensive, cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 }

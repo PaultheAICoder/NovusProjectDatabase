@@ -16,6 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -26,7 +27,9 @@ import {
 import { SearchFilters } from "@/components/forms/SearchFilters";
 import { SearchResults } from "@/components/tables/SearchResults";
 import { SavedSearchList } from "@/components/SavedSearchList";
-import { useSearch } from "@/hooks/useSearch";
+import { ParsedQueryBadges } from "@/components/features/ParsedQueryBadges";
+import { SearchSummary } from "@/components/features/SearchSummary";
+import { useSearch, useSemanticSearch, useSummarization } from "@/hooks/useSearch";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useCreateSavedSearch } from "@/hooks/useSavedSearches";
 import { useExportSearchResults } from "@/hooks/useExport";
@@ -66,6 +69,9 @@ export function SearchPage() {
   const [sortBy, setSortBy] = useState<SearchParams["sortBy"]>(initialSortBy);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">(initialSortOrder);
 
+  // Smart search state
+  const [isSmartSearch, setIsSmartSearch] = useState(false);
+
   // Saved search state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveSearchName, setSaveSearchName] = useState("");
@@ -93,6 +99,33 @@ export function SearchPage() {
     page,
     pageSize,
   });
+
+  // Semantic search (only when smart search is enabled)
+  const semanticSearchParams = isSmartSearch && query ? {
+    query: query,
+    filters: {
+      status: debouncedStatus.length > 0 ? debouncedStatus : undefined,
+      organization_id: debouncedOrgId,
+      tag_ids: debouncedTagIds.length > 0 ? debouncedTagIds : undefined,
+    },
+    page,
+    page_size: pageSize,
+  } : null;
+
+  const { data: semanticData, isLoading: isSemanticLoading, error: semanticError } = useSemanticSearch(semanticSearchParams);
+
+  // Summarization (only when smart search has results)
+  const summarizationParams = isSmartSearch && query && semanticData && semanticData.total > 0 ? {
+    query: query,
+    project_ids: semanticData.items.slice(0, 10).map(item => item.id),
+    max_chunks: 10,
+  } : null;
+
+  const { data: summaryData, isLoading: isSummaryLoading, error: summaryError } = useSummarization(summarizationParams);
+
+  // Use appropriate data source based on mode
+  const activeData = isSmartSearch ? semanticData : data;
+  const activeLoading = isSmartSearch ? isSemanticLoading : isLoading;
 
   // Update URL when filters change
   const updateURL = useCallback(() => {
@@ -276,6 +309,29 @@ export function SearchPage() {
           <Button type="submit">Search</Button>
         </form>
 
+        {/* Smart Search Toggle */}
+        <div className="flex items-center gap-2">
+          <Switch
+            id="smart-search"
+            checked={isSmartSearch}
+            onCheckedChange={setIsSmartSearch}
+          />
+          <Label htmlFor="smart-search" className="text-sm cursor-pointer">
+            Smart Search
+          </Label>
+          <span className="text-xs text-muted-foreground">
+            {isSmartSearch ? "Natural language enabled" : "Classic keyword search"}
+          </span>
+        </div>
+
+        {/* Parsed Query Interpretation */}
+        {isSmartSearch && semanticData?.parsed_query && (
+          <ParsedQueryBadges
+            intent={semanticData.parsed_query.parsed_intent}
+            className="mt-4"
+          />
+        )}
+
         <SearchFilters
           status={status}
           organizationId={organizationId}
@@ -286,11 +342,27 @@ export function SearchPage() {
           onClearAll={handleClearAll}
         />
 
+        {/* AI Summary */}
+        {isSmartSearch && query && !semanticError && (
+          <SearchSummary
+            summary={summaryData}
+            isLoading={isSummaryLoading}
+            error={summaryError instanceof Error ? summaryError : null}
+          />
+        )}
+
+        {/* Semantic search error */}
+        {isSmartSearch && semanticError && (
+          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            Smart search failed. {semanticError instanceof Error ? semanticError.message : "Please try again."}
+          </div>
+        )}
+
         {/* Result count and sort controls */}
         <div className="flex items-center justify-between">
-          {data && (
+          {activeData && (
             <span className="text-sm text-muted-foreground">
-              {data.total} result{data.total !== 1 ? "s" : ""} found
+              {activeData.total} result{activeData.total !== 1 ? "s" : ""} found
               {query && ` for "${query}"`}
             </span>
           )}
@@ -334,11 +406,11 @@ export function SearchPage() {
         </div>
 
         <SearchResults
-          data={data?.items ?? []}
-          total={data?.total ?? 0}
+          data={activeData?.items ?? []}
+          total={activeData?.total ?? 0}
           page={page}
           pageSize={pageSize}
-          isLoading={isLoading}
+          isLoading={activeLoading}
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
         />
