@@ -88,8 +88,9 @@ class TestSearchCSVExportStreaming:
     async def test_search_csv_header_row_yielded_first(self):
         """Search CSV export should yield header row first."""
         # Mock search service
+        # Returns (projects, total, synonym_metadata)
         mock_service = AsyncMock()
-        mock_service.search_projects.return_value = ([], 0)
+        mock_service.search_projects.return_value = ([], 0, None)
 
         rows = []
         async for row in _generate_search_csv_rows(
@@ -225,7 +226,8 @@ class TestCSVExportMemoryEfficiency:
         mock_project.updated_at = None
 
         # First page returns 1 result with total=1, should stop after
-        mock_service.search_projects.return_value = ([mock_project], 1)
+        # Returns (projects, total, synonym_metadata)
+        mock_service.search_projects.return_value = ([mock_project], 1, None)
 
         rows = []
         async for row in _generate_search_csv_rows(

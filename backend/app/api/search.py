@@ -56,6 +56,10 @@ async def search_projects(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     no_cache: bool = Query(default=False, description="Bypass cache (admin/testing)"),
+    expand_synonyms: bool = Query(
+        default=True,
+        description="Expand tag filters to include synonym tags (default: true)",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SearchResponse:
@@ -89,6 +93,7 @@ async def search_projects(
         sort_order=sort_order,
         page=page,
         page_size=page_size,
+        expand_synonyms=expand_synonyms,
     )
 
     # Check cache (unless bypassed)
@@ -105,7 +110,7 @@ async def search_projects(
     # Cache miss - perform search
     search_service = SearchService(db)
 
-    projects, total = await search_service.search_projects(
+    projects, total, synonym_metadata = await search_service.search_projects(
         query=q,
         status=status,
         organization_id=organization_id,
@@ -115,10 +120,22 @@ async def search_projects(
         sort_order=sort_order,
         page=page,
         page_size=page_size,
+        expand_synonyms=expand_synonyms,
     )
 
     # Convert to response models
     items = [SearchResultItem.model_validate(p) for p in projects]
+
+    # Build synonym expansion metadata if synonyms were used
+    synonym_expansion = None
+    if synonym_metadata:
+        from app.schemas.search import SynonymExpansionMetadata
+
+        synonym_expansion = SynonymExpansionMetadata(
+            original_tags=[UUID(t) for t in synonym_metadata["original_tags"]],
+            expanded_tags=[UUID(t) for t in synonym_metadata["expanded_tags"]],
+            synonym_matches=synonym_metadata["synonym_matches"],
+        )
 
     response = SearchResponse(
         items=items,
@@ -126,6 +143,7 @@ async def search_projects(
         page=page,
         page_size=page_size,
         query=q,
+        synonym_expansion=synonym_expansion,
     )
 
     # Store in cache
@@ -193,7 +211,7 @@ async def semantic_search(
     # Execute search with combined filters
     search_service = SearchService(db)
 
-    projects, total = await search_service.search_projects(
+    projects, total, _synonym_metadata = await search_service.search_projects(
         query=parsed.search_text,
         status=effective_status if effective_status else None,
         organization_id=effective_org_id,
@@ -253,7 +271,7 @@ async def summarize_search_results(
         parser = NLQueryParser(db)
         parse_result = await parser.parse_query(body.query)
         search_service = SearchService(db)
-        projects, _ = await search_service.search_projects(
+        projects, _, _ = await search_service.search_projects(
             query=parse_result.parsed_intent.search_text,
             page=1,
             page_size=10,
@@ -373,7 +391,7 @@ async def _generate_search_csv_rows(
     page = 1
 
     while True:
-        projects, total = await search_service.search_projects(
+        projects, total, _ = await search_service.search_projects(
             query=query,
             status=status,
             organization_id=organization_id,

@@ -67,7 +67,7 @@ class TestSemanticSearchEndpoint:
 
             # Mock search service to return empty results
             search_instance = MagicMock()
-            search_instance.search_projects = AsyncMock(return_value=([], 0))
+            search_instance.search_projects = AsyncMock(return_value=([], 0, None))
             MockSearchService.return_value = search_instance
 
             response = await semantic_search(
@@ -123,7 +123,7 @@ class TestSemanticSearchEndpoint:
             MockParser.return_value = parser_instance
 
             search_instance = MagicMock()
-            search_instance.search_projects = AsyncMock(return_value=([], 0))
+            search_instance.search_projects = AsyncMock(return_value=([], 0, None))
             MockSearchService.return_value = search_instance
 
             await semantic_search(
@@ -164,7 +164,7 @@ class TestSemanticSearchEndpoint:
             MockParser.return_value = parser_instance
 
             search_instance = MagicMock()
-            search_instance.search_projects = AsyncMock(return_value=([], 50))
+            search_instance.search_projects = AsyncMock(return_value=([], 50, None))
             MockSearchService.return_value = search_instance
 
             response = await semantic_search(
@@ -217,7 +217,7 @@ class TestSemanticSearchEndpoint:
             MockParser.return_value = parser_instance
 
             search_instance = MagicMock()
-            search_instance.search_projects = AsyncMock(return_value=([], 0))
+            search_instance.search_projects = AsyncMock(return_value=([], 0, None))
             MockSearchService.return_value = search_instance
 
             response = await semantic_search(
@@ -271,7 +271,7 @@ class TestSemanticSearchEndpoint:
             MockParser.return_value = parser_instance
 
             search_instance = MagicMock()
-            search_instance.search_projects = AsyncMock(return_value=([], 0))
+            search_instance.search_projects = AsyncMock(return_value=([], 0, None))
             MockSearchService.return_value = search_instance
 
             await semantic_search(

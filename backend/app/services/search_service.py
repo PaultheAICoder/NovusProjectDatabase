@@ -13,6 +13,7 @@ from app.core.logging import get_logger
 from app.models.document import Document
 from app.models.project import Project, ProjectStatus
 from app.services.embedding_service import EmbeddingService
+from app.services.tag_synonym_service import TagSynonymService
 
 logger = get_logger(__name__)
 
@@ -42,7 +43,8 @@ class SearchService:
         page: int = 1,
         page_size: int = 20,
         include_documents: bool = True,
-    ) -> tuple[list[Project], int]:
+        expand_synonyms: bool = True,
+    ) -> tuple[list[Project], int, dict | None]:
         """
         Search projects using hybrid search with filters.
 
@@ -52,7 +54,12 @@ class SearchService:
         3. Vector similarity search on document embeddings
         4. RRF (Reciprocal Rank Fusion) to combine rankings
 
-        Returns tuple of (projects, total_count).
+        Args:
+            expand_synonyms: If True and tag_ids provided, expand to include
+                synonym tags. Uses transitive closure for synonym relationships.
+
+        Returns tuple of (projects, total_count, synonym_metadata).
+        synonym_metadata is None if no synonym expansion occurred.
         """
         logger.info(
             "search_projects",
@@ -60,13 +67,38 @@ class SearchService:
             has_filters=bool(status or organization_id or tag_ids or owner_id),
             page=page,
             page_size=page_size,
+            expand_synonyms=expand_synonyms,
         )
+
+        # Expand tag_ids with synonyms if enabled
+        synonym_metadata: dict | None = None
+        effective_tag_ids = tag_ids
+
+        if tag_ids and expand_synonyms:
+            synonym_service = TagSynonymService(self.db)
+            expanded_ids, synonym_map = (
+                await synonym_service.expand_tag_ids_with_synonyms(tag_ids)
+            )
+            if synonym_map:  # Only if synonyms were found
+                effective_tag_ids = list(expanded_ids)
+                synonym_metadata = {
+                    "original_tags": [str(t) for t in tag_ids],
+                    "expanded_tags": [str(t) for t in expanded_ids],
+                    "synonym_matches": {
+                        str(k): [str(v) for v in vs] for k, vs in synonym_map.items()
+                    },
+                }
+                logger.info(
+                    "search_tag_synonyms_expanded",
+                    original_count=len(tag_ids),
+                    expanded_count=len(expanded_ids),
+                )
 
         # Base conditions for filtering
         filter_conditions = self._build_filter_conditions(
             status=status,
             organization_id=organization_id,
-            tag_ids=tag_ids,
+            tag_ids=effective_tag_ids,
             owner_id=owner_id,
             start_date_from=start_date_from,
             start_date_to=start_date_to,
@@ -74,16 +106,17 @@ class SearchService:
 
         # If no query, just return filtered projects
         if not query or not query.strip():
-            return await self._search_without_query(
+            projects, total = await self._search_without_query(
                 filter_conditions=filter_conditions,
                 sort_by=sort_by,
                 sort_order=sort_order,
                 page=page,
                 page_size=page_size,
             )
+            return projects, total, synonym_metadata
 
         # Perform hybrid search with RRF fusion
-        return await self._hybrid_search(
+        projects, total = await self._hybrid_search(
             query=query.strip(),
             filter_conditions=filter_conditions,
             sort_by=sort_by,
@@ -92,6 +125,7 @@ class SearchService:
             page_size=page_size,
             include_documents=include_documents,
         )
+        return projects, total, synonym_metadata
 
     def _build_filter_conditions(
         self,
@@ -112,17 +146,20 @@ class SearchService:
             conditions.append(Project.organization_id == organization_id)
 
         if tag_ids:
-            for tag_id in tag_ids:
-                tag_subquery = text(
-                    """
-                    EXISTS (
-                        SELECT 1 FROM project_tags
-                        WHERE project_tags.project_id = projects.id
-                        AND project_tags.tag_id = :tag_id
-                    )
+            # Use ANY() to match projects with any of the specified tags.
+            # When synonym expansion is enabled, the tag_ids list includes
+            # both original tags and their synonyms, so a project matches
+            # if it has any of them.
+            tag_subquery = text(
                 """
-                ).bindparams(tag_id=tag_id)
-                conditions.append(tag_subquery)
+                EXISTS (
+                    SELECT 1 FROM project_tags
+                    WHERE project_tags.project_id = projects.id
+                    AND project_tags.tag_id = ANY(:tag_ids)
+                )
+            """
+            ).bindparams(tag_ids=list(tag_ids))
+            conditions.append(tag_subquery)
 
         if owner_id:
             conditions.append(Project.owner_id == owner_id)

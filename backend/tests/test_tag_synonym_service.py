@@ -613,6 +613,195 @@ class TestBulkImportSynonyms:
         assert result == 1
 
 
+class TestGetSynonymIds:
+    """Tests for get_synonym_ids method (returns UUIDs only)."""
+
+    @pytest.mark.asyncio
+    async def test_get_synonym_ids_returns_set_of_uuids(self):
+        """Should return a set of UUIDs instead of Tag objects."""
+        tag_a_id = uuid4()
+        tag_b_id = uuid4()
+
+        # Create mock row with attribute access
+        mock_row = MagicMock()
+        mock_row.tag_id = tag_a_id
+        mock_row.synonym_tag_id = tag_b_id
+
+        mock_db = AsyncMock()
+
+        # First query returns the synonym relationship
+        mock_result1 = MagicMock()
+        mock_result1.all.return_value = [mock_row]
+
+        # Second query returns no more synonyms
+        mock_result2 = MagicMock()
+        mock_result2.all.return_value = []
+
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
+
+        service = TagSynonymService(mock_db)
+        result = await service.get_synonym_ids(tag_a_id)
+
+        assert isinstance(result, set)
+        assert tag_b_id in result
+        assert tag_a_id not in result  # Should not include input tag
+
+    @pytest.mark.asyncio
+    async def test_get_synonym_ids_transitive(self):
+        """Should include transitive synonyms via BFS."""
+        tag_a_id = uuid4()
+        tag_b_id = uuid4()
+        tag_c_id = uuid4()
+
+        # Create mock rows with attribute access
+        mock_row_ab = MagicMock()
+        mock_row_ab.tag_id = tag_a_id
+        mock_row_ab.synonym_tag_id = tag_b_id
+
+        mock_row_bc = MagicMock()
+        mock_row_bc.tag_id = tag_b_id
+        mock_row_bc.synonym_tag_id = tag_c_id
+
+        mock_db = AsyncMock()
+
+        # First query: synonyms of A -> returns A~B
+        mock_result1 = MagicMock()
+        mock_result1.all.return_value = [mock_row_ab]
+
+        # Second query: synonyms of B -> returns A~B, B~C
+        mock_result2 = MagicMock()
+        mock_result2.all.return_value = [mock_row_ab, mock_row_bc]
+
+        # Third query: synonyms of C -> returns B~C
+        mock_result3 = MagicMock()
+        mock_result3.all.return_value = [mock_row_bc]
+
+        mock_db.execute.side_effect = [mock_result1, mock_result2, mock_result3]
+
+        service = TagSynonymService(mock_db)
+        result = await service.get_synonym_ids(tag_a_id)
+
+        assert isinstance(result, set)
+        assert tag_b_id in result
+        assert tag_c_id in result
+        assert tag_a_id not in result
+
+    @pytest.mark.asyncio
+    async def test_get_synonym_ids_empty_for_no_synonyms(self):
+        """Should return empty set when no synonyms exist."""
+        tag_id = uuid4()
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = TagSynonymService(mock_db)
+        result = await service.get_synonym_ids(tag_id)
+
+        assert result == set()
+
+
+class TestExpandTagIdsWithSynonyms:
+    """Tests for expand_tag_ids_with_synonyms method."""
+
+    @pytest.mark.asyncio
+    async def test_expand_single_tag_with_synonyms(self):
+        """Should expand a single tag with its synonyms."""
+        tag_a_id = uuid4()
+        tag_b_id = uuid4()
+
+        # Create mock row with attribute access
+        mock_row_ab = MagicMock()
+        mock_row_ab.tag_id = tag_a_id
+        mock_row_ab.synonym_tag_id = tag_b_id
+
+        mock_db = AsyncMock()
+
+        # First query: synonyms of A -> returns A~B
+        mock_result1 = MagicMock()
+        mock_result1.all.return_value = [mock_row_ab]
+
+        # Second query: synonyms of B -> returns A~B (no new ones)
+        mock_result2 = MagicMock()
+        mock_result2.all.return_value = [mock_row_ab]
+
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
+
+        service = TagSynonymService(mock_db)
+        expanded, synonym_map = await service.expand_tag_ids_with_synonyms([tag_a_id])
+
+        assert tag_a_id in expanded
+        assert tag_b_id in expanded
+        assert tag_a_id in synonym_map
+        assert tag_b_id in synonym_map[tag_a_id]
+
+    @pytest.mark.asyncio
+    async def test_expand_multiple_tags(self):
+        """Should expand multiple tags with their synonyms."""
+        tag_a_id = uuid4()
+        tag_b_id = uuid4()
+        tag_c_id = uuid4()
+        tag_d_id = uuid4()
+
+        # Create mock rows with attribute access
+        mock_row_ab = MagicMock()
+        mock_row_ab.tag_id = tag_a_id
+        mock_row_ab.synonym_tag_id = tag_b_id
+
+        mock_row_cd = MagicMock()
+        mock_row_cd.tag_id = tag_c_id
+        mock_row_cd.synonym_tag_id = tag_d_id
+
+        mock_db = AsyncMock()
+
+        # First tag (A) has synonym B
+        mock_result1 = MagicMock()
+        mock_result1.all.return_value = [mock_row_ab]
+        mock_result2 = MagicMock()
+        mock_result2.all.return_value = [mock_row_ab]
+
+        # Second tag (C) has synonym D
+        mock_result3 = MagicMock()
+        mock_result3.all.return_value = [mock_row_cd]
+        mock_result4 = MagicMock()
+        mock_result4.all.return_value = [mock_row_cd]
+
+        mock_db.execute.side_effect = [
+            mock_result1,
+            mock_result2,
+            mock_result3,
+            mock_result4,
+        ]
+
+        service = TagSynonymService(mock_db)
+        expanded, synonym_map = await service.expand_tag_ids_with_synonyms(
+            [tag_a_id, tag_c_id]
+        )
+
+        assert len(expanded) == 4  # A, B, C, D
+        assert tag_a_id in expanded
+        assert tag_b_id in expanded
+        assert tag_c_id in expanded
+        assert tag_d_id in expanded
+
+    @pytest.mark.asyncio
+    async def test_expand_tags_no_synonyms(self):
+        """Should return original tags when no synonyms exist."""
+        tag_a_id = uuid4()
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = TagSynonymService(mock_db)
+        expanded, synonym_map = await service.expand_tag_ids_with_synonyms([tag_a_id])
+
+        assert expanded == {tag_a_id}
+        assert synonym_map == {}
+
+
 class TestGetTagWithSynonyms:
     """Tests for get_tag_with_synonyms method."""
 

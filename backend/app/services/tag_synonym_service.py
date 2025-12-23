@@ -91,6 +91,80 @@ class TagSynonymService:
 
         return synonyms
 
+    async def get_synonym_ids(self, tag_id: UUID) -> set[UUID]:
+        """Get all synonym tag IDs for a tag (transitive closure).
+
+        Optimized version of get_synonyms() that returns only UUIDs,
+        avoiding full Tag object retrieval.
+
+        Args:
+            tag_id: The tag to find synonyms for
+
+        Returns:
+            Set of all transitively connected tag IDs (excluding the input tag)
+        """
+        # BFS to find all connected tag IDs
+        visited: set[UUID] = {tag_id}
+        queue: list[UUID] = [tag_id]
+        synonym_ids: set[UUID] = set()
+
+        while queue:
+            current_id = queue.pop(0)
+
+            # Find direct synonyms (both directions since relationship is symmetric)
+            result = await self.db.execute(
+                select(TagSynonym.tag_id, TagSynonym.synonym_tag_id).where(
+                    (TagSynonym.tag_id == current_id)
+                    | (TagSynonym.synonym_tag_id == current_id)
+                )
+            )
+            rows = result.all()
+
+            for row in rows:
+                # Get the "other" tag in the relationship
+                other_id = (
+                    row.synonym_tag_id if row.tag_id == current_id else row.tag_id
+                )
+
+                if other_id not in visited:
+                    visited.add(other_id)
+                    queue.append(other_id)
+                    synonym_ids.add(other_id)
+
+        return synonym_ids
+
+    async def expand_tag_ids_with_synonyms(
+        self, tag_ids: list[UUID]
+    ) -> tuple[set[UUID], dict[UUID, set[UUID]]]:
+        """Expand a list of tag IDs to include all their synonyms.
+
+        Args:
+            tag_ids: List of tag IDs to expand
+
+        Returns:
+            Tuple of:
+            - Set of all expanded tag IDs (original + synonyms)
+            - Dict mapping original tag_id -> set of synonym_ids added
+              (for metadata/logging)
+        """
+        expanded: set[UUID] = set(tag_ids)
+        synonym_map: dict[UUID, set[UUID]] = {}
+
+        for tag_id in tag_ids:
+            synonyms = await self.get_synonym_ids(tag_id)
+            if synonyms:
+                synonym_map[tag_id] = synonyms
+                expanded.update(synonyms)
+
+        logger.debug(
+            "tag_ids_expanded_with_synonyms",
+            original_count=len(tag_ids),
+            expanded_count=len(expanded),
+            tags_with_synonyms=len(synonym_map),
+        )
+
+        return expanded, synonym_map
+
     async def add_synonym(
         self,
         tag_id: UUID,

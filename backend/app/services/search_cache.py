@@ -266,6 +266,7 @@ def generate_cache_key(
     sort_order: str,
     page: int,
     page_size: int,
+    expand_synonyms: bool = True,
 ) -> str:
     """
     Generate deterministic cache key from search parameters.
@@ -283,6 +284,7 @@ def generate_cache_key(
         "sort_order": sort_order,
         "page": page,
         "page_size": page_size,
+        "expand_synonyms": expand_synonyms,
     }
 
     # Create deterministic string representation

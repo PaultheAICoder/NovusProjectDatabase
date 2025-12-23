@@ -1,6 +1,7 @@
 """Tests for search service and search_vector model definitions."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -421,3 +422,189 @@ class TestNonRelevanceSortPagination:
 
         # Verify execute was called (once for the final query after ranking queries)
         assert mock_db.execute.called
+
+
+class TestSynonymAwareSearch:
+    """Tests for synonym-aware tag filtering in search."""
+
+    @pytest.mark.asyncio
+    async def test_search_expands_tag_ids_with_synonyms(self):
+        """Search should expand tag_ids to include synonyms when enabled."""
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+
+        # Create test IDs
+        tag_a_id = uuid4()
+        tag_b_id = uuid4()
+
+        service = SearchService(mock_db)
+
+        # Mock the TagSynonymService
+        with patch(
+            "app.services.search_service.TagSynonymService"
+        ) as MockSynonymService:
+            mock_synonym_service = MagicMock()
+            mock_synonym_service.expand_tag_ids_with_synonyms = AsyncMock(
+                return_value=(
+                    {tag_a_id, tag_b_id},  # expanded set
+                    {tag_a_id: {tag_b_id}},  # synonym map
+                )
+            )
+            MockSynonymService.return_value = mock_synonym_service
+
+            # Mock the internal search method to avoid complex setup
+            with patch.object(
+                service, "_search_without_query"
+            ) as mock_search_without_query:
+                mock_search_without_query.return_value = ([], 0)
+
+                result = await service.search_projects(
+                    query="",
+                    tag_ids=[tag_a_id],
+                    expand_synonyms=True,
+                )
+
+                # Verify synonym expansion was called
+                mock_synonym_service.expand_tag_ids_with_synonyms.assert_called_once_with(
+                    [tag_a_id]
+                )
+
+                # Result should be (projects, total, synonym_metadata)
+                assert len(result) == 3
+                projects, total, synonym_metadata = result
+                assert synonym_metadata is not None
+                assert str(tag_a_id) in synonym_metadata["original_tags"]
+
+    @pytest.mark.asyncio
+    async def test_search_skips_synonym_expansion_when_disabled(self):
+        """Search should not expand synonyms when expand_synonyms=False."""
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+        tag_id = uuid4()
+
+        service = SearchService(mock_db)
+
+        with patch(
+            "app.services.search_service.TagSynonymService"
+        ) as MockSynonymService:
+            mock_synonym_service = MagicMock()
+            MockSynonymService.return_value = mock_synonym_service
+
+            with patch.object(
+                service, "_search_without_query"
+            ) as mock_search_without_query:
+                mock_search_without_query.return_value = ([], 0)
+
+                result = await service.search_projects(
+                    query="",
+                    tag_ids=[tag_id],
+                    expand_synonyms=False,
+                )
+
+                # Synonym service should NOT be called
+                mock_synonym_service.expand_tag_ids_with_synonyms.assert_not_called()
+
+                # synonym_metadata should be None
+                _, _, synonym_metadata = result
+                assert synonym_metadata is None
+
+    @pytest.mark.asyncio
+    async def test_search_returns_synonym_metadata_when_synonyms_found(self):
+        """Search should include synonym metadata when synonyms are expanded."""
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+
+        original_tag = uuid4()
+        synonym_tag = uuid4()
+
+        service = SearchService(mock_db)
+
+        with patch(
+            "app.services.search_service.TagSynonymService"
+        ) as MockSynonymService:
+            mock_synonym_service = MagicMock()
+            mock_synonym_service.expand_tag_ids_with_synonyms = AsyncMock(
+                return_value=(
+                    {original_tag, synonym_tag},
+                    {original_tag: {synonym_tag}},
+                )
+            )
+            MockSynonymService.return_value = mock_synonym_service
+
+            with patch.object(
+                service, "_search_without_query"
+            ) as mock_search_without_query:
+                mock_search_without_query.return_value = ([], 0)
+
+                _, _, synonym_metadata = await service.search_projects(
+                    query="",
+                    tag_ids=[original_tag],
+                    expand_synonyms=True,
+                )
+
+                # Verify metadata structure
+                assert synonym_metadata is not None
+                assert "original_tags" in synonym_metadata
+                assert "expanded_tags" in synonym_metadata
+                assert "synonym_matches" in synonym_metadata
+                assert len(synonym_metadata["expanded_tags"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_search_no_synonym_metadata_when_no_synonyms_found(self):
+        """Search should not include synonym metadata when no synonyms found."""
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+        tag_id = uuid4()
+
+        service = SearchService(mock_db)
+
+        with patch(
+            "app.services.search_service.TagSynonymService"
+        ) as MockSynonymService:
+            mock_synonym_service = MagicMock()
+            # No synonyms found - empty synonym_map
+            mock_synonym_service.expand_tag_ids_with_synonyms = AsyncMock(
+                return_value=({tag_id}, {})  # Just original, no synonyms
+            )
+            MockSynonymService.return_value = mock_synonym_service
+
+            with patch.object(
+                service, "_search_without_query"
+            ) as mock_search_without_query:
+                mock_search_without_query.return_value = ([], 0)
+
+                _, _, synonym_metadata = await service.search_projects(
+                    query="",
+                    tag_ids=[tag_id],
+                    expand_synonyms=True,
+                )
+
+                # No synonym_metadata when no synonyms found
+                assert synonym_metadata is None
+
+    @pytest.mark.asyncio
+    async def test_search_returns_three_element_tuple(self):
+        """Search should always return a 3-element tuple (projects, total, metadata)."""
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+        service = SearchService(mock_db)
+
+        with patch.object(
+            service, "_search_without_query"
+        ) as mock_search_without_query:
+            mock_search_without_query.return_value = ([], 0)
+
+            # Without tag_ids
+            result = await service.search_projects(query="")
+            assert len(result) == 3
+
+            # With tag_ids but expand_synonyms=False
+            result = await service.search_projects(
+                query="", tag_ids=[uuid4()], expand_synonyms=False
+            )
+            assert len(result) == 3

@@ -47,7 +47,7 @@ class TestSummarizeEndpoint:
             MockParser.return_value = parser_instance
 
             search_instance = MagicMock()
-            search_instance.search_projects = AsyncMock(return_value=([], 0))
+            search_instance.search_projects = AsyncMock(return_value=([], 0, None))
             MockSearchService.return_value = search_instance
 
             summarization_instance = MagicMock()
@@ -146,7 +146,7 @@ class TestSummarizeEndpoint:
             MockParser.return_value = parser_instance
 
             search_instance = MagicMock()
-            search_instance.search_projects = AsyncMock(return_value=([], 0))
+            search_instance.search_projects = AsyncMock(return_value=([], 0, None))
             MockSearchService.return_value = search_instance
 
             summarization_instance = MagicMock()
@@ -202,8 +202,9 @@ class TestSummarizeEndpoint:
             MockParser.return_value = parser_instance
 
             search_instance = MagicMock()
+            # Returns (projects, total, synonym_metadata)
             search_instance.search_projects = AsyncMock(
-                return_value=([mock_project], 1)
+                return_value=([mock_project], 1, None)
             )
             MockSearchService.return_value = search_instance
 

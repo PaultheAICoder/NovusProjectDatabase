@@ -37,6 +37,14 @@ class SearchResultItem(ProjectResponse):
     pass
 
 
+class SynonymExpansionMetadata(BaseModel):
+    """Metadata about synonym expansion in search."""
+
+    original_tags: list[UUID]
+    expanded_tags: list[UUID]
+    synonym_matches: dict[str, list[str]]  # original_tag_id -> list of synonym_tag_ids
+
+
 class SearchResponse(BaseModel):
     """Search response with results and metadata."""
 
@@ -45,6 +53,10 @@ class SearchResponse(BaseModel):
     page: int
     page_size: int
     query: str
+    synonym_expansion: SynonymExpansionMetadata | None = Field(
+        default=None,
+        description="Metadata about tag synonym expansion (if synonyms were used)",
+    )
 
 
 class SearchSuggestion(BaseModel):
