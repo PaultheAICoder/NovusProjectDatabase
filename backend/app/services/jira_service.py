@@ -2,10 +2,13 @@
 
 import base64
 import re
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.logging import get_logger
@@ -18,6 +21,9 @@ from app.schemas.jira import (
     JiraStatus,
     JiraUser,
 )
+
+if TYPE_CHECKING:
+    from app.models.jira_link import ProjectJiraLink
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -394,3 +400,170 @@ class JiraService:
                 is_connected=False,
                 error=f"Connection failed: {e}",
             )
+
+    def is_cache_stale(self, link: "ProjectJiraLink") -> bool:
+        """Check if a link's cache is stale based on TTL.
+
+        Args:
+            link: ProjectJiraLink to check
+
+        Returns:
+            True if cache is stale or missing, False if fresh
+        """
+        if link.cached_at is None:
+            return True
+
+        age_seconds = (datetime.now(UTC) - link.cached_at).total_seconds()
+        return age_seconds > settings.jira_cache_ttl
+
+    async def refresh_jira_link(
+        self,
+        link: "ProjectJiraLink",
+        db: AsyncSession,
+    ) -> bool:
+        """Refresh cached status for a single Jira link.
+
+        Args:
+            link: ProjectJiraLink to refresh
+            db: Database session
+
+        Returns:
+            True if refresh succeeded, False otherwise
+        """
+        if not self.is_configured:
+            logger.warning("jira_not_configured")
+            return False
+
+        try:
+            issue = await self.get_issue(link.issue_key)
+            if issue:
+                link.cached_status = issue.status.name
+                link.cached_summary = issue.summary
+                link.cached_at = datetime.now(UTC)
+                await db.flush()
+                logger.info(
+                    "jira_link_refreshed",
+                    issue_key=link.issue_key,
+                    status=issue.status.name,
+                )
+                return True
+            else:
+                logger.warning(
+                    "jira_issue_not_found_for_link",
+                    issue_key=link.issue_key,
+                )
+                return False
+        except JiraAPIError as e:
+            logger.error(
+                "jira_link_refresh_failed",
+                issue_key=link.issue_key,
+                error=str(e),
+            )
+            return False
+
+    async def refresh_project_jira_statuses(
+        self,
+        project_id: UUID,
+        db: AsyncSession,
+    ) -> dict:
+        """Refresh all Jira link statuses for a project.
+
+        Args:
+            project_id: UUID of the project
+            db: Database session
+
+        Returns:
+            Dict with refresh results
+        """
+        from app.models.jira_link import ProjectJiraLink
+
+        result = await db.execute(
+            select(ProjectJiraLink).where(ProjectJiraLink.project_id == project_id)
+        )
+        links = result.scalars().all()
+
+        results = {
+            "total": len(links),
+            "refreshed": 0,
+            "failed": 0,
+            "errors": [],
+        }
+
+        for link in links:
+            success = await self.refresh_jira_link(link, db)
+            if success:
+                results["refreshed"] += 1
+            else:
+                results["failed"] += 1
+                results["errors"].append(link.issue_key)
+
+        return results
+
+
+async def refresh_all_jira_statuses() -> dict:
+    """Refresh all stale Jira link statuses.
+
+    This function is designed to be called from a cron endpoint.
+    It creates its own database session.
+
+    Returns:
+        Dict with processing results
+    """
+    from app.database import async_session_maker
+    from app.models.jira_link import ProjectJiraLink
+
+    logger.info("jira_refresh_started")
+
+    results = {
+        "status": "success",
+        "total_links": 0,
+        "stale_links": 0,
+        "refreshed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": [],
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+    service = JiraService()
+    if not service.is_configured:
+        results["status"] = "skipped"
+        results["errors"].append("Jira not configured")
+        logger.info("jira_refresh_skipped_not_configured")
+        return results
+
+    try:
+        async with async_session_maker() as db:
+            # Get all Jira links
+            result = await db.execute(select(ProjectJiraLink))
+            links = result.scalars().all()
+            results["total_links"] = len(links)
+
+            for link in links:
+                if service.is_cache_stale(link):
+                    results["stale_links"] += 1
+                    success = await service.refresh_jira_link(link, db)
+                    if success:
+                        results["refreshed"] += 1
+                    else:
+                        results["failed"] += 1
+                        results["errors"].append(link.issue_key)
+                else:
+                    results["skipped"] += 1
+
+            await db.commit()
+    except Exception as e:
+        results["status"] = "error"
+        results["errors"].append(str(e))
+        logger.exception("jira_refresh_error", error=str(e))
+    finally:
+        await service.close()
+
+    logger.info(
+        "jira_refresh_complete",
+        refreshed=results["refreshed"],
+        failed=results["failed"],
+        skipped=results["skipped"],
+    )
+
+    return results

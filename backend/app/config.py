@@ -125,6 +125,7 @@ class Settings(BaseSettings):
     jira_base_url: str = ""  # e.g., "https://company.atlassian.net"
     jira_user_email: str = ""  # User email for basic auth
     jira_api_token: str = ""  # API token from Atlassian account
+    jira_cache_ttl: int = 3600  # Cache TTL for Jira status in seconds (default: 1 hour)
 
     # E2E Testing (only enable in test environment)
     # SECURITY: These settings have defense-in-depth protections:

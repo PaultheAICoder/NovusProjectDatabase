@@ -27,6 +27,7 @@ from app.services import (
     process_document_queue,
     process_sync_queue,
 )
+from app.services.jira_service import refresh_all_jira_statuses
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -585,6 +586,63 @@ async def process_document_queue_endpoint(
             items_processed=0,
             items_succeeded=0,
             items_failed=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+
+
+class JiraRefreshResult(BaseModel):
+    """Response schema for Jira refresh endpoint."""
+
+    status: str
+    total_links: int
+    stale_links: int
+    refreshed: int
+    failed: int
+    skipped: int
+    errors: list[str]
+    timestamp: str
+
+
+@router.get("/jira-refresh", response_model=JiraRefreshResult)
+async def process_jira_refresh_endpoint(
+    authorization: str | None = Header(None),
+) -> JiraRefreshResult:
+    """Refresh all stale Jira link statuses.
+
+    This endpoint should be called by an external cron job every hour.
+    Protected by CRON_SECRET bearer token.
+
+    Processing flow:
+    1. Verify CRON_SECRET bearer token
+    2. Fetch all Jira links with stale cache
+    3. For each stale link:
+       - Fetch current status from Jira API
+       - Update cached_status, cached_summary, cached_at
+    4. Return summary
+    """
+    # Verify cron secret
+    if not verify_cron_secret(authorization):
+        logger.warning("cron_jira_refresh_unauthorized")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing CRON_SECRET",
+        )
+
+    logger.info("cron_jira_refresh_triggered")
+
+    try:
+        result = await refresh_all_jira_statuses()
+        return JiraRefreshResult(**result)
+    except Exception as e:
+        logger.exception("cron_jira_refresh_error", error=str(e))
+        return JiraRefreshResult(
+            status="error",
+            total_links=0,
+            stale_links=0,
+            refreshed=0,
+            failed=0,
+            skipped=0,
             errors=[str(e)],
             timestamp=datetime.now(UTC).isoformat(),
         )

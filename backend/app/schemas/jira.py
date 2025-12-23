@@ -115,6 +115,18 @@ class ProjectJiraLinkResponse(BaseModel):
     created_at: datetime = Field(..., description="Creation timestamp")
 
 
+class JiraRefreshResponse(BaseModel):
+    """Response from Jira status refresh operation."""
+
+    total: int = Field(..., description="Total number of Jira links processed")
+    refreshed: int = Field(..., description="Number of links successfully refreshed")
+    failed: int = Field(..., description="Number of links that failed to refresh")
+    errors: list[str] = Field(
+        default_factory=list, description="List of error issue keys"
+    )
+    timestamp: datetime = Field(..., description="When the refresh was performed")
+
+
 __all__ = [
     "JiraUser",
     "JiraIssueType",
@@ -126,4 +138,5 @@ __all__ = [
     "ProjectJiraLinkBase",
     "ProjectJiraLinkCreate",
     "ProjectJiraLinkResponse",
+    "JiraRefreshResponse",
 ]

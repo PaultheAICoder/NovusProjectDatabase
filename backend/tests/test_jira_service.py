@@ -1,6 +1,7 @@
 """Tests for Jira integration service."""
 
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -435,3 +436,156 @@ class TestJiraConnectionStatus:
         assert status.error == "Connection refused"
         assert status.user_display_name is None
         assert status.server_info is None
+
+
+class TestJiraServiceRefresh:
+    """Tests for JiraService refresh methods."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        """Create mock settings."""
+        with patch("app.services.jira_service.settings") as mock:
+            mock.is_jira_configured = True
+            mock.jira_base_url = "https://test.atlassian.net"
+            mock.jira_user_email = "test@example.com"
+            mock.jira_api_token = "test-token"
+            mock.jira_cache_ttl = 3600  # 1 hour
+            yield mock
+
+    @pytest.fixture
+    def service(self, mock_settings):  # noqa: ARG002
+        """Create JiraService instance."""
+        return JiraService()
+
+    @pytest.fixture
+    def mock_link(self):
+        """Create a mock ProjectJiraLink."""
+        link = MagicMock()
+        link.issue_key = "PROJ-123"
+        link.cached_status = None
+        link.cached_summary = None
+        link.cached_at = None
+        return link
+
+    def test_is_cache_stale_no_cached_at(self, service, mock_link):
+        """Cache should be stale if cached_at is None."""
+        mock_link.cached_at = None
+        assert service.is_cache_stale(mock_link) is True
+
+    def test_is_cache_stale_within_ttl(
+        self, service, mock_link, mock_settings  # noqa: ARG002
+    ):
+        """Cache should be fresh if within TTL."""
+        mock_link.cached_at = datetime.now(UTC) - timedelta(seconds=1800)  # 30 min ago
+        assert service.is_cache_stale(mock_link) is False
+
+    def test_is_cache_stale_beyond_ttl(
+        self, service, mock_link, mock_settings  # noqa: ARG002
+    ):
+        """Cache should be stale if beyond TTL."""
+        mock_link.cached_at = datetime.now(UTC) - timedelta(seconds=7200)  # 2 hours ago
+        assert service.is_cache_stale(mock_link) is True
+
+    @pytest.mark.asyncio
+    async def test_refresh_jira_link_success(self, service, mock_link):
+        """refresh_jira_link should update link fields on success."""
+        mock_issue = MagicMock()
+        mock_issue.status.name = "In Progress"
+        mock_issue.summary = "Test Issue Summary"
+
+        mock_db = AsyncMock()
+
+        with patch.object(service, "get_issue", return_value=mock_issue):
+            result = await service.refresh_jira_link(mock_link, mock_db)
+
+        assert result is True
+        assert mock_link.cached_status == "In Progress"
+        assert mock_link.cached_summary == "Test Issue Summary"
+        assert mock_link.cached_at is not None
+        mock_db.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_refresh_jira_link_not_found(self, service, mock_link):
+        """refresh_jira_link should return False if issue not found."""
+        mock_db = AsyncMock()
+
+        with patch.object(service, "get_issue", return_value=None):
+            result = await service.refresh_jira_link(mock_link, mock_db)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_jira_link_api_error(self, service, mock_link):
+        """refresh_jira_link should return False on API error."""
+        mock_db = AsyncMock()
+
+        with patch.object(
+            service, "get_issue", side_effect=JiraAPIError("Connection failed")
+        ):
+            result = await service.refresh_jira_link(mock_link, mock_db)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_jira_link_not_configured(self, mock_link):
+        """refresh_jira_link should return False when not configured."""
+        with patch("app.services.jira_service.settings") as mock_settings:
+            mock_settings.is_jira_configured = False
+            mock_settings.jira_base_url = ""
+            service = JiraService()
+            mock_db = AsyncMock()
+
+            result = await service.refresh_jira_link(mock_link, mock_db)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_project_jira_statuses_success(self, service):
+        """refresh_project_jira_statuses should update all links."""
+        import uuid
+
+        project_id = uuid.uuid4()
+
+        mock_link1 = MagicMock()
+        mock_link1.issue_key = "PROJ-1"
+        mock_link2 = MagicMock()
+        mock_link2.issue_key = "PROJ-2"
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_link1, mock_link2]
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(service, "refresh_jira_link", return_value=True):
+            results = await service.refresh_project_jira_statuses(project_id, mock_db)
+
+        assert results["total"] == 2
+        assert results["refreshed"] == 2
+        assert results["failed"] == 0
+        assert results["errors"] == []
+
+    @pytest.mark.asyncio
+    async def test_refresh_project_jira_statuses_partial_failure(self, service):
+        """refresh_project_jira_statuses should handle partial failures."""
+        import uuid
+
+        project_id = uuid.uuid4()
+
+        mock_link1 = MagicMock()
+        mock_link1.issue_key = "PROJ-1"
+        mock_link2 = MagicMock()
+        mock_link2.issue_key = "PROJ-2"
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_link1, mock_link2]
+        mock_db.execute.return_value = mock_result
+
+        # First succeeds, second fails
+        with patch.object(service, "refresh_jira_link", side_effect=[True, False]):
+            results = await service.refresh_project_jira_statuses(project_id, mock_db)
+
+        assert results["total"] == 2
+        assert results["refreshed"] == 1
+        assert results["failed"] == 1
+        assert "PROJ-2" in results["errors"]

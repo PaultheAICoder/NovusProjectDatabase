@@ -3,6 +3,7 @@
 import csv
 import io
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -27,7 +28,11 @@ from app.models import (
 from app.models.document import Document
 from app.schemas.base import PaginatedResponse
 from app.schemas.import_ import AutofillRequest, AutofillResponse
-from app.schemas.jira import ProjectJiraLinkCreate, ProjectJiraLinkResponse
+from app.schemas.jira import (
+    JiraRefreshResponse,
+    ProjectJiraLinkCreate,
+    ProjectJiraLinkResponse,
+)
 from app.schemas.project import (
     DismissProjectTagSuggestionRequest,
     ProjectCreate,
@@ -864,6 +869,48 @@ async def delete_project_jira_link(
 
     await db.delete(link)
     await db.flush()
+
+
+@router.post("/{project_id}/jira/refresh", response_model=JiraRefreshResponse)
+@limiter.limit(crud_limit)
+async def refresh_project_jira_status(
+    request: Request,
+    project_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> JiraRefreshResponse:
+    """Manually refresh Jira status for all links in a project.
+
+    Fetches current status from Jira API and updates cache.
+    """
+    # Verify project exists
+    project = await db.scalar(select(Project).where(Project.id == project_id))
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    jira_service = JiraService()
+    try:
+        if not jira_service.is_configured:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Jira integration not configured",
+            )
+
+        results = await jira_service.refresh_project_jira_statuses(project_id, db)
+        await db.commit()
+
+        return JiraRefreshResponse(
+            total=results["total"],
+            refreshed=results["refreshed"],
+            failed=results["failed"],
+            errors=results["errors"],
+            timestamp=datetime.now(UTC),
+        )
+    finally:
+        await jira_service.close()
 
 
 async def _generate_projects_csv_rows(
