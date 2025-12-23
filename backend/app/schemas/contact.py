@@ -78,3 +78,14 @@ class ContactDetail(ContactWithOrganization):
 
     project_count: int = 0
     projects: list[ProjectSummaryForContact] = []
+
+
+class ContactSyncResponse(BaseModel):
+    """Response for manual sync trigger."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    contact_id: UUID
+    sync_triggered: bool
+    message: str
+    monday_id: str | None = None

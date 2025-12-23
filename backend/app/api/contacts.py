@@ -16,6 +16,7 @@ from app.schemas.contact import (
     ContactCreate,
     ContactDetail,
     ContactResponse,
+    ContactSyncResponse,
     ContactUpdate,
     ContactWithOrganization,
     ProjectSummaryForContact,
@@ -221,3 +222,44 @@ async def update_contact(
         background_tasks.add_task(sync_contact_to_monday, contact.id)
 
     return ContactResponse.model_validate(contact)
+
+
+@router.post("/{contact_id}/sync-to-monday", response_model=ContactSyncResponse)
+@limiter.limit(crud_limit)
+async def sync_contact_to_monday_manual(
+    request: Request,
+    contact_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
+) -> ContactSyncResponse:
+    """Manually trigger sync of a contact to Monday.com.
+
+    Use this to push a contact to Monday when automatic sync failed
+    or to sync a contact that was created with sync disabled.
+    """
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    contact = result.scalar_one_or_none()
+
+    if not contact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact not found",
+        )
+
+    # Check if Monday is configured
+    if not settings.is_monday_configured or not settings.monday_contacts_board_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Monday.com integration not configured",
+        )
+
+    # Queue sync in background
+    background_tasks.add_task(sync_contact_to_monday, contact.id)
+
+    return ContactSyncResponse(
+        contact_id=contact.id,
+        sync_triggered=True,
+        message="Sync to Monday.com has been triggered",
+        monday_id=contact.monday_id,
+    )
