@@ -28,9 +28,18 @@ test.describe('Smoke Tests', () => {
       timeout: 15000,
     });
 
-    // Filter out expected 401 errors (unauthenticated API calls)
+    // Filter out expected errors:
+    // - 401/Unauthorized: unauthenticated API calls (expected on initial load)
+    // - Failed to fetch: network errors during redirect
+    // - API Error: handled API errors from our error boundary
+    // - JSHandle@object: Firefox serialization issue for complex objects
     const criticalErrors = errors.filter(
-      (e) => !e.includes('401') && !e.includes('Unauthorized') && !e.includes('Failed to fetch')
+      (e) =>
+        !e.includes('401') &&
+        !e.includes('Unauthorized') &&
+        !e.includes('Failed to fetch') &&
+        !e.includes('API Error') &&
+        !e.includes('JSHandle@')
     );
     expect(criticalErrors).toHaveLength(0);
   });
