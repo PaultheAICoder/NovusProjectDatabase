@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Database
     database_url: str = ""  # Required - validated in model_validator
 
+    # Database Connection Pool (optimized for 1000+ projects scale)
+    db_pool_size: int = 10  # Increased from 5 for concurrent user handling
+    db_max_overflow: int = 20  # Increased from 10 for burst handling
+    db_pool_timeout: int = 30  # Seconds to wait for connection from pool
+    db_pool_recycle: int = 1800  # Recycle connections after 30 minutes
+
     # Azure AD Authentication
     azure_ad_tenant_id: str = ""
     azure_ad_client_id: str = ""

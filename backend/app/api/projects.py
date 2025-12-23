@@ -2,6 +2,7 @@
 
 import csv
 import io
+import time
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from uuid import UUID
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter
 from app.models import (
     Contact,
@@ -50,6 +52,7 @@ from app.services.monday_service import MondayService
 from app.services.search_cache import invalidate_search_cache
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+logger = get_logger(__name__)
 
 
 def _build_project_query():
@@ -92,6 +95,8 @@ async def list_projects(
     sort_order: str = Query("desc", enum=["asc", "desc"]),
 ) -> PaginatedResponse[ProjectResponse]:
     """List projects with optional filters."""
+    start_time = time.perf_counter()
+
     query = _build_project_list_query()
 
     # Text search filter using PostgreSQL full-text search
@@ -156,6 +161,19 @@ async def list_projects(
             updated_at=project.updated_at,
         )
         items.append(item)
+
+    # Log performance metrics
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        "list_projects_complete",
+        total_results=total,
+        page=page,
+        elapsed_ms=round(elapsed_ms, 2),
+        has_text_query=bool(q and q.strip()),
+        has_status_filter=bool(status),
+        has_org_filter=bool(organization_id),
+        has_tag_filter=bool(tag_ids),
+    )
 
     return PaginatedResponse(
         items=items,

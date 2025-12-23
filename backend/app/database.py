@@ -15,13 +15,16 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# Create async engine
+# Create async engine with configurable pool settings
+# Pool settings optimized for 1000+ projects scale (Issue #131)
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_timeout=settings.db_pool_timeout,
+    pool_recycle=settings.db_pool_recycle,
 )
 
 # Create session factory

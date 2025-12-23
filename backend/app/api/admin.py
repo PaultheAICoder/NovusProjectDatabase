@@ -341,16 +341,23 @@ async def get_overview_statistics(
     db: DbSession,
     admin_user: AdminUser,
 ) -> dict:
-    """Get overview statistics for the dashboard. Admin only."""
-    # Count projects by status
-    project_counts = {}
-    for proj_status in ProjectStatus:
-        count = await db.scalar(
-            select(func.count())
-            .select_from(Project)
-            .where(Project.status == proj_status)
-        )
-        project_counts[proj_status.value] = count or 0
+    """Get overview statistics for the dashboard. Admin only.
+
+    Optimized to use single GROUP BY queries instead of sequential queries
+    for better performance at scale (1000+ projects).
+    """
+    # Optimized: Single query to get all project status counts using GROUP BY
+    status_counts_query = select(
+        Project.status,
+        func.count().label("count"),
+    ).group_by(Project.status)
+    result = await db.execute(status_counts_query)
+    rows = result.all()
+
+    # Convert to dict, ensuring all statuses have a value
+    project_counts = {s.value: 0 for s in ProjectStatus}
+    for row in rows:
+        project_counts[row.status.value] = row.count
 
     total_projects = sum(project_counts.values())
 
@@ -363,13 +370,18 @@ async def get_overview_statistics(
     # Count documents
     doc_count = await db.scalar(select(func.count()).select_from(Document))
 
-    # Count tags by type
-    tag_counts = {}
-    for tag_type in TagType:
-        count = await db.scalar(
-            select(func.count()).select_from(Tag).where(Tag.type == tag_type)
-        )
-        tag_counts[tag_type.value] = count or 0
+    # Optimized: Single query to get all tag type counts using GROUP BY
+    tag_counts_query = select(
+        Tag.type,
+        func.count().label("count"),
+    ).group_by(Tag.type)
+    tag_result = await db.execute(tag_counts_query)
+    tag_rows = tag_result.all()
+
+    # Convert to dict, ensuring all tag types have a value
+    tag_counts = {t.value: 0 for t in TagType}
+    for row in tag_rows:
+        tag_counts[row.type.value] = row.count
 
     total_tags = sum(tag_counts.values())
 
