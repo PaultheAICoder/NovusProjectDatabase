@@ -1,6 +1,7 @@
 """Business logic services."""
 
 from .ai_enhancement import AIEnhancementService
+from .audit_service import AuditService
 from .conflict_service import ConflictService
 from .document_processor import DocumentProcessor
 from .document_queue_service import DocumentQueueService, process_document_queue
@@ -24,6 +25,7 @@ from .token_service import TokenService
 
 __all__ = [
     "AIEnhancementService",
+    "AuditService",
     "ConflictService",
     "DocumentProcessor",
     "DocumentQueueService",
