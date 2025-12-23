@@ -19,6 +19,7 @@ from .graph_email import GraphEmailService
 from .nl_query_parser import NLQueryParser
 from .search_service import SearchService
 from .sync_queue_service import SyncQueueService, process_sync_queue
+from .tag_synonym_service import TagSynonymService
 from .token_service import TokenService
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "ParseResult",
     "SearchService",
     "SyncQueueService",
+    "TagSynonymService",
     "TokenService",
     "extract_issue_number",
     "extract_project_marker",
