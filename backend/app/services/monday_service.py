@@ -301,6 +301,56 @@ class MondayService:
         data = await self._execute_query(query, {"limit": limit})
         return data.get("boards", [])
 
+    async def get_board(self, board_id: str) -> dict[str, Any] | None:
+        """Get a single board by ID.
+
+        Args:
+            board_id: Monday.com board ID
+
+        Returns:
+            Board info dict with id, name, columns, or None if not found
+        """
+        if not self.is_configured:
+            return None
+
+        query = """
+        query ($boardId: [ID!]!) {
+            boards(ids: $boardId) {
+                id
+                name
+                columns {
+                    id
+                    title
+                    type
+                }
+            }
+        }
+        """
+
+        try:
+            data = await self._execute_with_retry(query, {"boardId": [board_id]})
+            boards = data.get("boards", [])
+            return boards[0] if boards else None
+        except (MondayAPIError, MondayRateLimitError) as e:
+            logger.warning("monday_get_board_failed", board_id=board_id, error=str(e))
+            return None
+
+    async def validate_board_id(self, board_id: str) -> bool:
+        """Check if a board ID exists and is accessible.
+
+        Args:
+            board_id: Monday.com board ID to validate
+
+        Returns:
+            True if board exists or if board_id is empty (optional field),
+            False if board does not exist
+        """
+        if not board_id:
+            return True  # Empty is valid (optional field)
+
+        board = await self.get_board(board_id)
+        return board is not None
+
     async def search_monday_contacts(
         self,
         board_id: str,

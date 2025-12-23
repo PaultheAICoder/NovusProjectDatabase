@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { OrganizationSelectCombobox } from "@/components/forms/OrganizationCombobox";
 import { ContactSelectCombobox } from "@/components/forms/ContactSelectCombobox";
+import { MondayBoardSelect } from "@/components/forms/MondayBoardSelect";
 import { useContacts } from "@/hooks/useContacts";
 import { useAllTags } from "@/hooks/useTags";
 import type { ProjectDetail, ProjectLocation, ProjectStatus } from "@/types/project";
@@ -69,6 +70,7 @@ const projectFormSchema = z.object({
   billing_notes: z.string().optional(),
   pm_notes: z.string().optional(),
   monday_url: z.string().url().optional().or(z.literal("")),
+  monday_board_id: z.string().optional().or(z.literal("")),
   jira_url: z.string().url().optional().or(z.literal("")),
   gitlab_url: z.string().url().optional().or(z.literal("")),
   milestone_version: z.string().max(255).optional().or(z.literal("")),
@@ -150,6 +152,7 @@ export function ProjectForm({
       billing_notes: project?.billing_notes ?? "",
       pm_notes: project?.pm_notes ?? "",
       monday_url: project?.monday_url ?? "",
+      monday_board_id: project?.monday_board_id ?? "",
       jira_url: project?.jira_url ?? "",
       gitlab_url: project?.gitlab_url ?? "",
       milestone_version: project?.milestone_version ?? "",
@@ -569,7 +572,7 @@ export function ProjectForm({
 
         <div className="border-t pt-4">
           <h3 className="mb-4 text-sm font-medium">External Links</h3>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             <FormField
               control={form.control}
               name="monday_url"
@@ -581,6 +584,24 @@ export function ProjectForm({
                       type="url"
                       placeholder="https://monday.com/..."
                       {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="monday_board_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Monday.com Board</FormLabel>
+                  <FormControl>
+                    <MondayBoardSelect
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      disabled={isSubmitting}
                     />
                   </FormControl>
                   <FormMessage />

@@ -5,7 +5,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.monday_service import MondayService
+from app.services.monday_service import (
+    MondayAPIError,
+    MondayRateLimitError,
+    MondayService,
+)
 
 
 class TestMondayServiceConfiguration:
@@ -937,3 +941,145 @@ class TestMondayServiceRetry:
             result = await monday_service._execute_with_retry("query")
             assert result == {"test": "data"}
             assert mock_execute.call_count == 1
+
+
+class TestMondayBoardMethods:
+    """Tests for Monday.com board-related methods (GitHub Issue #120)."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_board_success(self, mock_settings, monday_service):
+        """Test fetching a board by ID."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "boards": [
+                    {
+                        "id": "12345",
+                        "name": "Test Board",
+                        "columns": [
+                            {"id": "name", "title": "Name", "type": "name"},
+                            {"id": "email", "title": "Email", "type": "email"},
+                        ],
+                    }
+                ]
+            }
+
+            board = await monday_service.get_board("12345")
+
+            assert board is not None
+            assert board["id"] == "12345"
+            assert board["name"] == "Test Board"
+            assert len(board["columns"]) == 2
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_board_not_found(self, mock_settings, monday_service):
+        """Test get_board returns None when board doesn't exist."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {"boards": []}
+
+            board = await monday_service.get_board("nonexistent")
+
+            assert board is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_board_not_configured(self, mock_settings, monday_service):
+        """Test get_board returns None when Monday not configured."""
+        mock_settings.monday_api_key = ""
+
+        board = await monday_service.get_board("12345")
+
+        assert board is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_board_api_error_returns_none(
+        self, mock_settings, monday_service
+    ):
+        """Test get_board returns None on API errors instead of raising."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.side_effect = MondayAPIError("API error")
+
+            board = await monday_service.get_board("12345")
+
+            assert board is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_get_board_rate_limit_returns_none(
+        self, mock_settings, monday_service
+    ):
+        """Test get_board returns None on rate limit errors."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.side_effect = MondayRateLimitError("Rate limit exceeded")
+
+            board = await monday_service.get_board("12345")
+
+            assert board is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_validate_board_id_valid(self, mock_settings, monday_service):
+        """Test validate_board_id returns True for valid board."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "get_board") as mock_get:
+            mock_get.return_value = {"id": "12345", "name": "Test Board", "columns": []}
+
+            is_valid = await monday_service.validate_board_id("12345")
+
+            assert is_valid is True
+            mock_get.assert_called_once_with("12345")
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_validate_board_id_invalid(self, mock_settings, monday_service):
+        """Test validate_board_id returns False for invalid board."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "get_board") as mock_get:
+            mock_get.return_value = None
+
+            is_valid = await monday_service.validate_board_id("nonexistent")
+
+            assert is_valid is False
+
+    @pytest.mark.asyncio
+    async def test_validate_board_id_empty_string(self, monday_service):
+        """Test validate_board_id returns True for empty string (optional field)."""
+        is_valid = await monday_service.validate_board_id("")
+
+        assert is_valid is True
+
+    @pytest.mark.asyncio
+    async def test_validate_board_id_none_string(self, monday_service):
+        """Test validate_board_id handles None-like empty value."""
+        # Empty string should be treated as valid (optional field)
+        is_valid = await monday_service.validate_board_id("")
+
+        assert is_valid is True

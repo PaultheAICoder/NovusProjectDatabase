@@ -153,6 +153,10 @@ class Project(Base):
         String(500),
         nullable=True,
     )
+    monday_board_id: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
     jira_url: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,

@@ -29,6 +29,7 @@ class ProjectBase(BaseModel):
     billing_notes: str | None = None
     pm_notes: str | None = None
     monday_url: str | None = None
+    monday_board_id: str | None = Field(None, max_length=50)
     jira_url: str | None = None
     gitlab_url: str | None = None
     milestone_version: str | None = Field(None, max_length=255)
@@ -91,6 +92,7 @@ class ProjectUpdate(BaseModel):
     billing_notes: str | None = None
     pm_notes: str | None = None
     monday_url: str | None = None
+    monday_board_id: str | None = Field(None, max_length=50)
     jira_url: str | None = None
     gitlab_url: str | None = None
     milestone_version: str | None = Field(None, max_length=255)
@@ -146,6 +148,7 @@ class ProjectDetail(ProjectResponse):
     billing_notes: str | None = None
     pm_notes: str | None = None
     monday_url: str | None = None
+    monday_board_id: str | None = None
     jira_url: str | None = None
     gitlab_url: str | None = None
     milestone_version: str | None = None

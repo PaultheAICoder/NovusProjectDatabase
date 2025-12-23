@@ -15,6 +15,7 @@ import type {
   ConflictListResponse,
   ConflictResolveRequest,
   ConflictStats,
+  MondayBoardInfo,
   MondayBoardsResponse,
   MondayConfigResponse,
   MondaySyncLog,
@@ -266,5 +267,23 @@ export function useReorderAutoResolutionRules() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sync", "auto-resolution"] });
     },
+  });
+}
+
+// ============== Project Monday Board Hooks ==============
+
+export function useMondayBoardsForProjects() {
+  return useQuery({
+    queryKey: ["monday", "boards", "projects"],
+    queryFn: () => api.get<MondayBoardInfo[]>("/projects/monday/boards"),
+    staleTime: 60000, // 1 minute
+  });
+}
+
+export function useProjectMondayBoard(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["projects", projectId, "monday-board"],
+    queryFn: () => api.get<MondayBoardInfo | null>(`/projects/${projectId}/monday-board`),
+    enabled: !!projectId,
   });
 }

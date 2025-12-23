@@ -43,6 +43,7 @@ export interface Project {
   milestone_version: string | null;
   run_number: string | null;
   engagement_period: string | null;
+  monday_board_id: string | null;
   tags: Tag[];
   created_at: string;
   updated_at: string;
@@ -61,6 +62,7 @@ export interface ProjectDetail extends Project {
   billing_notes: string | null;
   pm_notes: string | null;
   monday_url: string | null;
+  monday_board_id: string | null;
   jira_url: string | null;
   gitlab_url: string | null;
   milestone_version: string | null;
@@ -88,6 +90,7 @@ export interface ProjectCreate {
   billing_notes?: string;
   pm_notes?: string;
   monday_url?: string;
+  monday_board_id?: string;
   jira_url?: string;
   gitlab_url?: string;
   milestone_version?: string;
@@ -113,6 +116,7 @@ export interface ProjectUpdate {
   billing_notes?: string;
   pm_notes?: string;
   monday_url?: string;
+  monday_board_id?: string;
   jira_url?: string;
   gitlab_url?: string;
   milestone_version?: string;

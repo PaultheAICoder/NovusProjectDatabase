@@ -35,6 +35,7 @@ from app.schemas.project import (
 )
 from app.schemas.tag import TagResponse
 from app.services.import_service import ImportService
+from app.services.monday_service import MondayService
 from app.services.search_cache import invalidate_search_cache
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -196,6 +197,18 @@ async def create_project(
             detail="One or more tags not found",
         )
 
+    # Validate Monday board ID if provided
+    if data.monday_board_id:
+        monday_service = MondayService(db)
+        try:
+            if not await monday_service.validate_board_id(data.monday_board_id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid Monday.com board ID or board not accessible",
+                )
+        finally:
+            await monday_service.close()
+
     # Create project
     project = Project(
         name=data.name,
@@ -215,6 +228,7 @@ async def create_project(
         billing_notes=data.billing_notes,
         pm_notes=data.pm_notes,
         monday_url=data.monday_url,
+        monday_board_id=data.monday_board_id,
         jira_url=data.jira_url,
         gitlab_url=data.gitlab_url,
         milestone_version=data.milestone_version,
@@ -320,6 +334,7 @@ async def get_project(
         billing_notes=project.billing_notes,
         pm_notes=project.pm_notes,
         monday_url=project.monday_url,
+        monday_board_id=project.monday_board_id,
         jira_url=project.jira_url,
         gitlab_url=project.gitlab_url,
         milestone_version=project.milestone_version,
@@ -382,6 +397,23 @@ async def update_project(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot change organization: existing contacts do not belong to the new organization. Please update contacts first.",
                 )
+
+    # Validate Monday board ID if being updated
+    if (
+        data.monday_board_id is not None
+        and data.monday_board_id != project.monday_board_id
+    ):
+        monday_service = MondayService(db)
+        try:
+            if data.monday_board_id and not await monday_service.validate_board_id(
+                data.monday_board_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid Monday.com board ID or board not accessible",
+                )
+        finally:
+            await monday_service.close()
 
     # Update scalar fields
     update_data = data.model_dump(
@@ -517,6 +549,52 @@ async def delete_project(
 
     # Invalidate search cache
     await invalidate_search_cache()
+
+
+@router.get("/monday/boards", response_model=list[dict])
+@limiter.limit(crud_limit)
+async def list_monday_boards(
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[dict]:
+    """List available Monday.com boards for linking to projects."""
+    monday_service = MondayService(db)
+    try:
+        if not monday_service.is_configured:
+            return []
+        return await monday_service.get_boards(limit=100)
+    finally:
+        await monday_service.close()
+
+
+@router.get("/{project_id}/monday-board")
+@limiter.limit(crud_limit)
+async def get_project_monday_board(
+    request: Request,
+    project_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> dict | None:
+    """Get Monday.com board info for a project."""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    if not project.monday_board_id:
+        return None
+
+    monday_service = MondayService(db)
+    try:
+        board = await monday_service.get_board(project.monday_board_id)
+        return board
+    finally:
+        await monday_service.close()
 
 
 @router.post("/autofill", response_model=AutofillResponse)

@@ -14,6 +14,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useProject, useDeleteProject } from "@/hooks/useProjects";
+import { useProjectMondayBoard } from "@/hooks/useMondaySync";
 import { DocumentUpload } from "@/components/forms/DocumentUpload";
 import { DocumentList } from "@/components/tables/DocumentList";
 import { DocumentTagSuggestions } from "@/components/features/DocumentTagSuggestions";
@@ -80,6 +81,7 @@ export function ProjectDetailPage() {
   const navigate = useNavigate();
   const { data: project, isLoading, isError } = useProject(id);
   const deleteProject = useDeleteProject();
+  const { data: mondayBoard } = useProjectMondayBoard(id);
 
   const handleDelete = async () => {
     if (!id) return;
@@ -356,7 +358,7 @@ export function ProjectDetailPage() {
             </CardContent>
           </Card>
 
-          {(project.monday_url || project.jira_url || project.gitlab_url) && (
+          {(project.monday_url || project.monday_board_id || project.jira_url || project.gitlab_url) && (
             <Card>
               <CardHeader>
                 <CardTitle>External Links</CardTitle>
@@ -372,6 +374,12 @@ export function ProjectDetailPage() {
                     <ExternalLink className="h-4 w-4" />
                     Monday.com
                   </a>
+                )}
+                {project.monday_board_id && mondayBoard && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <ExternalLink className="h-4 w-4" />
+                    <span>Linked Board: {mondayBoard.name}</span>
+                  </div>
                 )}
                 {project.jira_url && (
                   <a
