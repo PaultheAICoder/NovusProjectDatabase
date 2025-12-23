@@ -214,3 +214,34 @@ export interface AutoResolutionRuleListResponse {
 export interface AutoResolutionRuleReorderRequest {
   rule_ids: string[];
 }
+
+// ============== Monday Contact Search Types ==============
+
+/** A matching contact from Monday.com search. */
+export interface MondayContactMatch {
+  monday_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role_title: string | null;
+  organization: string | null;
+  board_id: string;
+}
+
+/** Response from Monday.com contact search. */
+export interface MondayContactSearchResponse {
+  matches: MondayContactMatch[];
+  total_matches: number;
+  query: string;
+  board_id: string;
+  has_more: boolean;
+  cursor: string | null;
+}
+
+/** Response from push contact to Monday. */
+export interface ContactSyncResponse {
+  contact_id: string;
+  sync_triggered: boolean;
+  message: string;
+  monday_id: string | null;
+}

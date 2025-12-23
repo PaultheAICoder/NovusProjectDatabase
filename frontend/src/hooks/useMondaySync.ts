@@ -15,9 +15,11 @@ import type {
   ConflictListResponse,
   ConflictResolveRequest,
   ConflictStats,
+  ContactSyncResponse,
   MondayBoardInfo,
   MondayBoardsResponse,
   MondayConfigResponse,
+  MondayContactSearchResponse,
   MondaySyncLog,
   MondaySyncStatusResponse,
   MondaySyncTriggerRequest,
@@ -285,5 +287,34 @@ export function useProjectMondayBoard(projectId: string | undefined) {
     queryKey: ["projects", projectId, "monday-board"],
     queryFn: () => api.get<MondayBoardInfo | null>(`/projects/${projectId}/monday-board`),
     enabled: !!projectId,
+  });
+}
+
+// ============== Monday Contact Search Hooks ==============
+
+export function useMondayContactSearch(query: string, boardId?: string) {
+  return useQuery({
+    queryKey: ["monday", "contacts", "search", query, boardId],
+    queryFn: () => {
+      const params = new URLSearchParams({ q: query });
+      if (boardId) params.append("board_id", boardId);
+      return api.get<MondayContactSearchResponse>(
+        `/admin/monday/contacts/search?${params.toString()}`
+      );
+    },
+    enabled: query.length >= 2, // Only search with 2+ characters
+    staleTime: 30000, // Cache for 30 seconds
+  });
+}
+
+export function usePushContactToMonday() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (contactId: string) =>
+      api.post<ContactSyncResponse>(`/contacts/${contactId}/sync-to-monday`),
+    onSuccess: (_, contactId) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts", contactId] });
+    },
   });
 }

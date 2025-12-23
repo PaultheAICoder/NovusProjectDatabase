@@ -11,10 +11,12 @@ import {
   Edit,
   ExternalLink,
   FolderKanban,
+  Loader2,
   Mail,
   Phone,
   Plus,
   RefreshCw,
+  Upload,
   User,
 } from "lucide-react";
 import {
@@ -54,6 +56,10 @@ import {
 import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge";
 import { SyncToggle } from "@/components/sync/SyncToggle";
 import { DetailPageSkeleton } from "@/components/skeletons/DetailPageSkeleton";
+import { usePushContactToMonday } from "@/hooks/useMondaySync";
+import { MondayContactSearch } from "@/components/monday/MondayContactSearch";
+import type { MondayContactMatch } from "@/types/monday";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const statusVariants: Record<
   string,
@@ -80,8 +86,10 @@ export function ContactDetailPage() {
   const { data: contact, isLoading, isError } = useContact(id);
   const updateContact = useUpdateContact();
   const deleteContact = useDeleteContact();
+  const pushToMonday = usePushContactToMonday();
 
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState({
     name: "",
     email: "",
@@ -137,6 +145,29 @@ export function ContactDetailPage() {
       id,
       data: { sync_enabled: enabled },
     });
+  };
+
+  const handlePushToMonday = async () => {
+    if (!id) return;
+    try {
+      const result = await pushToMonday.mutateAsync(id);
+      setPushMessage(result.message);
+      // Clear message after 3 seconds
+      setTimeout(() => setPushMessage(null), 3000);
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleMondayContactSelect = (mondayContact: MondayContactMatch) => {
+    // Auto-fill edit form fields with Monday data
+    setEditFormData((prev) => ({
+      ...prev,
+      name: mondayContact.name || prev.name,
+      email: mondayContact.email || prev.email,
+      phone: mondayContact.phone || prev.phone,
+      role_title: mondayContact.role_title || prev.role_title,
+    }));
   };
 
   if (isLoading) {
@@ -199,6 +230,23 @@ export function ContactDetailPage() {
             <Edit className="mr-2 h-4 w-4" />
             Edit
           </Button>
+          <Button
+            variant="outline"
+            onClick={handlePushToMonday}
+            disabled={pushToMonday.isPending || !contact.sync_enabled}
+            title={
+              !contact.sync_enabled
+                ? "Sync is disabled for this contact"
+                : undefined
+            }
+          >
+            {pushToMonday.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-2 h-4 w-4" />
+            )}
+            Push to Monday
+          </Button>
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="destructive">Delete</Button>
@@ -224,6 +272,13 @@ export function ContactDetailPage() {
           </Dialog>
         </div>
       </div>
+
+      {/* Push to Monday Success Message */}
+      {pushMessage && (
+        <Alert>
+          <AlertDescription>{pushMessage}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Stats Card */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -420,6 +475,16 @@ export function ContactDetailPage() {
             <DialogTitle>Edit Contact</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Link from Monday</Label>
+              <MondayContactSearch
+                onSelect={handleMondayContactSelect}
+                buttonLabel="Search & Autofill from Monday"
+              />
+              <p className="text-xs text-muted-foreground">
+                Search Monday.com contacts and autofill fields
+              </p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="edit-name">Name</Label>
               <Input
