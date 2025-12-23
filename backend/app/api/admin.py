@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import AdminUser, DbSession
 from app.core.file_utils import read_file_with_size_limit
+from app.core.logging import get_logger
 from app.core.rate_limit import admin_limit, limiter
 from app.models import Tag, TagSynonym, TagType
 from app.models.document import Document
@@ -76,6 +77,10 @@ from app.schemas.tag import (
 )
 from app.services.audit_service import AuditService
 from app.services.auto_resolution_service import AutoResolutionService
+from app.services.cache_service import (
+    get_dashboard_cache,
+    invalidate_tag_cache,
+)
 from app.services.conflict_service import ConflictService
 from app.services.document_queue_service import DocumentQueueService
 from app.services.import_service import ImportService
@@ -89,6 +94,8 @@ from app.services.monday_service import (
 from app.services.sync_queue_service import SyncQueueService
 from app.services.tag_suggester import TagSuggester
 from app.services.tag_synonym_service import TagSynonymService
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -145,6 +152,9 @@ async def create_structured_tag(
         user_id=admin_user.id,
     )
 
+    # Invalidate tag cache
+    await invalidate_tag_cache()
+
     return TagResponse.model_validate(tag)
 
 
@@ -198,6 +208,9 @@ async def update_tag(
         user_id=admin_user.id,
     )
 
+    # Invalidate tag cache
+    await invalidate_tag_cache()
+
     return TagResponse.model_validate(tag)
 
 
@@ -232,6 +245,9 @@ async def delete_tag(
         entity_data=tag_data,
         user_id=admin_user.id,
     )
+
+    # Invalidate tag cache
+    await invalidate_tag_cache()
 
 
 @router.get("/tags/{tag_id}/usage")
@@ -325,6 +341,9 @@ async def merge_tags(
         },
     )
 
+    # Invalidate tag cache
+    await invalidate_tag_cache()
+
     return TagMergeResponse(
         merged_count=merged_count,
         target_tag=TagResponse.model_validate(target_tag),
@@ -345,7 +364,19 @@ async def get_overview_statistics(
 
     Optimized to use single GROUP BY queries instead of sequential queries
     for better performance at scale (1000+ projects).
+
+    Results are cached for 5 minutes (TTL-based, no write invalidation).
     """
+    # Check cache first
+    cache = get_dashboard_cache()
+    cache_key = "overview"
+
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug("dashboard_stats_cache_hit")
+        return cached
+
+    # Cache miss - query database
     # Optimized: Single query to get all project status counts using GROUP BY
     status_counts_query = select(
         Project.status,
@@ -385,7 +416,7 @@ async def get_overview_statistics(
 
     total_tags = sum(tag_counts.values())
 
-    return {
+    stats_result = {
         "projects": {
             "total": total_projects,
             "by_status": project_counts,
@@ -397,6 +428,41 @@ async def get_overview_statistics(
             "total": total_tags,
             "by_type": tag_counts,
         },
+    }
+
+    # Store in cache (5-minute TTL)
+    await cache.set(cache_key, stats_result)
+    logger.debug("dashboard_stats_cache_miss")
+
+    return stats_result
+
+
+@router.get("/cache/stats")
+@limiter.limit(admin_limit)
+async def get_cache_statistics(
+    request: Request,
+    admin_user: AdminUser,
+) -> dict:
+    """Get cache statistics for all cache types. Admin only.
+
+    Returns hit/miss rates and configuration info for:
+    - Tag cache (1-hour TTL)
+    - Organization cache (15-minute TTL)
+    - Dashboard cache (5-minute TTL)
+    - Search cache (5-minute TTL)
+    """
+    from app.services.cache_service import (
+        get_dashboard_cache,
+        get_org_cache,
+        get_tag_cache,
+    )
+    from app.services.search_cache import get_search_cache
+
+    return {
+        "tag_cache": get_tag_cache().stats,
+        "org_cache": get_org_cache().stats,
+        "dashboard_cache": get_dashboard_cache().stats,
+        "search_cache": get_search_cache().stats,
     }
 
 

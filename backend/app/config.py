@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     search_cache_ttl: int = 300  # 5 minutes in seconds
     search_cache_enabled: bool = True  # Allow disabling cache
 
+    # Tag/Organization Cache (Redis - Optional)
+    tag_cache_ttl: int = 3600  # 1 hour in seconds
+    tag_cache_enabled: bool = True
+    org_cache_ttl: int = 900  # 15 minutes in seconds
+    org_cache_enabled: bool = True
+    dashboard_cache_ttl: int = 300  # 5 minutes in seconds
+    dashboard_cache_enabled: bool = True
+
     # ClamAV Antivirus (optional)
     clamav_enabled: bool = False
     clamav_host: str = "localhost"

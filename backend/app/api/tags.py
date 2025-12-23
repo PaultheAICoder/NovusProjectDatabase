@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Tag, TagType
 from app.schemas.base import PaginatedResponse
@@ -21,7 +22,10 @@ from app.schemas.tag import (
     TagSuggestionsResponse,
 )
 from app.services.audit_service import AuditService
+from app.services.cache_service import get_tag_cache, invalidate_tag_cache
 from app.services.tag_suggester import TagSuggester
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -36,6 +40,17 @@ async def list_tags(
     search: str | None = None,
 ) -> TagListResponse:
     """List all tags grouped by type."""
+    # Generate cache key from parameters
+    cache = get_tag_cache()
+    cache_key = f"list:{type.value if type else 'all'}:{search or ''}"
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug("tag_list_cache_hit", cache_key=cache_key)
+        return TagListResponse(**cached)
+
+    # Cache miss - query database
     query = select(Tag)
 
     if type:
@@ -49,7 +64,7 @@ async def list_tags(
     tags = result.scalars().all()
 
     # Group by type
-    grouped: dict[str, list[TagResponse]] = {
+    grouped: dict[str, list[dict]] = {
         "technology": [],
         "domain": [],
         "test_type": [],
@@ -57,8 +72,12 @@ async def list_tags(
     }
 
     for tag in tags:
-        tag_response = TagResponse.model_validate(tag)
-        grouped[tag.type.value].append(tag_response)
+        tag_dict = TagResponse.model_validate(tag).model_dump(mode="json")
+        grouped[tag.type.value].append(tag_dict)
+
+    # Store in cache
+    await cache.set(cache_key, grouped)
+    logger.debug("tag_list_cache_miss", cache_key=cache_key)
 
     return TagListResponse(**grouped)
 
@@ -77,6 +96,19 @@ async def list_tags_flat(
     """List tags with pagination and optional search (flat list, not grouped)."""
     from sqlalchemy import func
 
+    # Generate cache key from parameters
+    cache = get_tag_cache()
+    cache_key = (
+        f"flat:{type.value if type else 'all'}:{search or ''}:{page}:{page_size}"
+    )
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug("tag_flat_cache_hit", cache_key=cache_key)
+        return PaginatedResponse(**cached)
+
+    # Cache miss - query database
     query = select(Tag)
 
     if type:
@@ -96,13 +128,21 @@ async def list_tags_flat(
     result = await db.execute(query)
     tags = result.scalars().all()
 
-    return PaginatedResponse(
-        items=[TagResponse.model_validate(tag) for tag in tags],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size if total > 0 else 0,
-    )
+    response_data = {
+        "items": [
+            TagResponse.model_validate(tag).model_dump(mode="json") for tag in tags
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total > 0 else 0,
+    }
+
+    # Store in cache
+    await cache.set(cache_key, response_data)
+    logger.debug("tag_flat_cache_miss", cache_key=cache_key)
+
+    return PaginatedResponse(**response_data)
 
 
 @router.post("", response_model=TagResponse, status_code=status.HTTP_201_CREATED)
@@ -147,6 +187,9 @@ async def create_freeform_tag(
         entity_data=AuditService.serialize_entity(tag),
         user_id=current_user.id,
     )
+
+    # Invalidate tag cache
+    await invalidate_tag_cache()
 
     return TagResponse.model_validate(tag)
 

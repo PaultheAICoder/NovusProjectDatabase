@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
 from app.config import get_settings
+from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Organization
 from app.schemas.base import PaginatedResponse
@@ -21,8 +22,10 @@ from app.schemas.organization import (
     ProjectSummaryForOrg,
 )
 from app.services.audit_service import AuditService
+from app.services.cache_service import get_org_cache, invalidate_org_cache
 from app.services.sync_service import sync_organization_to_monday
 
+logger = get_logger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
@@ -39,6 +42,17 @@ async def list_organizations(
     search: str | None = None,
 ) -> PaginatedResponse[OrganizationResponse]:
     """List organizations with optional search."""
+    # Generate cache key from parameters
+    cache = get_org_cache()
+    cache_key = f"list:{search or ''}:{page}:{page_size}"
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug("org_list_cache_hit", cache_key=cache_key)
+        return PaginatedResponse(**cached)
+
+    # Cache miss - query database
     query = select(Organization)
 
     if search:
@@ -59,13 +73,22 @@ async def list_organizations(
     result = await db.execute(query)
     organizations = result.scalars().all()
 
-    return PaginatedResponse(
-        items=[OrganizationResponse.model_validate(org) for org in organizations],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
-    )
+    response_data = {
+        "items": [
+            OrganizationResponse.model_validate(org).model_dump(mode="json")
+            for org in organizations
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size,
+    }
+
+    # Store in cache
+    await cache.set(cache_key, response_data)
+    logger.debug("org_list_cache_miss", cache_key=cache_key)
+
+    return PaginatedResponse(**response_data)
 
 
 @router.post(
@@ -117,6 +140,9 @@ async def create_organization(
     # Queue sync to Monday.com if configured
     if settings.is_monday_configured and settings.monday_organizations_board_id:
         background_tasks.add_task(sync_organization_to_monday, org.id)
+
+    # Invalidate organization cache
+    await invalidate_org_cache()
 
     return OrganizationResponse.model_validate(org)
 
@@ -265,5 +291,8 @@ async def update_organization(
     # Queue sync to Monday.com if configured
     if settings.is_monday_configured and settings.monday_organizations_board_id:
         background_tasks.add_task(sync_organization_to_monday, org.id)
+
+    # Invalidate organization cache
+    await invalidate_org_cache()
 
     return OrganizationResponse.model_validate(org)
