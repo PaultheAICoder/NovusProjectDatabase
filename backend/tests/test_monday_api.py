@@ -128,6 +128,91 @@ class TestMondaySyncSchemas:
         assert response.boards[0].columns[0].id == "col1"
 
 
+class TestMondayContactSearchSchemas:
+    """Tests for Monday contact search schemas."""
+
+    def test_monday_contact_match_schema(self):
+        """Test MondayContactMatch schema structure."""
+        from app.schemas.monday import MondayContactMatch
+
+        match = MondayContactMatch(
+            monday_id="12345",
+            name="John Doe",
+            email="john@example.com",
+            phone="555-1234",
+            role_title="Manager",
+            organization="Acme Corp",
+            board_id="board123",
+        )
+
+        assert match.monday_id == "12345"
+        assert match.name == "John Doe"
+        assert match.email == "john@example.com"
+        assert match.phone == "555-1234"
+        assert match.role_title == "Manager"
+        assert match.organization == "Acme Corp"
+        assert match.board_id == "board123"
+
+    def test_monday_contact_match_optional_fields(self):
+        """Test MondayContactMatch with only required fields."""
+        from app.schemas.monday import MondayContactMatch
+
+        match = MondayContactMatch(
+            monday_id="12345",
+            name="John Doe",
+            board_id="board123",
+        )
+
+        assert match.monday_id == "12345"
+        assert match.name == "John Doe"
+        assert match.email is None
+        assert match.phone is None
+        assert match.role_title is None
+        assert match.organization is None
+
+    def test_monday_contact_search_response(self):
+        """Test MondayContactSearchResponse schema."""
+        from app.schemas.monday import MondayContactMatch, MondayContactSearchResponse
+
+        match = MondayContactMatch(
+            monday_id="12345",
+            name="John Doe",
+            board_id="board123",
+        )
+
+        response = MondayContactSearchResponse(
+            matches=[match],
+            total_matches=1,
+            query="John",
+            board_id="board123",
+            has_more=False,
+            cursor=None,
+        )
+
+        assert len(response.matches) == 1
+        assert response.total_matches == 1
+        assert response.query == "John"
+        assert response.board_id == "board123"
+        assert response.has_more is False
+        assert response.cursor is None
+
+    def test_monday_contact_search_response_with_pagination(self):
+        """Test MondayContactSearchResponse with pagination."""
+        from app.schemas.monday import MondayContactSearchResponse
+
+        response = MondayContactSearchResponse(
+            matches=[],
+            total_matches=0,
+            query="test",
+            board_id="board123",
+            has_more=True,
+            cursor="next_page_cursor",
+        )
+
+        assert response.has_more is True
+        assert response.cursor == "next_page_cursor"
+
+
 class TestMondaySyncModels:
     """Tests for Monday sync database models."""
 

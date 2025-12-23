@@ -662,6 +662,179 @@ class TestDefaultMappingsIntegration:
         assert org.notes == "Organization notes here"
 
 
+class TestMondayContactSearch:
+    """Tests for Monday.com contact search functionality."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def monday_service(self, mock_db):
+        """Create MondayService instance."""
+        return MondayService(mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_search_monday_contacts_success(self, mock_settings, monday_service):
+        """Test successful contact search."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "items_page_by_column_values": {
+                    "cursor": None,
+                    "items": [
+                        {
+                            "id": "12345",
+                            "name": "John Doe",
+                            "column_values": [
+                                {"id": "email", "text": "john@example.com"},
+                                {"id": "phone", "text": "555-1234"},
+                            ],
+                        }
+                    ],
+                }
+            }
+
+            result = await monday_service.search_monday_contacts(
+                board_id="board123",
+                query="John",
+            )
+
+            assert len(result["items"]) == 1
+            assert result["items"][0]["id"] == "12345"
+            assert result["items"][0]["name"] == "John Doe"
+            assert result["cursor"] is None
+            assert result["has_more"] is False
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_search_monday_contacts_with_pagination(
+        self, mock_settings, monday_service
+    ):
+        """Test contact search with pagination cursor."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "items_page_by_column_values": {
+                    "cursor": "next_page_cursor",
+                    "items": [{"id": "1", "name": "Contact 1", "column_values": []}],
+                }
+            }
+
+            result = await monday_service.search_monday_contacts(
+                board_id="board123",
+                query="test",
+                limit=1,
+            )
+
+            assert result["cursor"] == "next_page_cursor"
+            assert result["has_more"] is True
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_search_monday_contacts_custom_columns(
+        self, mock_settings, monday_service
+    ):
+        """Test contact search with custom search columns."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "items_page_by_column_values": {
+                    "cursor": None,
+                    "items": [],
+                }
+            }
+
+            await monday_service.search_monday_contacts(
+                board_id="board123",
+                query="test@example.com",
+                search_columns=["email"],
+            )
+
+            # Verify the query was called with correct column config
+            call_args = mock_execute.call_args
+            variables = (
+                call_args[0][1] if call_args[0] else call_args[1].get("variables")
+            )
+            assert len(variables["columns"]) == 1
+            assert variables["columns"][0]["column_id"] == "email"
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.settings")
+    async def test_search_monday_contacts_limit_clamped(
+        self, mock_settings, monday_service
+    ):
+        """Test that limit is clamped to valid range."""
+        mock_settings.monday_api_key = "test-key"
+        mock_settings.monday_api_version = "2024-10"
+
+        with patch.object(monday_service, "_execute_with_retry") as mock_execute:
+            mock_execute.return_value = {
+                "items_page_by_column_values": {"cursor": None, "items": []}
+            }
+
+            # Test upper limit
+            await monday_service.search_monday_contacts(
+                board_id="board123",
+                query="test",
+                limit=100,  # Over max of 50
+            )
+
+            call_args = mock_execute.call_args
+            variables = (
+                call_args[0][1] if call_args[0] else call_args[1].get("variables")
+            )
+            assert variables["limit"] == 50  # Should be clamped
+
+    def test_parse_contact_from_item(self, monday_service):
+        """Test parsing Monday item into contact structure."""
+        item = {
+            "id": "12345",
+            "name": "Jane Smith",
+            "column_values": [
+                {"id": "email", "text": "jane@example.com"},
+                {"id": "phone", "text": "555-9999"},
+                {"id": "role_title", "text": "Manager"},
+                {"id": "organization", "text": "Acme Corp"},
+            ],
+        }
+
+        contact = monday_service._parse_contact_from_item(item, "board123")
+
+        assert contact["monday_id"] == "12345"
+        assert contact["name"] == "Jane Smith"
+        assert contact["email"] == "jane@example.com"
+        assert contact["phone"] == "555-9999"
+        assert contact["role_title"] == "Manager"
+        assert contact["organization"] == "Acme Corp"
+        assert contact["board_id"] == "board123"
+
+    def test_parse_contact_from_item_missing_fields(self, monday_service):
+        """Test parsing item with missing optional fields."""
+        item = {
+            "id": "12345",
+            "name": "John Doe",
+            "column_values": [],
+        }
+
+        contact = monday_service._parse_contact_from_item(item, "board123")
+
+        assert contact["monday_id"] == "12345"
+        assert contact["name"] == "John Doe"
+        assert contact["email"] is None
+        assert contact["phone"] is None
+        assert contact["role_title"] is None
+        assert contact["organization"] is None
+
+
 class TestMondayServiceRetry:
     """Tests for retry logic with exponential backoff."""
 

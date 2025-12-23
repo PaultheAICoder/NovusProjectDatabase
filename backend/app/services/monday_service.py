@@ -301,6 +301,135 @@ class MondayService:
         data = await self._execute_query(query, {"limit": limit})
         return data.get("boards", [])
 
+    async def search_monday_contacts(
+        self,
+        board_id: str,
+        query: str,
+        search_columns: list[str] | None = None,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Search for contacts in a Monday.com board by column values.
+
+        Uses items_page_by_column_values GraphQL query to search for items
+        where specified columns contain the search query.
+
+        Args:
+            board_id: Monday board ID to search
+            query: Search term to match
+            search_columns: Column IDs to search (defaults to ["name", "email"])
+            limit: Maximum number of results (default 10, max 50)
+
+        Returns:
+            Dict with 'items', 'cursor', 'has_more' keys
+
+        Raises:
+            MondayAPIError: If search fails
+            MondayRateLimitError: If rate limit exceeded after retries
+        """
+        if not search_columns:
+            search_columns = ["name", "email"]
+
+        # Clamp limit to reasonable range
+        limit = max(1, min(limit, 50))
+
+        # Build columns query parameter
+        # Note: items_page_by_column_values searches for exact matches in columns
+        # We search each column separately to find partial matches
+        columns = [
+            {"column_id": col_id, "column_values": [query]} for col_id in search_columns
+        ]
+
+        graphql_query = """
+        query search_contacts(
+            $board_id: ID!,
+            $limit: Int!,
+            $columns: [ItemsPageByColumnValuesQuery!]!
+        ) {
+            items_page_by_column_values(
+                board_id: $board_id,
+                limit: $limit,
+                columns: $columns
+            ) {
+                cursor
+                items {
+                    id
+                    name
+                    column_values {
+                        id
+                        text
+                        value
+                    }
+                }
+            }
+        }
+        """
+
+        variables = {
+            "board_id": board_id,
+            "limit": limit,
+            "columns": columns,
+        }
+
+        data = await self._execute_with_retry(graphql_query, variables)
+
+        result = data.get("items_page_by_column_values", {})
+        items = result.get("items", [])
+        cursor = result.get("cursor")
+
+        logger.info(
+            "monday_contact_search_completed",
+            board_id=board_id,
+            query=query,
+            columns=search_columns,
+            results_count=len(items),
+        )
+
+        return {
+            "items": items,
+            "cursor": cursor,
+            "has_more": cursor is not None,
+        }
+
+    def _parse_contact_from_item(
+        self,
+        item: dict[str, Any],
+        board_id: str,
+    ) -> dict[str, Any]:
+        """Parse a Monday item into contact match structure.
+
+        Args:
+            item: Monday item dict with id, name, column_values
+            board_id: Board ID for reference
+
+        Returns:
+            Dict with contact fields extracted from item
+        """
+        contact = {
+            "monday_id": str(item["id"]),
+            "name": item.get("name", ""),
+            "board_id": board_id,
+            "email": None,
+            "phone": None,
+            "role_title": None,
+            "organization": None,
+        }
+
+        # Extract fields from column values
+        for col in item.get("column_values", []):
+            col_id = col.get("id", "")
+            text = col.get("text", "")
+
+            if col_id == "email" and text:
+                contact["email"] = text
+            elif col_id == "phone" and text:
+                contact["phone"] = text
+            elif col_id == "role_title" and text:
+                contact["role_title"] = text
+            elif col_id == "organization" and text:
+                contact["organization"] = text
+
+        return contact
+
     async def get_board_items(
         self, board_id: str, limit: int = 100, cursor: str | None = None
     ) -> tuple[list[dict[str, Any]], str | None]:

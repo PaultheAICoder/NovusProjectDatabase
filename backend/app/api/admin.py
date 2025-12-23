@@ -50,6 +50,8 @@ from app.schemas.monday import (
     MondayBoardInfo,
     MondayBoardsResponse,
     MondayConfigResponse,
+    MondayContactMatch,
+    MondayContactSearchResponse,
     MondaySyncLogResponse,
     MondaySyncStatusResponse,
     MondaySyncTriggerRequest,
@@ -77,6 +79,8 @@ from app.services.conflict_service import ConflictService
 from app.services.document_queue_service import DocumentQueueService
 from app.services.import_service import ImportService
 from app.services.monday_service import (
+    MondayAPIError,
+    MondayRateLimitError,
     MondayService,
     get_default_contact_field_mapping,
     get_default_org_field_mapping,
@@ -660,6 +664,84 @@ async def get_monday_sync_logs(
     )
 
     return [MondaySyncLogResponse.model_validate(log) for log in result.all()]
+
+
+@router.get("/monday/contacts/search", response_model=MondayContactSearchResponse)
+@limiter.limit(admin_limit)
+async def search_monday_contacts(
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    q: str = Query(..., min_length=1, max_length=255, description="Search query"),
+    board_id: str | None = Query(
+        None, description="Board ID to search (uses config default if not provided)"
+    ),
+    limit: int = Query(10, ge=1, le=50, description="Max results to return"),
+) -> MondayContactSearchResponse:
+    """Search for contacts in Monday.com. Admin only.
+
+    Searches for contacts in the configured contacts board (or specified board)
+    by matching the query against name and email columns.
+
+    Use this to find existing Monday contacts when creating/editing NPD contacts,
+    enabling linking to Monday items.
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    service = MondayService(db)
+
+    if not service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Monday.com API key not configured",
+        )
+
+    # Use provided board_id or fall back to config
+    target_board_id = board_id or settings.monday_contacts_board_id
+
+    if not target_board_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No contacts board ID configured. Provide board_id parameter or set MONDAY_CONTACTS_BOARD_ID.",
+        )
+
+    try:
+        result = await service.search_monday_contacts(
+            board_id=target_board_id,
+            query=q,
+            limit=limit,
+        )
+
+        # Parse items into MondayContactMatch objects
+        matches = [
+            MondayContactMatch(
+                **service._parse_contact_from_item(item, target_board_id)
+            )
+            for item in result.get("items", [])
+        ]
+
+        return MondayContactSearchResponse(
+            matches=matches,
+            total_matches=len(matches),
+            query=q,
+            board_id=target_board_id,
+            has_more=result.get("has_more", False),
+            cursor=result.get("cursor"),
+        )
+
+    except MondayRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Monday.com API rate limit exceeded. Please try again later.",
+        )
+    except MondayAPIError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Monday.com API error: {str(e)}",
+        )
+    finally:
+        await service.close()
 
 
 # ============== Sync Conflict Management (Admin Only) ==============

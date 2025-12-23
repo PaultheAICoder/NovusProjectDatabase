@@ -79,6 +79,9 @@ __all__ = [
     "AutoResolutionRuleResponse",
     "AutoResolutionRuleListResponse",
     "AutoResolutionRuleReorderRequest",
+    # Contact search schemas
+    "MondayContactMatch",
+    "MondayContactSearchResponse",
 ]
 
 
@@ -453,3 +456,29 @@ class AutoResolutionRuleReorderRequest(BaseModel):
         min_length=1,
         description="Rule IDs in desired priority order (first = highest)",
     )
+
+
+# ============== Monday Contact Search Schemas ==============
+
+
+class MondayContactMatch(BaseModel):
+    """A matching contact from Monday.com search."""
+
+    monday_id: str = Field(..., description="Monday.com item ID")
+    name: str = Field(..., description="Contact name from item name")
+    email: str | None = Field(None, description="Email if available")
+    phone: str | None = Field(None, description="Phone if available")
+    role_title: str | None = Field(None, description="Role/title if available")
+    organization: str | None = Field(None, description="Organization name if available")
+    board_id: str = Field(..., description="Board ID where contact was found")
+
+
+class MondayContactSearchResponse(BaseModel):
+    """Response from Monday.com contact search."""
+
+    matches: list[MondayContactMatch] = Field(default_factory=list)
+    total_matches: int = Field(..., description="Number of matches found")
+    query: str = Field(..., description="Search query used")
+    board_id: str = Field(..., description="Board ID searched")
+    has_more: bool = Field(False, description="Whether more results exist")
+    cursor: str | None = Field(None, description="Cursor for pagination")
