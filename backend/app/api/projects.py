@@ -18,6 +18,7 @@ from app.models import (
     Organization,
     Project,
     ProjectContact,
+    ProjectJiraLink,
     ProjectLocation,
     ProjectStatus,
     ProjectTag,
@@ -26,6 +27,7 @@ from app.models import (
 from app.models.document import Document
 from app.schemas.base import PaginatedResponse
 from app.schemas.import_ import AutofillRequest, AutofillResponse
+from app.schemas.jira import ProjectJiraLinkCreate, ProjectJiraLinkResponse
 from app.schemas.project import (
     DismissProjectTagSuggestionRequest,
     ProjectCreate,
@@ -35,6 +37,7 @@ from app.schemas.project import (
 )
 from app.schemas.tag import TagResponse
 from app.services.import_service import ImportService
+from app.services.jira_service import JiraService
 from app.services.monday_service import MondayService
 from app.services.search_cache import invalidate_search_cache
 
@@ -714,6 +717,153 @@ async def dismiss_project_tag_suggestion(
             doc.dismissed_tag_ids = dismissed + [data.tag_id]
 
     await db.commit()
+
+
+# ============== Project Jira Links ==============
+
+
+@router.get("/{project_id}/jira-links", response_model=list[ProjectJiraLinkResponse])
+@limiter.limit(crud_limit)
+async def list_project_jira_links(
+    request: Request,
+    project_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[ProjectJiraLinkResponse]:
+    """List all Jira links for a project."""
+    # Verify project exists
+    project = await db.scalar(select(Project).where(Project.id == project_id))
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    result = await db.execute(
+        select(ProjectJiraLink)
+        .where(ProjectJiraLink.project_id == project_id)
+        .order_by(ProjectJiraLink.created_at.desc())
+    )
+    links = result.scalars().all()
+
+    return [
+        ProjectJiraLinkResponse(
+            id=str(link.id),
+            project_id=str(link.project_id),
+            issue_key=link.issue_key,
+            project_key=link.project_key,
+            url=link.url,
+            link_type=link.link_type,
+            cached_status=link.cached_status,
+            cached_summary=link.cached_summary,
+            cached_at=link.cached_at,
+            created_at=link.created_at,
+        )
+        for link in links
+    ]
+
+
+@router.post(
+    "/{project_id}/jira-links",
+    response_model=ProjectJiraLinkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit(crud_limit)
+async def create_project_jira_link(
+    request: Request,
+    project_id: UUID,
+    data: ProjectJiraLinkCreate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ProjectJiraLinkResponse:
+    """Add a Jira link to a project.
+
+    Parses the URL to extract issue_key and project_key automatically.
+    """
+    # Verify project exists
+    project = await db.scalar(select(Project).where(Project.id == project_id))
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    # Parse the Jira URL to extract keys
+    jira_service = JiraService()
+    parsed = jira_service.parse_jira_url(data.url)
+
+    if not parsed or not parsed.issue_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Jira URL. Expected format: https://company.atlassian.net/browse/PROJ-123",
+        )
+
+    # Check for duplicate
+    existing = await db.scalar(
+        select(ProjectJiraLink).where(
+            ProjectJiraLink.project_id == project_id,
+            ProjectJiraLink.issue_key == parsed.issue_key,
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Jira link {parsed.issue_key} already exists for this project",
+        )
+
+    # Create the link
+    link = ProjectJiraLink(
+        project_id=project_id,
+        issue_key=parsed.issue_key,
+        project_key=parsed.project_key,
+        url=data.url,
+        link_type=data.link_type,
+    )
+    db.add(link)
+    await db.flush()
+
+    return ProjectJiraLinkResponse(
+        id=str(link.id),
+        project_id=str(link.project_id),
+        issue_key=link.issue_key,
+        project_key=link.project_key,
+        url=link.url,
+        link_type=link.link_type,
+        cached_status=link.cached_status,
+        cached_summary=link.cached_summary,
+        cached_at=link.cached_at,
+        created_at=link.created_at,
+    )
+
+
+@router.delete(
+    "/{project_id}/jira-links/{link_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@limiter.limit(crud_limit)
+async def delete_project_jira_link(
+    request: Request,
+    project_id: UUID,
+    link_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """Remove a Jira link from a project."""
+    link = await db.scalar(
+        select(ProjectJiraLink).where(
+            ProjectJiraLink.id == link_id,
+            ProjectJiraLink.project_id == project_id,
+        )
+    )
+
+    if not link:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Jira link not found",
+        )
+
+    await db.delete(link)
+    await db.flush()
 
 
 async def _generate_projects_csv_rows(

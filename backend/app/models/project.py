@@ -251,6 +251,12 @@ class Project(Base):
         lazy="selectin",
         cascade="all, delete-orphan",
     )
+    jira_links: Mapped[list["ProjectJiraLink"]] = relationship(
+        "ProjectJiraLink",
+        back_populates="project",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
 
     def can_transition_to(self, new_status: ProjectStatus) -> bool:
         """Check if status transition is valid."""
@@ -327,6 +333,7 @@ class ProjectTag(Base):
 # Forward references
 from app.models.contact import Contact  # noqa: E402, F401
 from app.models.document import Document  # noqa: E402, F401
+from app.models.jira_link import ProjectJiraLink  # noqa: E402, F401
 from app.models.organization import Organization  # noqa: E402, F401
 from app.models.tag import Tag  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401

@@ -80,6 +80,41 @@ class JiraParsedUrl(BaseModel):
     )
 
 
+# Project Jira Link schemas for CRUD operations
+
+
+class ProjectJiraLinkBase(BaseModel):
+    """Base schema for project jira link."""
+
+    url: str = Field(..., max_length=500, description="Full Jira issue URL")
+    link_type: str = Field(
+        "related", max_length=50, description="Link type: epic, story, related"
+    )
+
+
+class ProjectJiraLinkCreate(ProjectJiraLinkBase):
+    """Schema for creating a project jira link."""
+
+    pass
+
+
+class ProjectJiraLinkResponse(BaseModel):
+    """Schema for project jira link response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str = Field(..., description="Link UUID")
+    project_id: str = Field(..., description="Project UUID")
+    issue_key: str = Field(..., description="Jira issue key (e.g., PROJ-123)")
+    project_key: str = Field(..., description="Jira project key (e.g., PROJ)")
+    url: str = Field(..., description="Full Jira issue URL")
+    link_type: str = Field(..., description="Link type")
+    cached_status: str | None = Field(None, description="Cached issue status")
+    cached_summary: str | None = Field(None, description="Cached issue summary")
+    cached_at: datetime | None = Field(None, description="When cache was last updated")
+    created_at: datetime = Field(..., description="Creation timestamp")
+
+
 __all__ = [
     "JiraUser",
     "JiraIssueType",
@@ -88,4 +123,7 @@ __all__ = [
     "JiraProject",
     "JiraConnectionStatus",
     "JiraParsedUrl",
+    "ProjectJiraLinkBase",
+    "ProjectJiraLinkCreate",
+    "ProjectJiraLinkResponse",
 ]

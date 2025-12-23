@@ -9,6 +9,7 @@ from app.models.document_queue import (
     DocumentQueueStatus,
 )
 from app.models.feedback import EmailMonitorState, Feedback, FeedbackStatus
+from app.models.jira_link import ProjectJiraLink
 from app.models.monday_sync import (
     MondaySyncLog,
     MondaySyncStatus,
@@ -44,6 +45,7 @@ __all__ = [
     "TagType",
     "Project",
     "ProjectContact",
+    "ProjectJiraLink",
     "ProjectTag",
     "ProjectLocation",
     "ProjectStatus",
