@@ -3,15 +3,17 @@
  */
 
 // Version is auto-incremented by git pre-commit hook
-export const APP_VERSION = "0.25.142";
-export const BUILD_TIMESTAMP = "2025-12-23T09:51:59Z";
+export const APP_VERSION = "0.25.143";
+export const BUILD_TIMESTAMP = "2025-12-23T10:11:15Z";
 
 export function Footer() {
   return (
-    <footer className="fixed bottom-0 left-0 right-0 bg-muted/50 border-t py-2 px-4 text-xs text-muted-foreground">
-      <div className="flex justify-between items-center max-w-screen-2xl mx-auto">
+    <footer className="fixed bottom-0 left-0 right-0 border-t bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+      <div className="mx-auto flex max-w-screen-2xl items-center justify-between">
         <span>Novus Project Database</span>
-        <span>v{APP_VERSION} • {new Date(BUILD_TIMESTAMP).toLocaleString()}</span>
+        <span>
+          v{APP_VERSION} • {new Date(BUILD_TIMESTAMP).toLocaleString()}
+        </span>
       </div>
     </footer>
   );
