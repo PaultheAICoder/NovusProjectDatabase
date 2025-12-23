@@ -25,7 +25,9 @@ from app.models import (
     ProjectTag,
     Tag,
 )
+from app.models.audit import AuditLog
 from app.models.document import Document
+from app.schemas.audit import AuditLogWithUser, UserSummary
 from app.schemas.base import PaginatedResponse
 from app.schemas.import_ import AutofillRequest, AutofillResponse
 from app.schemas.jira import (
@@ -994,6 +996,86 @@ async def refresh_project_jira_status(
         )
     finally:
         await jira_service.close()
+
+
+# ============== Project Audit History ==============
+
+
+@router.get(
+    "/{project_id}/audit",
+    response_model=PaginatedResponse[AuditLogWithUser],
+)
+@limiter.limit(crud_limit)
+async def get_project_audit_history(
+    request: Request,
+    project_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> PaginatedResponse[AuditLogWithUser]:
+    """
+    Get audit history for a specific project.
+
+    Shorthand for GET /audit?entity_type=project&entity_id={project_id}
+    Returns paginated list of audit log entries with user display names.
+    """
+    # Verify project exists
+    project = await db.scalar(select(Project).where(Project.id == project_id))
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    # Build query for this project's audit logs
+    query = (
+        select(AuditLog)
+        .options(selectinload(AuditLog.user))
+        .where(AuditLog.entity_type == "project")
+        .where(AuditLog.entity_id == project_id)
+    )
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Apply ordering and pagination
+    query = query.order_by(AuditLog.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    result = await db.execute(query)
+    audit_logs = result.scalars().all()
+
+    # Build response with user summaries
+    items = []
+    for log in audit_logs:
+        user_summary = None
+        if log.user:
+            user_summary = UserSummary(
+                id=log.user.id,
+                display_name=log.user.display_name,
+            )
+
+        items.append(
+            AuditLogWithUser(
+                id=log.id,
+                entity_type=log.entity_type,
+                entity_id=log.entity_id,
+                action=log.action,
+                user=user_summary,
+                changed_fields=log.changed_fields,
+                created_at=log.created_at,
+            )
+        )
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=(total + page_size - 1) // page_size if total > 0 else 0,
+    )
 
 
 async def _generate_projects_csv_rows(

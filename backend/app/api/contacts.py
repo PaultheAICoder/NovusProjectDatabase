@@ -11,6 +11,8 @@ from app.api.deps import CurrentUser, DbSession
 from app.config import get_settings
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Contact, Organization
+from app.models.audit import AuditLog
+from app.schemas.audit import AuditLogWithUser, UserSummary
 from app.schemas.base import PaginatedResponse
 from app.schemas.contact import (
     ContactCreate,
@@ -295,4 +297,84 @@ async def sync_contact_to_monday_manual(
         sync_triggered=True,
         message="Sync to Monday.com has been triggered",
         monday_id=contact.monday_id,
+    )
+
+
+# ============== Contact Audit History ==============
+
+
+@router.get(
+    "/{contact_id}/audit",
+    response_model=PaginatedResponse[AuditLogWithUser],
+)
+@limiter.limit(crud_limit)
+async def get_contact_audit_history(
+    request: Request,
+    contact_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> PaginatedResponse[AuditLogWithUser]:
+    """
+    Get audit history for a specific contact.
+
+    Shorthand for GET /audit?entity_type=contact&entity_id={contact_id}
+    Returns paginated list of audit log entries with user display names.
+    """
+    # Verify contact exists
+    contact = await db.scalar(select(Contact).where(Contact.id == contact_id))
+    if not contact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact not found",
+        )
+
+    # Build query for this contact's audit logs
+    query = (
+        select(AuditLog)
+        .options(selectinload(AuditLog.user))
+        .where(AuditLog.entity_type == "contact")
+        .where(AuditLog.entity_id == contact_id)
+    )
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Apply ordering and pagination
+    query = query.order_by(AuditLog.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    result = await db.execute(query)
+    audit_logs = result.scalars().all()
+
+    # Build response with user summaries
+    items = []
+    for log in audit_logs:
+        user_summary = None
+        if log.user:
+            user_summary = UserSummary(
+                id=log.user.id,
+                display_name=log.user.display_name,
+            )
+
+        items.append(
+            AuditLogWithUser(
+                id=log.id,
+                entity_type=log.entity_type,
+                entity_id=log.entity_id,
+                action=log.action,
+                user=user_summary,
+                changed_fields=log.changed_fields,
+                created_at=log.created_at,
+            )
+        )
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=(total + page_size - 1) // page_size if total > 0 else 0,
     )

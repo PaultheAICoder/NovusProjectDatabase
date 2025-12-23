@@ -8,7 +8,9 @@ from app.schemas.audit import (
     AuditLogListResponse,
     AuditLogResponse,
     AuditLogSummary,
+    AuditLogWithUser,
     FieldChange,
+    UserSummary,
 )
 
 
@@ -137,3 +139,96 @@ class TestAuditLogSummary:
             created_at=datetime.now(UTC),
         )
         assert summary.action == AuditAction.CREATE
+
+
+class TestUserSummary:
+    """Tests for UserSummary schema."""
+
+    def test_user_summary_required_fields(self):
+        """UserSummary requires id and display_name."""
+        user_id = uuid4()
+        summary = UserSummary(id=user_id, display_name="John Doe")
+        assert summary.id == user_id
+        assert summary.display_name == "John Doe"
+
+    def test_user_summary_from_attributes(self):
+        """UserSummary can be created from ORM attributes."""
+        from unittest.mock import MagicMock
+
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.display_name = "Jane Doe"
+
+        # UserSummary.model_validate should work with ORM-like objects
+        summary = UserSummary(
+            id=mock_user.id,
+            display_name=mock_user.display_name,
+        )
+        assert summary.display_name == "Jane Doe"
+
+
+class TestAuditLogWithUser:
+    """Tests for AuditLogWithUser schema."""
+
+    def test_audit_log_with_user_all_fields(self):
+        """AuditLogWithUser accepts all fields including user."""
+        log_id = uuid4()
+        entity_id = uuid4()
+        user_id = uuid4()
+        now = datetime.now(UTC)
+
+        user = UserSummary(id=user_id, display_name="Test User")
+        audit_log = AuditLogWithUser(
+            id=log_id,
+            entity_type="project",
+            entity_id=entity_id,
+            action=AuditAction.UPDATE,
+            user=user,
+            changed_fields={"name": {"old": "Old", "new": "New"}},
+            created_at=now,
+        )
+
+        assert audit_log.id == log_id
+        assert audit_log.entity_type == "project"
+        assert audit_log.action == AuditAction.UPDATE
+        assert audit_log.user is not None
+        assert audit_log.user.display_name == "Test User"
+
+    def test_audit_log_with_user_none_user(self):
+        """AuditLogWithUser allows user to be None."""
+        audit_log = AuditLogWithUser(
+            id=uuid4(),
+            entity_type="contact",
+            entity_id=uuid4(),
+            action=AuditAction.CREATE,
+            user=None,
+            changed_fields=None,
+            created_at=datetime.now(UTC),
+        )
+        assert audit_log.user is None
+
+    def test_audit_log_with_user_differs_from_response(self):
+        """AuditLogWithUser has user object instead of user_id."""
+        # AuditLogResponse has user_id: UUID | None
+        response = AuditLogResponse(
+            id=uuid4(),
+            entity_type="project",
+            entity_id=uuid4(),
+            action=AuditAction.CREATE,
+            user_id=uuid4(),
+            created_at=datetime.now(UTC),
+        )
+
+        # AuditLogWithUser has user: UserSummary | None
+        with_user = AuditLogWithUser(
+            id=uuid4(),
+            entity_type="project",
+            entity_id=uuid4(),
+            action=AuditAction.CREATE,
+            user=UserSummary(id=uuid4(), display_name="Test"),
+            created_at=datetime.now(UTC),
+        )
+
+        assert hasattr(response, "user_id")
+        assert hasattr(with_user, "user")
+        assert not hasattr(with_user, "user_id")

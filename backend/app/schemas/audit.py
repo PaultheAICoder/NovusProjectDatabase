@@ -56,3 +56,29 @@ class AuditLogSummary(BaseModel):
     action: AuditAction
     user_id: UUID | None = None
     created_at: datetime
+
+
+class UserSummary(BaseModel):
+    """Minimal user info for audit log display."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    display_name: str
+
+
+class AuditLogWithUser(BaseModel):
+    """Audit log response with user display name for API responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    entity_type: str
+    entity_id: UUID
+    action: AuditAction
+    user: UserSummary | None = None
+    changed_fields: dict[str, dict[str, Any]] | None = Field(
+        None,
+        description='Format: {"field_name": {"old": value, "new": value}}',
+    )
+    created_at: datetime

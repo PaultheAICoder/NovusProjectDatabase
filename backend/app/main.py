@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.api import (
     admin,
+    audit,
     auth,
     contacts,
     cron,
@@ -143,6 +144,7 @@ app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(cron.router, prefix="/api/v1")
 app.include_router(tokens.router, prefix="/api/v1")
 app.include_router(tokens.admin_router, prefix="/api/v1")
+app.include_router(audit.router, prefix="/api/v1")
 
 
 @app.get("/health")
