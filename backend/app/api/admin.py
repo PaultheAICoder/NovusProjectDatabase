@@ -1805,3 +1805,60 @@ async def get_system_metrics(
         database=db_metrics,
         slow_request_threshold_ms=500.0,
     )
+
+
+# ============== SharePoint Health (Admin Only) ==============
+
+
+@router.get("/sharepoint/health")
+@limiter.limit(admin_limit)
+async def check_sharepoint_health(
+    request: Request,
+    admin_user: AdminUser,
+) -> dict:
+    """Check SharePoint connectivity and configuration. Admin only.
+
+    Returns configuration status and attempts to verify connectivity
+    by getting an authentication token.
+    """
+    from app.config import get_settings
+    from app.core.sharepoint import (
+        SharePointError,
+        get_sharepoint_auth,
+    )
+
+    settings = get_settings()
+
+    result = {
+        "enabled": settings.sharepoint_enabled,
+        "configured": settings.is_sharepoint_configured,
+        "site_url": settings.sharepoint_site_url or None,
+        "drive_id": (
+            settings.sharepoint_drive_id[:8] + "..."
+            if settings.sharepoint_drive_id
+            else None
+        ),
+        "base_folder": settings.sharepoint_base_folder,
+        "auth_status": "not_configured",
+        "error": None,
+    }
+
+    if not settings.is_sharepoint_configured:
+        return result
+
+    # Try to get an auth token to verify connectivity
+    try:
+        auth = get_sharepoint_auth()
+        if auth.is_configured:
+            await auth.get_app_token()
+            result["auth_status"] = "connected"
+        else:
+            result["auth_status"] = "misconfigured"
+    except SharePointError as e:
+        result["auth_status"] = "error"
+        result["error"] = str(e)[:200]
+    except Exception as e:
+        result["auth_status"] = "error"
+        result["error"] = f"Unexpected error: {str(e)[:200]}"
+
+    return result

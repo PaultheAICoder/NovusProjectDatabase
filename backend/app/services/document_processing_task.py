@@ -65,6 +65,13 @@ async def process_document_background(document_id: UUID) -> None:
 
             # Read file content from storage
             storage = StorageService()
+            logger.debug(
+                "document_processing_reading_file",
+                document_id=str(document.id),
+                storage_type=(
+                    "sharepoint" if storage.is_sharepoint_storage() else "local"
+                ),
+            )
             try:
                 file_content = await storage.read(document.file_path)
             except FileNotFoundError:

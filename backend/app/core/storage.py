@@ -11,8 +11,10 @@ from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from app.config import get_settings
+from app.core.logging import get_logger
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 class StorageBackend(ABC):
@@ -106,11 +108,47 @@ _storage: StorageBackend | None = None
 
 
 def get_storage() -> StorageBackend:
-    """Get the configured storage backend."""
+    """Get the configured storage backend.
+
+    Returns SharePointStorageAdapter if SharePoint is enabled and configured,
+    otherwise returns LocalStorageBackend.
+    """
     global _storage
     if _storage is None:
-        _storage = LocalStorageBackend()
+        settings = get_settings()
+        if settings.is_sharepoint_configured:
+            from app.core.sharepoint import SharePointStorageAdapter
+
+            _storage = SharePointStorageAdapter(
+                drive_id=settings.sharepoint_drive_id,
+                base_folder=settings.sharepoint_base_folder,
+            )
+            logger.info(
+                "storage_backend_initialized",
+                backend="sharepoint",
+                drive_id=(
+                    settings.sharepoint_drive_id[:8] + "..."
+                    if settings.sharepoint_drive_id
+                    else "not_set"
+                ),
+            )
+        else:
+            _storage = LocalStorageBackend()
+            logger.info(
+                "storage_backend_initialized",
+                backend="local",
+                base_dir=settings.upload_dir,
+            )
     return _storage
+
+
+def reset_storage() -> None:
+    """Reset the storage backend singleton.
+
+    Used primarily for testing to ensure clean state between tests.
+    """
+    global _storage
+    _storage = None
 
 
 class StorageService:
@@ -166,7 +204,22 @@ class StorageService:
         return await self._backend.exists(path)
 
     def get_path(self, relative_path: str) -> str:
-        """Get absolute path for a stored file."""
+        """Get absolute path for a stored file.
+
+        For local storage, returns filesystem path.
+        For SharePoint, returns the item ID (used for API calls).
+        """
         if isinstance(self._backend, LocalStorageBackend):
             return str(self._backend.get_absolute_path(relative_path))
+        # For SharePoint, the "path" is actually the item ID
         return relative_path
+
+    def is_local_storage(self) -> bool:
+        """Check if using local storage backend."""
+        return isinstance(self._backend, LocalStorageBackend)
+
+    def is_sharepoint_storage(self) -> bool:
+        """Check if using SharePoint storage backend."""
+        from app.core.sharepoint import SharePointStorageAdapter
+
+        return isinstance(self._backend, SharePointStorageAdapter)

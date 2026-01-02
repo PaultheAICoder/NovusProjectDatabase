@@ -13,7 +13,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -376,21 +376,45 @@ async def download_document(
             detail="Document not found",
         )
 
-    # Get file from storage
     storage = StorageService()
-    file_path = storage.get_path(document.file_path)
 
-    if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found on storage",
-        )
-
-    return FileResponse(
-        path=file_path,
-        filename=document.display_name,
-        media_type=document.mime_type,
+    logger.info(
+        "document_download",
+        document_id=str(document_id),
+        storage_type="sharepoint" if storage.is_sharepoint_storage() else "local",
     )
+
+    # Check storage type and handle accordingly
+    if storage.is_local_storage():
+        # Local storage: use FileResponse for efficiency
+        file_path = storage.get_path(document.file_path)
+        if not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found on storage",
+            )
+        return FileResponse(
+            path=file_path,
+            filename=document.display_name,
+            media_type=document.mime_type,
+        )
+    else:
+        # SharePoint storage: read content and stream
+        try:
+            content = await storage.read(document.file_path)
+            return Response(
+                content=content,
+                media_type=document.mime_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{document.display_name}"',
+                    "Content-Length": str(len(content)),
+                },
+            )
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found on storage",
+            )
 
 
 @router.post("/{document_id}/reprocess", response_model=DocumentResponse)

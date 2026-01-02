@@ -156,18 +156,20 @@ app.include_router(jobs.router, prefix="/api/v1")
 @app.get("/health")
 async def health_check() -> dict:
     """Enhanced health check endpoint with system metrics."""
+    from app.config import get_settings
     from app.services.cache_service import get_tag_cache
     from app.services.metrics_service import get_metrics_service
 
+    app_settings = get_settings()
     metrics = get_metrics_service()
     error_rates = metrics.get_error_rates()
     avg_response = metrics.get_average_response_time()
     uptime = metrics.get_uptime_seconds()
 
     # Determine status
-    status = "healthy"
+    health_status = "healthy"
     if error_rates["error_rate_percent"] > 5.0 or avg_response > 1000:
-        status = "degraded"
+        health_status = "degraded"
 
     # Check cache type
     cache_stats = get_tag_cache().stats
@@ -175,12 +177,22 @@ async def health_check() -> dict:
     if cache_stats.get("fallback_active", False):
         cache_type = "in_memory (fallback)"
 
+    # Determine storage backend
+    storage_type = "local"
+    sharepoint_status = None
+    if app_settings.is_sharepoint_configured:
+        storage_type = "sharepoint"
+        # Quick indicator that SharePoint is configured
+        sharepoint_status = "configured"
+
     return {
-        "status": status,
+        "status": health_status,
         "version": "1.0.0",
         "uptime_seconds": uptime,
         "database": "connected",  # Will add actual check in future
         "cache": cache_type,
+        "storage": storage_type,
+        "sharepoint": sharepoint_status,
         "error_rate_percent": error_rates["error_rate_percent"],
         "avg_response_time_ms": avg_response,
     }
