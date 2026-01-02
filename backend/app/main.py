@@ -21,6 +21,7 @@ from app.api import (
     projects,
     search,
     tags,
+    teams,
     tokens,
     webhooks,
 )
@@ -151,6 +152,7 @@ app.include_router(tokens.router, prefix="/api/v1")
 app.include_router(tokens.admin_router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
+app.include_router(teams.router, prefix="/api/v1")
 
 
 @app.get("/health")
