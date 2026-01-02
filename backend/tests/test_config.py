@@ -212,3 +212,91 @@ class TestE2ETestModeConfigSecurity:
         with patch.dict(os.environ, env, clear=True):
             settings = Settings(_env_file=None)
             assert settings.e2e_test_mode is False
+
+
+class TestSharePointConfigSecurity:
+    """Tests for SharePoint configuration validation."""
+
+    def test_sharepoint_disabled_by_default(self):
+        """SharePoint should be disabled by default."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.sharepoint_enabled is False
+
+    def test_is_sharepoint_configured_requires_all_settings(self):
+        """is_sharepoint_configured requires enabled + site + drive + credentials."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "SHAREPOINT_ENABLED": "true",
+            "SHAREPOINT_SITE_URL": "https://contoso.sharepoint.com/sites/NPD",
+            "SHAREPOINT_DRIVE_ID": "b!xxxxx",
+            "AZURE_AD_CLIENT_ID": "test-client-id",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_sharepoint_configured is True
+
+    def test_is_sharepoint_configured_false_when_disabled(self):
+        """is_sharepoint_configured returns False when disabled."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "SHAREPOINT_ENABLED": "false",
+            "SHAREPOINT_SITE_URL": "https://contoso.sharepoint.com/sites/NPD",
+            "SHAREPOINT_DRIVE_ID": "b!xxxxx",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_sharepoint_configured is False
+
+    def test_is_sharepoint_configured_false_without_site_url(self):
+        """is_sharepoint_configured returns False without site URL."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "SHAREPOINT_ENABLED": "true",
+            "SHAREPOINT_SITE_URL": "",
+            "SHAREPOINT_DRIVE_ID": "b!xxxxx",
+            "AZURE_AD_CLIENT_ID": "test-client-id",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_sharepoint_configured is False
+
+    def test_sharepoint_uses_azure_creds_by_default(self):
+        """SharePoint can use Azure AD credentials when SP-specific not set."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "SHAREPOINT_ENABLED": "true",
+            "SHAREPOINT_SITE_URL": "https://contoso.sharepoint.com/sites/NPD",
+            "SHAREPOINT_DRIVE_ID": "b!xxxxx",
+            # Note: Using Azure AD creds, not SharePoint-specific
+            "AZURE_AD_CLIENT_ID": "test-client-id",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_sharepoint_configured is True
+
+    def test_sharepoint_can_use_own_credentials(self):
+        """SharePoint can use its own credentials separate from Azure AD."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "SHAREPOINT_ENABLED": "true",
+            "SHAREPOINT_SITE_URL": "https://contoso.sharepoint.com/sites/NPD",
+            "SHAREPOINT_DRIVE_ID": "b!xxxxx",
+            "SHAREPOINT_CLIENT_ID": "sp-client-id",
+            "SHAREPOINT_CLIENT_SECRET": "sp-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_sharepoint_configured is True

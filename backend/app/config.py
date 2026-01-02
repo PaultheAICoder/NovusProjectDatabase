@@ -141,6 +141,15 @@ class Settings(BaseSettings):
     jira_api_token: str = ""  # API token from Atlassian account
     jira_cache_ttl: int = 3600  # Cache TTL for Jira status in seconds (default: 1 hour)
 
+    # SharePoint Integration
+    sharepoint_enabled: bool = False  # Feature flag to enable SharePoint storage
+    sharepoint_site_url: str = ""  # e.g., "https://contoso.sharepoint.com/sites/NPD"
+    sharepoint_drive_id: str = ""  # Document library drive ID from Graph API
+    sharepoint_base_folder: str = "/NPD/projects"  # Base folder path in SharePoint
+    sharepoint_client_id: str = ""  # Can reuse Azure AD client or use separate app
+    sharepoint_client_secret: str = ""  # Client secret for SharePoint app
+    sharepoint_tenant_id: str = ""  # Can default to azure_ad_tenant_id if not set
+
     # E2E Testing (only enable in test environment)
     # SECURITY: These settings have defense-in-depth protections:
     # 1. e2e_test_mode is blocked in production environment (validated below)
@@ -293,6 +302,17 @@ class Settings(BaseSettings):
     def is_jira_configured(self) -> bool:
         """Check if Jira integration is configured."""
         return bool(self.jira_base_url and self.jira_user_email and self.jira_api_token)
+
+    @property
+    def is_sharepoint_configured(self) -> bool:
+        """Check if SharePoint integration is configured."""
+        return bool(
+            self.sharepoint_enabled
+            and self.sharepoint_site_url
+            and self.sharepoint_drive_id
+            and (self.sharepoint_client_id or self.azure_ad_client_id)
+            and (self.sharepoint_client_secret or self.azure_ad_client_secret)
+        )
 
     @property
     def is_redis_configured(self) -> bool:
