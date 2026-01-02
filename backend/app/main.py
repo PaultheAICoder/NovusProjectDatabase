@@ -18,6 +18,7 @@ from app.api import (
     feedback,
     jobs,
     organizations,
+    project_permissions,
     projects,
     search,
     tags,
@@ -153,6 +154,7 @@ app.include_router(tokens.admin_router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(teams.router, prefix="/api/v1")
+app.include_router(project_permissions.router, prefix="/api/v1")
 
 
 @app.get("/health")
