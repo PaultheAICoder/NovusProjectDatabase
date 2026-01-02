@@ -650,3 +650,474 @@ class TestBackoffSchedule:
             assert (
                 BACKOFF_SCHEDULE_MINUTES[i] >= BACKOFF_SCHEDULE_MINUTES[i - 1]
             ), f"Backoff should be non-decreasing at index {i}"
+
+
+class TestHandleEmbeddingGeneration:
+    """Tests for handle_embedding_generation handler."""
+
+    @pytest.mark.asyncio
+    @patch("app.services.embedding_service.EmbeddingService")
+    async def test_processes_documents_without_chunks(self, mock_service_class):
+        """Test that handler processes documents needing embeddings."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_id = None
+        mock_job.payload = None
+
+        # Mock document query result
+        mock_doc = MagicMock()
+        mock_doc.id = uuid4()
+        mock_doc.extracted_text = "Test document content"
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_doc]
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.add = MagicMock()
+        mock_db.flush = AsyncMock()
+
+        # Mock embedding service
+        mock_service = MagicMock()
+        mock_service.chunk_text.return_value = ["chunk1"]
+        mock_service.generate_embedding = AsyncMock(return_value=[0.1, 0.2])
+        mock_service_class.return_value = mock_service
+
+        from app.services.job_handlers import handle_embedding_generation
+
+        result = await handle_embedding_generation(mock_job, mock_db)
+
+        assert result["processed"] == 1
+        assert result["chunks_created"] >= 1
+        mock_db.add.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_handles_empty_document_list(self):
+        """Test that handler handles no documents gracefully."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_id = None
+        mock_job.payload = None
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.flush = AsyncMock()
+
+        from app.services.job_handlers import handle_embedding_generation
+
+        result = await handle_embedding_generation(mock_job, mock_db)
+
+        assert result["processed"] == 0
+        assert result["failed"] == 0
+
+    @pytest.mark.asyncio
+    @patch("app.services.embedding_service.EmbeddingService")
+    async def test_processes_specific_document_ids(self, mock_service_class):
+        """Test that handler processes specific document IDs when provided."""
+        mock_db = AsyncMock()
+        doc_id = uuid4()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_id = None
+        mock_job.payload = {"document_ids": [str(doc_id)]}
+
+        # Mock document query result
+        mock_doc = MagicMock()
+        mock_doc.id = doc_id
+        mock_doc.extracted_text = "Specific document content"
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_doc]
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.add = MagicMock()
+        mock_db.flush = AsyncMock()
+
+        # Mock embedding service
+        mock_service = MagicMock()
+        mock_service.chunk_text.return_value = ["chunk1", "chunk2"]
+        mock_service.generate_embedding = AsyncMock(return_value=[0.1, 0.2, 0.3])
+        mock_service_class.return_value = mock_service
+
+        from app.services.job_handlers import handle_embedding_generation
+
+        result = await handle_embedding_generation(mock_job, mock_db)
+
+        assert result["processed"] == 1
+        assert result["chunks_created"] == 2
+
+
+class TestHandleBulkImport:
+    """Tests for handle_bulk_import handler."""
+
+    @pytest.mark.asyncio
+    @patch("app.services.import_service.ImportService")
+    async def test_processes_import_rows(self, mock_service_class):
+        """Test that handler processes import rows."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        user_id = uuid4()
+        org_id = uuid4()
+        mock_job.payload = {
+            "rows": [
+                {
+                    "row_number": 1,
+                    "name": "Test Project",
+                    "organization_id": str(org_id),
+                    "start_date": "2024-01-01",
+                    "location": "headquarters",
+                }
+            ],
+            "user_id": str(user_id),
+            "skip_invalid": True,
+        }
+
+        # Mock import service
+        from app.schemas.import_ import ImportCommitResult
+
+        mock_service = AsyncMock()
+        mock_service.commit_import.return_value = [
+            ImportCommitResult(row_number=1, success=True, project_id=uuid4())
+        ]
+        mock_service_class.return_value = mock_service
+
+        from app.services.job_handlers import handle_bulk_import
+
+        result = await handle_bulk_import(mock_job, mock_db)
+
+        assert result["total"] == 1
+        assert result["succeeded"] == 1
+        assert result["failed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_raises_error_for_missing_rows(self):
+        """Test that handler raises error for missing rows."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.payload = {"user_id": str(uuid4())}  # Missing rows
+
+        from app.services.job_handlers import handle_bulk_import
+
+        with pytest.raises(ValueError, match="rows"):
+            await handle_bulk_import(mock_job, mock_db)
+
+    @pytest.mark.asyncio
+    async def test_raises_error_for_missing_user_id(self):
+        """Test that handler raises error for missing user_id."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.payload = {"rows": []}  # Missing user_id
+
+        from app.services.job_handlers import handle_bulk_import
+
+        with pytest.raises(ValueError, match="user_id"):
+            await handle_bulk_import(mock_job, mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.import_service.ImportService")
+    async def test_handles_mixed_success_failure(self, mock_service_class):
+        """Test that handler handles mixed success/failure results."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        user_id = uuid4()
+        org_id = uuid4()
+        mock_job.payload = {
+            "rows": [
+                {
+                    "row_number": 1,
+                    "name": "Good Project",
+                    "organization_id": str(org_id),
+                    "start_date": "2024-01-01",
+                    "location": "headquarters",
+                },
+                {
+                    "row_number": 2,
+                    "name": "Bad Project",
+                    "organization_id": str(org_id),
+                    "start_date": "2024-01-02",
+                    "location": "remote",
+                },
+            ],
+            "user_id": str(user_id),
+            "skip_invalid": True,
+        }
+
+        # Mock import service with mixed results
+        from app.schemas.import_ import ImportCommitResult
+
+        mock_service = AsyncMock()
+        mock_service.commit_import.return_value = [
+            ImportCommitResult(row_number=1, success=True, project_id=uuid4()),
+            ImportCommitResult(row_number=2, success=False, error="Validation failed"),
+        ]
+        mock_service_class.return_value = mock_service
+
+        from app.services.job_handlers import handle_bulk_import
+
+        result = await handle_bulk_import(mock_job, mock_db)
+
+        assert result["total"] == 2
+        assert result["succeeded"] == 1
+        assert result["failed"] == 1
+        assert len(result["errors"]) == 1
+
+
+class TestHandleMondaySync:
+    """Tests for handle_monday_sync handler."""
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.MondayService")
+    async def test_syncs_contacts(self, mock_service_class):
+        """Test that handler syncs contacts."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_type = None
+        mock_job.entity_id = None
+        mock_job.payload = {
+            "sync_type": "contacts",
+            "board_id": "123456",
+            "field_mapping": {"email": "email"},
+            "triggered_by": str(uuid4()),
+        }
+
+        # Mock sync log result
+        from app.models.monday_sync import MondaySyncStatus
+
+        mock_sync_log = MagicMock()
+        mock_sync_log.status = MondaySyncStatus.COMPLETED
+        mock_sync_log.items_processed = 10
+        mock_sync_log.items_created = 5
+        mock_sync_log.items_updated = 3
+        mock_sync_log.items_skipped = 2
+        mock_sync_log.error_message = None
+
+        mock_service = AsyncMock()
+        mock_service.sync_contacts.return_value = mock_sync_log
+        mock_service.close = AsyncMock()
+        mock_service_class.return_value = mock_service
+
+        from app.services.job_handlers import handle_monday_sync
+
+        result = await handle_monday_sync(mock_job, mock_db)
+
+        assert result["sync_type"] == "contacts"
+        assert result["items_processed"] == 10
+        mock_service.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.MondayService")
+    async def test_syncs_organizations(self, mock_service_class):
+        """Test that handler syncs organizations."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_type = None
+        mock_job.entity_id = None
+        mock_job.payload = {
+            "sync_type": "organizations",
+            "board_id": "789012",
+            "field_mapping": {"notes": "notes"},
+            "triggered_by": str(uuid4()),
+        }
+
+        # Mock sync log result
+        from app.models.monday_sync import MondaySyncStatus
+
+        mock_sync_log = MagicMock()
+        mock_sync_log.status = MondaySyncStatus.COMPLETED
+        mock_sync_log.items_processed = 20
+        mock_sync_log.items_created = 8
+        mock_sync_log.items_updated = 10
+        mock_sync_log.items_skipped = 2
+        mock_sync_log.error_message = None
+
+        mock_service = AsyncMock()
+        mock_service.sync_organizations.return_value = mock_sync_log
+        mock_service.close = AsyncMock()
+        mock_service_class.return_value = mock_service
+
+        from app.services.job_handlers import handle_monday_sync
+
+        result = await handle_monday_sync(mock_job, mock_db)
+
+        assert result["sync_type"] == "organizations"
+        assert result["items_processed"] == 20
+        mock_service.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_error_for_missing_sync_type(self):
+        """Test that handler raises error for missing sync_type."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_type = None
+        mock_job.entity_id = None
+        mock_job.payload = {"board_id": "123456", "triggered_by": str(uuid4())}
+
+        from app.services.job_handlers import handle_monday_sync
+
+        with pytest.raises(ValueError, match="sync_type"):
+            await handle_monday_sync(mock_job, mock_db)
+
+    @pytest.mark.asyncio
+    async def test_raises_error_for_missing_board_id(self):
+        """Test that handler raises error for missing board_id."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_type = None
+        mock_job.entity_id = None
+        mock_job.payload = {"sync_type": "contacts", "triggered_by": str(uuid4())}
+
+        from app.services.job_handlers import handle_monday_sync
+
+        with pytest.raises(ValueError, match="board_id"):
+            await handle_monday_sync(mock_job, mock_db)
+
+    @pytest.mark.asyncio
+    async def test_raises_error_for_missing_triggered_by(self):
+        """Test that handler raises error for missing triggered_by."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_type = None
+        mock_job.entity_id = None
+        mock_job.payload = {"sync_type": "contacts", "board_id": "123456"}
+
+        from app.services.job_handlers import handle_monday_sync
+
+        with pytest.raises(ValueError, match="triggered_by"):
+            await handle_monday_sync(mock_job, mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.monday_service.MondayService")
+    async def test_raises_error_for_unknown_sync_type(self, mock_service_class):
+        """Test that handler raises error for unknown sync_type."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_type = None
+        mock_job.entity_id = None
+        mock_job.payload = {
+            "sync_type": "unknown",
+            "board_id": "123456",
+            "triggered_by": str(uuid4()),
+        }
+
+        mock_service = AsyncMock()
+        mock_service.close = AsyncMock()
+        mock_service_class.return_value = mock_service
+
+        from app.services.job_handlers import handle_monday_sync
+
+        with pytest.raises(ValueError, match="Unknown sync_type"):
+            await handle_monday_sync(mock_job, mock_db)
+
+
+class TestHandleDocumentProcessing:
+    """Tests for handle_document_processing handler."""
+
+    @pytest.mark.asyncio
+    @patch("app.core.storage.StorageService")
+    @patch(
+        "app.services.document_processing_task._process_document_content",
+        new_callable=AsyncMock,
+    )
+    async def test_processes_document(self, mock_process, mock_storage_class):
+        """Test that handler processes document."""
+        mock_db = AsyncMock()
+        doc_id = uuid4()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_id = doc_id
+
+        # Mock document
+        mock_doc = MagicMock()
+        mock_doc.id = doc_id
+        mock_doc.file_path = "/storage/test.pdf"
+        mock_doc.extracted_text = "Processed text content"
+        mock_doc.processing_status = "completed"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_doc
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        # Mock storage
+        mock_storage = MagicMock()
+        mock_storage.read = AsyncMock(return_value=b"file content")
+        mock_storage_class.return_value = mock_storage
+
+        mock_process.return_value = None
+
+        from app.services.job_handlers import handle_document_processing
+
+        result = await handle_document_processing(mock_job, mock_db)
+
+        assert result["document_id"] == str(doc_id)
+        assert result["status"] == "completed"
+        mock_process.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_error_for_missing_entity_id(self):
+        """Test that handler raises error for missing entity_id."""
+        mock_db = AsyncMock()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_id = None
+
+        from app.services.job_handlers import handle_document_processing
+
+        with pytest.raises(ValueError, match="entity_id"):
+            await handle_document_processing(mock_job, mock_db)
+
+    @pytest.mark.asyncio
+    async def test_raises_error_for_document_not_found(self):
+        """Test that handler raises error when document not found."""
+        mock_db = AsyncMock()
+        doc_id = uuid4()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_id = doc_id
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        from app.services.job_handlers import handle_document_processing
+
+        with pytest.raises(ValueError, match="not found"):
+            await handle_document_processing(mock_job, mock_db)
+
+    @pytest.mark.asyncio
+    @patch("app.core.storage.StorageService")
+    async def test_raises_error_for_file_not_found(self, mock_storage_class):
+        """Test that handler raises error when file not found in storage."""
+        mock_db = AsyncMock()
+        doc_id = uuid4()
+        mock_job = MagicMock()
+        mock_job.id = uuid4()
+        mock_job.entity_id = doc_id
+
+        # Mock document
+        mock_doc = MagicMock()
+        mock_doc.id = doc_id
+        mock_doc.file_path = "/storage/missing.pdf"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_doc
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        # Mock storage to raise FileNotFoundError
+        mock_storage = MagicMock()
+        mock_storage.read = AsyncMock(side_effect=FileNotFoundError("File not found"))
+        mock_storage_class.return_value = mock_storage
+
+        from app.services.job_handlers import handle_document_processing
+
+        with pytest.raises(ValueError, match="File not found"):
+            await handle_document_processing(mock_job, mock_db)

@@ -55,7 +55,7 @@ class TestE2EAuthEndpoint:
             mock_settings.e2e_test_mode = False
 
             with pytest.raises(HTTPException) as exc_info:
-                await create_test_token(request=mock_request, db=mock_db)
+                await create_test_token(request=mock_request, admin=False, db=mock_db)
 
             assert exc_info.value.status_code == 404
             assert exc_info.value.detail == "Not found"
@@ -87,7 +87,9 @@ class TestE2EAuthEndpoint:
             mock_settings.e2e_test_secret = ""  # Not required in dev
             mock_get_user.return_value = mock_user
 
-            response = await create_test_token(request=mock_request, db=mock_db)
+            response = await create_test_token(
+                request=mock_request, admin=False, db=mock_db
+            )
 
             # Verify response content
             assert response.status_code == 200
@@ -135,7 +137,7 @@ class TestE2EAuthEndpointSecurity:
             mock_settings.e2e_test_mode = True  # Even if accidentally enabled
 
             with pytest.raises(HTTPException) as exc_info:
-                await create_test_token(request=mock_request, db=mock_db)
+                await create_test_token(request=mock_request, admin=False, db=mock_db)
 
             assert exc_info.value.status_code == 404
             assert exc_info.value.detail == "Not found"
@@ -158,7 +160,7 @@ class TestE2EAuthEndpointSecurity:
             mock_settings.e2e_test_secret = "valid-secret"
 
             with pytest.raises(HTTPException) as exc_info:
-                await create_test_token(request=mock_request, db=mock_db)
+                await create_test_token(request=mock_request, admin=False, db=mock_db)
 
             assert exc_info.value.status_code == 401
             assert exc_info.value.detail == "Invalid test secret"
@@ -181,7 +183,7 @@ class TestE2EAuthEndpointSecurity:
             mock_settings.e2e_test_secret = ""  # Not configured
 
             with pytest.raises(HTTPException) as exc_info:
-                await create_test_token(request=mock_request, db=mock_db)
+                await create_test_token(request=mock_request, admin=False, db=mock_db)
 
             assert exc_info.value.status_code == 500
             assert exc_info.value.detail == "E2E test mode misconfigured"
@@ -214,7 +216,9 @@ class TestE2EAuthEndpointSecurity:
             mock_settings.e2e_test_secret = "valid-secret"
             mock_get_user.return_value = mock_user
 
-            response = await create_test_token(request=mock_request, db=mock_db)
+            response = await create_test_token(
+                request=mock_request, admin=False, db=mock_db
+            )
 
             assert response.status_code == 200
 
@@ -244,7 +248,9 @@ class TestE2EAuthEndpointSecurity:
             mock_settings.e2e_test_secret = ""  # No secret required in dev
             mock_get_user.return_value = mock_user
 
-            response = await create_test_token(request=mock_request, db=mock_db)
+            response = await create_test_token(
+                request=mock_request, admin=False, db=mock_db
+            )
 
             assert response.status_code == 200
 
@@ -268,7 +274,7 @@ class TestE2EAuthEndpointSecurity:
             mock_settings.e2e_test_secret = "correct-secret"
 
             with pytest.raises(HTTPException) as exc_info:
-                await create_test_token(request=mock_request, db=mock_db)
+                await create_test_token(request=mock_request, admin=False, db=mock_db)
 
             assert exc_info.value.status_code == 401
             assert exc_info.value.detail == "Invalid test secret"
