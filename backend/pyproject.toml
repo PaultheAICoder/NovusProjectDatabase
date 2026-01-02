@@ -80,3 +80,7 @@ filterwarnings = [
     # This occurs when async mocks from earlier tests interact with module imports
     "ignore:coroutine.*was never awaited:RuntimeWarning",
 ]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
