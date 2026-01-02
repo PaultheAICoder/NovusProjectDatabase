@@ -117,8 +117,44 @@ docker compose down -v              # Stop and clean
 
 See `specs/001-npd-v1-core/contracts/openapi.yaml` for full API spec.
 
+## SharePoint Integration (Optional)
+
+SharePoint Online can be used as the document storage backend instead of local filesystem.
+
+### Configuration
+
+```bash
+# Required for SharePoint
+SHAREPOINT_ENABLED=true
+SHAREPOINT_SITE_URL=https://your-tenant.sharepoint.com/sites/NPD
+SHAREPOINT_DRIVE_ID=<from-graph-explorer>
+
+# Optional - falls back to Azure AD credentials if not set
+SHAREPOINT_CLIENT_ID=<client-id>
+SHAREPOINT_CLIENT_SECRET=<client-secret>
+SHAREPOINT_TENANT_ID=<tenant-id>
+```
+
+### Migration from Local Storage
+
+```bash
+# Preview migration
+python -m app.scripts.migrate_to_sharepoint --dry-run
+
+# Run migration
+python -m app.scripts.migrate_to_sharepoint --batch-size 50
+```
+
+See `specs/002-sharepoint-integration/` for detailed documentation:
+- [azure-setup.md](specs/002-sharepoint-integration/azure-setup.md) - Azure AD app registration
+- [sharepoint-setup.md](specs/002-sharepoint-integration/sharepoint-setup.md) - Site/library setup
+- [configuration.md](specs/002-sharepoint-integration/configuration.md) - All environment variables
+- [migration-runbook.md](specs/002-sharepoint-integration/migration-runbook.md) - Production migration steps
+- [rollback.md](specs/002-sharepoint-integration/rollback.md) - Rollback procedures
+
 ## Recent Changes
 
+- 002-sharepoint-integration: SharePoint storage backend implemented (2026-01-02)
 - 001-npd-v1-core: Initial implementation plan created (2025-12-01)
 
 <!-- MANUAL ADDITIONS START -->

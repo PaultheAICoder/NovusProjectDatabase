@@ -83,10 +83,15 @@ services:
       ENVIRONMENT: development
       DEBUG: "true"
       # SharePoint Integration (optional - uncomment to enable)
-      # SHAREPOINT_ENABLED: "false"
-      # SHAREPOINT_SITE_URL: ""
-      # SHAREPOINT_DRIVE_ID: ""
+      # See specs/002-sharepoint-integration/configuration.md for full documentation
+      # SHAREPOINT_ENABLED: "true"
+      # SHAREPOINT_SITE_URL: "https://your-tenant.sharepoint.com/sites/NPD"
+      # SHAREPOINT_DRIVE_ID: "b!xxxxxxxxxxxxxxxxxxxxxxxxxx"
       # SHAREPOINT_BASE_FOLDER: "/NPD/projects"
+      # Optional: Use dedicated credentials (falls back to AZURE_AD_* if not set)
+      # SHAREPOINT_CLIENT_ID: ""
+      # SHAREPOINT_CLIENT_SECRET: ""
+      # SHAREPOINT_TENANT_ID: ""
     ports:
       - "6701:6701"
     volumes:
