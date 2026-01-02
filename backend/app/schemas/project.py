@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.project import ProjectLocation, ProjectStatus
+from app.models.project_permission import ProjectVisibility
 from app.schemas.contact import ContactResponse
 from app.schemas.organization import OrganizationResponse
 from app.schemas.tag import TagResponse
@@ -19,6 +20,7 @@ class ProjectBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str = Field(..., min_length=1)
     status: ProjectStatus = ProjectStatus.APPROVED
+    visibility: ProjectVisibility = ProjectVisibility.PUBLIC
     start_date: date
     end_date: date | None = None
     location: ProjectLocation = ProjectLocation.HEADQUARTERS
@@ -79,6 +81,7 @@ class ProjectUpdate(BaseModel):
     organization_id: UUID | None = None
     description: str | None = Field(None, min_length=1)
     status: ProjectStatus | None = None
+    visibility: ProjectVisibility | None = None
     start_date: date | None = None
     end_date: date | None = None
     location: ProjectLocation | None = None
@@ -129,6 +132,7 @@ class ProjectResponse(BaseModel):
     owner: UserResponse
     description: str
     status: ProjectStatus
+    visibility: ProjectVisibility
     start_date: date
     end_date: date | None = None
     location: ProjectLocation

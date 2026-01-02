@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.project_permission import ProjectVisibility
 
 
 class ProjectStatus(str, enum.Enum):
@@ -99,6 +100,17 @@ class Project(Base):
         ),
         nullable=False,
         default=ProjectStatus.APPROVED,
+        index=True,
+    )
+    visibility: Mapped[ProjectVisibility] = mapped_column(
+        Enum(
+            ProjectVisibility,
+            values_callable=lambda x: [e.value for e in x],
+            name="projectvisibility",
+            create_type=False,  # Enum created in migration
+        ),
+        nullable=False,
+        default=ProjectVisibility.PUBLIC,
         index=True,
     )
     start_date: Mapped[date] = mapped_column(
@@ -257,6 +269,12 @@ class Project(Base):
         lazy="selectin",
         cascade="all, delete-orphan",
     )
+    permissions: Mapped[list["ProjectPermission"]] = relationship(
+        "ProjectPermission",
+        back_populates="project",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
 
     def can_transition_to(self, new_status: ProjectStatus) -> bool:
         """Check if status transition is valid."""
@@ -335,5 +353,6 @@ from app.models.contact import Contact  # noqa: E402, F401
 from app.models.document import Document  # noqa: E402, F401
 from app.models.jira_link import ProjectJiraLink  # noqa: E402, F401
 from app.models.organization import Organization  # noqa: E402, F401
+from app.models.project_permission import ProjectPermission  # noqa: E402, F401
 from app.models.tag import Tag  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
