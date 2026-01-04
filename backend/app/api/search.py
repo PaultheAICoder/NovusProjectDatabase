@@ -266,8 +266,8 @@ async def summarize_search_results(
 
     # Get projects to summarize
     if body.project_ids:
-        # Fetch specific projects
-        projects = await _fetch_projects_by_ids(db, body.project_ids)
+        # Fetch specific projects (filtered by user access)
+        projects = await _fetch_projects_by_ids(db, body.project_ids, current_user)
     else:
         # Use semantic search to find relevant projects
         parser = NLQueryParser(db)
@@ -275,6 +275,7 @@ async def summarize_search_results(
         search_service = SearchService(db)
         projects, _, _ = await search_service.search_projects(
             query=parse_result.parsed_intent.search_text,
+            user=current_user,  # ACL filtering
             page=1,
             page_size=10,
         )
@@ -309,9 +310,24 @@ async def summarize_search_results(
     )
 
 
-async def _fetch_projects_by_ids(db: AsyncSession, project_ids: list[UUID]) -> list:
-    """Fetch projects by their IDs."""
+async def _fetch_projects_by_ids(
+    db: AsyncSession, project_ids: list[UUID], user: User
+) -> list:
+    """Fetch projects by their IDs, filtered by user access permissions."""
     from sqlalchemy.orm import selectinload
+
+    from app.services.permission_service import PermissionService
+
+    # Get accessible project IDs for this user
+    permission_service = PermissionService(db)
+    accessible_ids = await permission_service.get_accessible_project_ids(user)
+
+    # If empty set (admin), don't filter; otherwise filter to accessible
+    if accessible_ids:
+        project_ids = [pid for pid in project_ids if pid in accessible_ids]
+
+    if not project_ids:
+        return []
 
     stmt = (
         select(Project)
@@ -352,6 +368,7 @@ async def get_search_suggestions(
 async def _generate_search_csv_rows(
     search_service: SearchService,
     query: str,
+    user: User,
     status: list[ProjectStatus] | None,
     organization_id: UUID | None,
     tag_ids: list[UUID] | None,
@@ -397,6 +414,7 @@ async def _generate_search_csv_rows(
     while True:
         projects, total, _ = await search_service.search_projects(
             query=query,
+            user=user,  # ACL filtering
             status=status,
             organization_id=organization_id,
             tag_ids=tag_ids,
@@ -471,6 +489,7 @@ async def export_search_results_csv(
         _generate_search_csv_rows(
             search_service=search_service,
             query=q,
+            user=current_user,  # ACL filtering
             status=status,
             organization_id=organization_id,
             tag_ids=tag_ids,

@@ -5,7 +5,6 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    Depends,
     File,
     HTTPException,
     Query,
@@ -15,10 +14,14 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import (
+    CurrentUser,
+    DbSession,
+    ProjectEditor,
+    ProjectViewer,
+)
 from app.config import get_settings
 from app.core.file_utils import read_file_with_spooling
 from app.core.logging import get_logger
@@ -26,9 +29,7 @@ from app.core.rate_limit import crud_limit, limiter, upload_limit
 from app.core.storage import StorageService
 from app.models.document import Document
 from app.models.document_queue import DocumentQueueOperation
-from app.models.project import Project
 from app.models.tag import Tag
-from app.models.user import User
 from app.schemas.document import (
     DismissTagSuggestionRequest,
     DocumentDetail,
@@ -61,29 +62,15 @@ ALLOWED_MIME_TYPES = {
 }
 
 
-async def get_project(
-    project_id: UUID,
-    db: AsyncSession,
-) -> Project:
-    """Get project or raise 404."""
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-    return project
-
-
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit(upload_limit)
 async def upload_document(
     request: Request,
     project_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectEditor,  # ACL check - requires EDITOR permission to upload
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> DocumentResponse:
     """
     Upload a document to a project.
@@ -91,8 +78,7 @@ async def upload_document(
     Supports PDF, DOCX, XLSX, XLS, TXT, and CSV files.
     Maximum file size is configured by MAX_FILE_SIZE_MB.
     """
-    # Verify project exists
-    await get_project(project_id, db)
+    # Project access verified by ProjectEditor dependency
 
     # Validate file type
     if file.content_type not in ALLOWED_MIME_TYPES:
@@ -265,13 +251,14 @@ async def upload_document(
 async def list_documents(
     request: Request,
     project_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectViewer,  # ACL check - requires VIEWER permission
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> DocumentListResponse:
     """List documents for a project with pagination."""
-    await get_project(project_id, db)
+    # Project access verified by ProjectViewer dependency
 
     # Build base query
     query = select(Document).where(Document.project_id == project_id)
@@ -302,8 +289,9 @@ async def get_document(
     request: Request,
     project_id: UUID,
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectViewer,  # ACL check - requires VIEWER permission
 ) -> DocumentDetail:
     """Get a document's details."""
     result = await db.execute(
@@ -328,8 +316,9 @@ async def get_document_status(
     request: Request,
     project_id: UUID,
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectViewer,  # ACL check - requires VIEWER permission
 ) -> DocumentStatusResponse:
     """
     Get document processing status (lightweight for polling).
@@ -359,8 +348,9 @@ async def download_document(
     request: Request,
     project_id: UUID,
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectViewer,  # ACL check - requires VIEWER permission
 ):
     """Download a document file."""
     result = await db.execute(
@@ -423,8 +413,9 @@ async def reprocess_document(
     request: Request,
     project_id: UUID,
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectEditor,  # ACL check - requires EDITOR permission
 ) -> DocumentResponse:
     """
     Retry processing a failed document.
@@ -480,8 +471,9 @@ async def delete_document(
     request: Request,
     project_id: UUID,
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectEditor,  # ACL check - requires EDITOR permission
 ) -> None:
     """Delete a document."""
     result = await db.execute(
@@ -544,8 +536,9 @@ async def get_document_tag_suggestions(
     request: Request,
     project_id: UUID,
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectViewer,  # ACL check - requires VIEWER permission
 ) -> DocumentTagSuggestionsResponse:
     """
     Get tag suggestions based on document content.
@@ -596,8 +589,9 @@ async def dismiss_tag_suggestion(
     project_id: UUID,
     document_id: UUID,
     data: DismissTagSuggestionRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DbSession,
+    current_user: CurrentUser,
+    _project: ProjectEditor,  # ACL check - requires EDITOR permission
 ) -> None:
     """
     Dismiss a tag suggestion for a document.

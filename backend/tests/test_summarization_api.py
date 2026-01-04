@@ -233,9 +233,15 @@ class TestFetchProjectsByIds:
     async def test_fetch_projects_returns_list(self):
         """Should return list of projects."""
         from app.api.search import _fetch_projects_by_ids
+        from app.models.user import UserRole
 
         mock_db = AsyncMock()
         project_id = uuid4()
+
+        # Create mock admin user (bypasses ACL filtering)
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.role = UserRole.ADMIN
 
         mock_project = MagicMock()
         mock_project.id = project_id
@@ -245,7 +251,15 @@ class TestFetchProjectsByIds:
         mock_result.scalars.return_value.all.return_value = [mock_project]
         mock_db.execute.return_value = mock_result
 
-        result = await _fetch_projects_by_ids(mock_db, [project_id])
+        # Mock PermissionService to return empty set (admin behavior)
+        with patch(
+            "app.services.permission_service.PermissionService"
+        ) as mock_perm_class:
+            mock_perm_service = MagicMock()
+            mock_perm_service.get_accessible_project_ids = AsyncMock(return_value=set())
+            mock_perm_class.return_value = mock_perm_service
+
+            result = await _fetch_projects_by_ids(mock_db, [project_id], mock_user)
 
         assert len(result) == 1
         assert result[0].name == "Test Project"
@@ -254,14 +268,24 @@ class TestFetchProjectsByIds:
     async def test_fetch_projects_empty_ids(self):
         """Should return empty list for empty IDs."""
         from app.api.search import _fetch_projects_by_ids
+        from app.models.user import UserRole
 
         mock_db = AsyncMock()
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_db.execute.return_value = mock_result
+        # Create mock admin user (bypasses ACL filtering)
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.role = UserRole.ADMIN
 
-        result = await _fetch_projects_by_ids(mock_db, [])
+        # Mock PermissionService to return empty set (admin behavior)
+        with patch(
+            "app.services.permission_service.PermissionService"
+        ) as mock_perm_class:
+            mock_perm_service = MagicMock()
+            mock_perm_service.get_accessible_project_ids = AsyncMock(return_value=set())
+            mock_perm_class.return_value = mock_perm_service
+
+            result = await _fetch_projects_by_ids(mock_db, [], mock_user)
 
         assert len(result) == 0
 

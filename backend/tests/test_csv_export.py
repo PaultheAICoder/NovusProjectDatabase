@@ -8,12 +8,23 @@ import csv
 import inspect
 import io
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
 from app.api.projects import _generate_projects_csv_rows, export_projects_csv
 from app.api.search import _generate_search_csv_rows, export_search_results_csv
 from app.models.project import ProjectLocation, ProjectStatus
+from app.models.user import User, UserRole
+
+
+@pytest.fixture
+def mock_user():
+    """Create a mock user for ACL tests."""
+    user = MagicMock(spec=User)
+    user.id = uuid4()
+    user.role = UserRole.ADMIN  # Use admin to bypass ACL filtering in tests
+    return user
 
 
 class TestProjectsCSVExportStreaming:
@@ -85,7 +96,7 @@ class TestSearchCSVExportStreaming:
         assert inspect.isasyncgenfunction(_generate_search_csv_rows)
 
     @pytest.mark.asyncio
-    async def test_search_csv_header_row_yielded_first(self):
+    async def test_search_csv_header_row_yielded_first(self, mock_user):
         """Search CSV export should yield header row first."""
         # Mock search service
         # Returns (projects, total, synonym_metadata)
@@ -96,6 +107,7 @@ class TestSearchCSVExportStreaming:
         async for row in _generate_search_csv_rows(
             search_service=mock_service,
             query="test",
+            user=mock_user,
             status=None,
             organization_id=None,
             tag_ids=None,
@@ -202,7 +214,7 @@ class TestCSVExportMemoryEfficiency:
         assert data_row[1] == "Test Org"
 
     @pytest.mark.asyncio
-    async def test_search_generator_processes_pages_sequentially(self):
+    async def test_search_generator_processes_pages_sequentially(self, mock_user):
         """Search generator should process pages one at a time."""
         mock_service = AsyncMock()
 
@@ -233,6 +245,7 @@ class TestCSVExportMemoryEfficiency:
         async for row in _generate_search_csv_rows(
             search_service=mock_service,
             query="test",
+            user=mock_user,
             status=None,
             organization_id=None,
             tag_ids=None,
