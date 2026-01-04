@@ -112,6 +112,7 @@ async def search_projects(
 
     projects, total, synonym_metadata = await search_service.search_projects(
         query=q,
+        user=current_user,  # ACL filtering
         status=status,
         organization_id=organization_id,
         tag_ids=tag_ids,
@@ -213,6 +214,7 @@ async def semantic_search(
 
     projects, total, _synonym_metadata = await search_service.search_projects(
         query=parsed.search_text,
+        user=current_user,  # ACL filtering
         status=effective_status if effective_status else None,
         organization_id=effective_org_id,
         tag_ids=effective_tag_ids if effective_tag_ids else None,
@@ -338,7 +340,9 @@ async def get_search_suggestions(
     Returns project names matching the query prefix.
     """
     search_service = SearchService(db)
-    names = await search_service.get_search_suggestions(q, limit=limit)
+    names = await search_service.get_search_suggestions(
+        q, limit=limit, user=current_user
+    )
 
     suggestions = [SearchSuggestion(text=name, type="project") for name in names]
 

@@ -5,14 +5,17 @@ import time
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, literal_column, select, text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import bindparam, func, literal_column, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.logging import get_logger
 from app.models.document import Document
 from app.models.project import Project, ProjectStatus
+from app.models.user import User
 from app.services.embedding_service import EmbeddingService
+from app.services.permission_service import PermissionService
 from app.services.tag_synonym_service import TagSynonymService
 
 logger = get_logger(__name__)
@@ -32,6 +35,7 @@ class SearchService:
         self,
         query: str,
         *,
+        user: User | None = None,  # For ACL filtering
         status: list[ProjectStatus] | None = None,
         organization_id: UUID | None = None,
         tag_ids: list[UUID] | None = None,
@@ -103,6 +107,14 @@ class SearchService:
             start_date_from=start_date_from,
             start_date_to=start_date_to,
         )
+
+        # ACL filtering - restrict to accessible projects
+        if user is not None:
+            permission_service = PermissionService(self.db)
+            accessible_ids = await permission_service.get_accessible_project_ids(user)
+            if accessible_ids:  # Non-empty = regular user, apply filter
+                filter_conditions.append(Project.id.in_(accessible_ids))
+            # Empty set = admin, no filtering needed
 
         # If no query, just return filtered projects
         if not query or not query.strip():
@@ -459,23 +471,20 @@ class SearchService:
 
         # Find most similar document chunks using cosine distance
         # pgvector uses <=> for cosine distance (lower is better)
-        # Using string format for embedding since ::vector cast conflicts with SQLAlchemy's
-        # parameter parsing. The embedding is a safe string of floats.
-        embedding_literal = f"[{','.join(str(x) for x in query_embedding)}]"
-
+        # Using parameterized query with pgvector's Vector type for security
         stmt = text(
-            f"""
+            """
             SELECT DISTINCT ON (d.project_id)
                 d.project_id,
-                dc.embedding <=> '{embedding_literal}'::vector AS distance
+                dc.embedding <=> :embedding AS distance
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
             WHERE dc.embedding IS NOT NULL
-            ORDER BY d.project_id, dc.embedding <=> '{embedding_literal}'::vector
+            ORDER BY d.project_id, dc.embedding <=> :embedding
         """
-        )
+        ).bindparams(bindparam("embedding", type_=Vector(768)))
 
-        result = await self.db.execute(stmt)
+        result = await self.db.execute(stmt, {"embedding": query_embedding})
         rows = result.all()
 
         # Apply filter conditions separately (for simplicity)
@@ -541,6 +550,7 @@ class SearchService:
         self,
         query: str,
         limit: int = 10,
+        user: User | None = None,  # For ACL filtering
     ) -> list[str]:
         """
         Get search suggestions based on project names.
@@ -552,12 +562,17 @@ class SearchService:
 
         # Use ILIKE for prefix matching
         pattern = f"{query}%"
-        stmt = (
-            select(Project.name)
-            .where(Project.name.ilike(pattern))
-            .order_by(Project.name)
-            .limit(limit)
-        )
+        stmt = select(Project.name).where(Project.name.ilike(pattern))
+
+        # ACL filtering - restrict to accessible project names
+        if user is not None:
+            permission_service = PermissionService(self.db)
+            accessible_ids = await permission_service.get_accessible_project_ids(user)
+            if accessible_ids:  # Non-empty = regular user, apply filter
+                stmt = stmt.where(Project.id.in_(accessible_ids))
+            # Empty set = admin, no filtering needed
+
+        stmt = stmt.order_by(Project.name).limit(limit)
 
         result = await self.db.execute(stmt)
         return [row[0] for row in result.all()]
@@ -578,14 +593,10 @@ class SearchService:
         if not query_embedding:
             return []
 
-        # Using string format for embedding since ::vector cast conflicts with SQLAlchemy's
-        # parameter parsing. The embedding is a safe string of floats.
-        embedding_literal = f"[{','.join(str(x) for x in query_embedding)}]"
-
-        # Build query for similar chunks
+        # Build query for similar chunks using parameterized query for security
         if project_id:
             stmt = text(
-                f"""
+                """
                 SELECT
                     dc.id as chunk_id,
                     dc.content,
@@ -593,21 +604,22 @@ class SearchService:
                     d.id as document_id,
                     d.display_name,
                     d.project_id,
-                    dc.embedding <=> '{embedding_literal}'::vector AS distance
+                    dc.embedding <=> :embedding AS distance
                 FROM document_chunks dc
                 JOIN documents d ON d.id = dc.document_id
                 WHERE dc.embedding IS NOT NULL
                   AND d.project_id = :project_id
-                ORDER BY dc.embedding <=> '{embedding_literal}'::vector
+                ORDER BY dc.embedding <=> :embedding
                 LIMIT :limit
             """
             ).bindparams(
+                bindparam("embedding", type_=Vector(768)),
                 project_id=project_id,
                 limit=limit,
             )
         else:
             stmt = text(
-                f"""
+                """
                 SELECT
                     dc.id as chunk_id,
                     dc.content,
@@ -615,16 +627,19 @@ class SearchService:
                     d.id as document_id,
                     d.display_name,
                     d.project_id,
-                    dc.embedding <=> '{embedding_literal}'::vector AS distance
+                    dc.embedding <=> :embedding AS distance
                 FROM document_chunks dc
                 JOIN documents d ON d.id = dc.document_id
                 WHERE dc.embedding IS NOT NULL
-                ORDER BY dc.embedding <=> '{embedding_literal}'::vector
+                ORDER BY dc.embedding <=> :embedding
                 LIMIT :limit
             """
-            ).bindparams(limit=limit)
+            ).bindparams(
+                bindparam("embedding", type_=Vector(768)),
+                limit=limit,
+            )
 
-        result = await self.db.execute(stmt)
+        result = await self.db.execute(stmt, {"embedding": query_embedding})
         rows = result.all()
 
         return [

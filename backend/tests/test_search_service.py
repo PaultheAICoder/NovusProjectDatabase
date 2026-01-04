@@ -608,3 +608,77 @@ class TestSynonymAwareSearch:
                 query="", tag_ids=[uuid4()], expand_synonyms=False
             )
             assert len(result) == 3
+
+
+class TestVectorQuerySecurity:
+    """Tests for vector query security (parameterized queries)."""
+
+    @pytest.mark.asyncio
+    async def test_vector_search_uses_parameterized_query(self):
+        """Vector search should use parameterized queries, not string interpolation."""
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+        mock_exists_result = MagicMock()
+        mock_exists_result.scalar.return_value = True
+        mock_search_result = MagicMock()
+        mock_search_result.all.return_value = []
+        mock_db.execute.side_effect = [mock_exists_result, mock_search_result]
+
+        service = SearchService(mock_db)
+
+        # Mock embedding service to return a test embedding
+        test_embedding = [0.1] * 768
+        with patch.object(
+            service.embedding_service, "generate_embedding", return_value=test_embedding
+        ):
+            await service._get_vector_ranks("test query", [])
+
+        # Verify the vector query was called (second call)
+        assert mock_db.execute.call_count >= 2
+
+        # The SQL should NOT contain the literal embedding values
+        # It should use :embedding placeholder instead
+        vector_call = mock_db.execute.call_args_list[1]
+        sql_text = str(vector_call[0][0])
+
+        # Should NOT contain literal embedding array
+        assert "[0.1," not in sql_text
+        # Should contain parameter placeholder
+        assert ":embedding" in sql_text
+
+    @pytest.mark.asyncio
+    async def test_search_documents_uses_parameterized_query(self):
+        """search_documents should use parameterized queries, not string interpolation."""
+        from app.services.search_service import SearchService
+
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        service = SearchService(mock_db)
+
+        # Mock embedding service to return a test embedding
+        test_embedding = [0.5] * 768
+        with patch.object(
+            service.embedding_service, "generate_embedding", return_value=test_embedding
+        ):
+            await service.search_documents("test query", limit=5)
+
+        # Verify execute was called
+        assert mock_db.execute.call_count == 1
+
+        # The SQL should NOT contain the literal embedding values
+        call_args = mock_db.execute.call_args
+        sql_text = str(call_args[0][0])
+
+        # Should NOT contain literal embedding array
+        assert "[0.5," not in sql_text
+        # Should contain parameter placeholder
+        assert ":embedding" in sql_text
+
+        # Verify embedding was passed as parameter (second positional arg)
+        params = call_args[0][1]
+        assert "embedding" in params
+        assert params["embedding"] == test_embedding

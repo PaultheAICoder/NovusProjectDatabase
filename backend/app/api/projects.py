@@ -13,7 +13,13 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import (
+    CurrentUser,
+    DbSession,
+    ProjectEditor,
+    ProjectOwner,
+    ProjectViewer,
+)
 from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter
 from app.models import (
@@ -49,6 +55,7 @@ from app.services.audit_service import AuditService
 from app.services.import_service import ImportService
 from app.services.jira_service import JiraService
 from app.services.monday_service import MondayService
+from app.services.permission_service import PermissionService
 from app.services.search_cache import invalidate_search_cache
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -98,6 +105,14 @@ async def list_projects(
     start_time = time.perf_counter()
 
     query = _build_project_list_query()
+
+    # ACL filtering - only show projects the user can access
+    permission_service = PermissionService(db)
+    accessible_ids = await permission_service.get_accessible_project_ids(current_user)
+
+    # Empty set from get_accessible_project_ids means admin - skip filtering
+    if accessible_ids:  # Non-empty means regular user with specific access
+        query = query.where(Project.id.in_(accessible_ids))
 
     # Text search filter using PostgreSQL full-text search
     if q and q.strip():
@@ -334,16 +349,14 @@ async def get_project(
     project_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
+    _project: ProjectViewer,  # ACL check - requires VIEWER permission
 ) -> ProjectDetail:
     """Get project details."""
+    # Reload with full relationships for response (ProjectViewer only fetches basic project)
     result = await db.execute(_build_project_query().where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
+    project = (
+        result.scalar_one()
+    )  # Already verified to exist by ProjectViewer dependency
 
     # Build contacts with is_primary flag
     contacts = []
@@ -402,16 +415,14 @@ async def update_project(
     data: ProjectUpdate,
     db: DbSession,
     current_user: CurrentUser,
+    _project: ProjectEditor,  # ACL check - requires EDITOR permission
 ) -> ProjectResponse:
     """Update a project."""
+    # Reload with relationships for the update logic (ProjectEditor only fetches basic project)
     result = await db.execute(_build_project_query().where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
+    project = (
+        result.scalar_one()
+    )  # Already verified to exist by ProjectEditor dependency
 
     # Capture old state for audit
     old_project_data = AuditService.serialize_entity(
@@ -623,6 +634,7 @@ async def delete_project(
     project_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
+    project: ProjectOwner,  # ACL check - requires OWNER permission
 ) -> None:
     """Cancel a project (soft-delete by setting status to cancelled).
 
@@ -630,14 +642,7 @@ async def delete_project(
     as cancelled and hidden from default list views. The project can be
     restored by updating its status via PUT /projects/{project_id}.
     """
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
+    # project is already fetched and verified by ProjectOwner dependency
 
     # Capture state for audit (this is a soft delete via status change)
     old_status = project.status.value
@@ -1216,6 +1221,14 @@ async def export_projects_csv(
     # Build query with same filters as list (but NO pagination)
     # Uses optimized list query that only loads organization, owner, and tags
     query = _build_project_list_query()
+
+    # ACL filtering - only export projects the user can access
+    permission_service = PermissionService(db)
+    accessible_ids = await permission_service.get_accessible_project_ids(current_user)
+
+    # Empty set from get_accessible_project_ids means admin - skip filtering
+    if accessible_ids:  # Non-empty means regular user with specific access
+        query = query.where(Project.id.in_(accessible_ids))
 
     if status:
         query = query.where(Project.status.in_(status))
