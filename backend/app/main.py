@@ -189,6 +189,15 @@ async def health_check() -> dict:
         # Quick indicator that SharePoint is configured
         sharepoint_status = "configured"
 
+    # Check Tika status
+    from app.services.tika_client import TikaClient
+
+    tika_status = None
+    if app_settings.is_tika_configured:
+        tika_client = TikaClient()
+        tika_healthy = await tika_client.health_check()
+        tika_status = "healthy" if tika_healthy else "unavailable"
+
     return {
         "status": health_status,
         "version": "1.0.0",
@@ -197,6 +206,7 @@ async def health_check() -> dict:
         "cache": cache_type,
         "storage": storage_type,
         "sharepoint": sharepoint_status,
+        "tika": tika_status,
         "error_rate_percent": error_rates["error_rate_percent"],
         "avg_response_time_ms": avg_response,
     }

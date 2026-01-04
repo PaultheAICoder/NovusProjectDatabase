@@ -391,3 +391,70 @@ class TestSharePointConfigSecurity:
         with patch.dict(os.environ, env, clear=True):
             settings = Settings(_env_file=None)
             assert settings.is_sharepoint_configured is True
+
+
+class TestTikaConfig:
+    """Tests for Tika configuration."""
+
+    def test_tika_disabled_by_default(self):
+        """Tika should be disabled by default."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.tika_enabled is False
+
+    def test_tika_url_default(self):
+        """Tika URL should have sensible default."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.tika_url == "http://localhost:9998"
+
+    def test_tika_timeout_default(self):
+        """Tika timeout should default to 60 seconds."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.tika_timeout == 60
+
+    def test_is_tika_configured_when_enabled(self):
+        """is_tika_configured returns True when enabled."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "TIKA_ENABLED": "true",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_tika_configured is True
+
+    def test_is_tika_configured_when_disabled(self):
+        """is_tika_configured returns False when disabled."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "TIKA_ENABLED": "false",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_tika_configured is False
+
+    def test_tika_custom_url(self):
+        """Tika URL can be customized."""
+        env = {
+            "ENVIRONMENT": "development",
+            "SECRET_KEY": "a" * 32,
+            "TIKA_URL": "http://custom-tika:9999",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.tika_url == "http://custom-tika:9999"

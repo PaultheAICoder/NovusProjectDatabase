@@ -106,6 +106,11 @@ class Settings(BaseSettings):
     clamav_chunk_size: int = 8192  # Bytes per chunk for INSTREAM protocol
     clamav_max_stream_size: int = 26214400  # Max file size for scanning (25MB default)
 
+    # Apache Tika (legacy .doc file extraction)
+    tika_enabled: bool = False  # Feature flag - disabled by default
+    tika_url: str = "http://localhost:9998"
+    tika_timeout: int = 60  # seconds - longer timeout for large files
+
     # Logging
     log_level: str = "INFO"
 
@@ -332,6 +337,11 @@ class Settings(BaseSettings):
     def is_redis_configured(self) -> bool:
         """Check if Redis is configured for embedding cache."""
         return bool(self.redis_url)
+
+    @property
+    def is_tika_configured(self) -> bool:
+        """Check if Tika is enabled and configured."""
+        return self.tika_enabled
 
 
 @lru_cache
