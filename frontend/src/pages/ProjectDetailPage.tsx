@@ -14,14 +14,25 @@ import {
   User,
   FileText,
   History,
+  Plus,
+  Shield,
 } from "lucide-react";
 import { useProject, useDeleteProject } from "@/hooks/useProjects";
 import { useProjectMondayBoard } from "@/hooks/useMondaySync";
+import { useProjectPermissions } from "@/hooks/usePermissions";
 import { JiraLinksSection } from "@/components/jira/JiraLinksSection";
 import { DocumentUpload } from "@/components/forms/DocumentUpload";
 import { DocumentList } from "@/components/tables/DocumentList";
 import { DocumentTagSuggestions } from "@/components/features/DocumentTagSuggestions";
 import { DetailPageSkeleton } from "@/components/skeletons/DetailPageSkeleton";
+import {
+  VisibilityToggle,
+  PermissionList,
+  AddPermissionDialog,
+  EditPermissionDialog,
+  DeletePermissionDialog,
+} from "@/components/permissions";
+import type { ProjectPermission } from "@/types/permission";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -73,7 +84,7 @@ const locationLabels: Record<ProjectLocation, string> = {
 
 const formatLocation = (
   location: ProjectLocation,
-  locationOther: string | null
+  locationOther: string | null,
 ): string => {
   if (location === "other" && locationOther) {
     return `Other (${locationOther})`;
@@ -87,8 +98,19 @@ export function ProjectDetailPage() {
   const { data: project, isLoading, isError } = useProject(id);
   const deleteProject = useDeleteProject();
   const { data: mondayBoard } = useProjectMondayBoard(id);
+  const {
+    data: permissionsData,
+    isLoading: isLoadingPermissions,
+  } = useProjectPermissions(id);
   const [docPage, setDocPage] = useState(1);
   const [docPageSize, setDocPageSize] = useState(20);
+
+  // Permission dialogs state
+  const [isAddPermissionOpen, setIsAddPermissionOpen] = useState(false);
+  const [editingPermission, setEditingPermission] =
+    useState<ProjectPermission | null>(null);
+  const [deletingPermission, setDeletingPermission] =
+    useState<ProjectPermission | null>(null);
 
   const handleDelete = async () => {
     if (!id) return;
@@ -182,281 +204,317 @@ export function ProjectDetailPage() {
             <History className="mr-2 h-4 w-4" />
             History
           </TabsTrigger>
+          <TabsTrigger value="permissions">
+            <Shield className="mr-2 h-4 w-4" />
+            Permissions
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="details">
           <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-6">
+            <div className="space-y-6 lg:col-span-2">
               <Card>
                 <CardHeader>
                   <CardTitle>Description</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap">{project.description}</p>
-            </CardContent>
-          </Card>
+                </CardHeader>
+                <CardContent>
+                  <p className="whitespace-pre-wrap">{project.description}</p>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Project Details</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">
-                  Start: {format(new Date(project.start_date), "MMM d, yyyy")}
-                </span>
-              </div>
-              {project.end_date && (
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">
-                    End: {format(new Date(project.end_date), "MMM d, yyyy")}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">
-                  {formatLocation(project.location, project.location_other)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{project.owner.display_name}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {project.contacts && project.contacts.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Contacts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {project.contacts.map((contact) => (
-                    <div
-                      key={contact.id}
-                      className="flex items-center justify-between rounded-md border p-3"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{contact.name}</span>
-                          {contact.is_primary && (
-                            <Badge variant="secondary">Primary</Badge>
-                          )}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {contact.role && `${contact.role} • `}
-                          {contact.email}
-                        </div>
-                      </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Project Details</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">
+                      Start:{" "}
+                      {format(new Date(project.start_date), "MMM d, yyyy")}
+                    </span>
+                  </div>
+                  {project.end_date && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">
+                        End: {format(new Date(project.end_date), "MMM d, yyyy")}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {(project.milestone_version || project.run_number || project.engagement_period) && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Project Tracking</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {project.milestone_version && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Milestone/Version</span>
-                    <span className="font-medium">{project.milestone_version}</span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">
+                      {formatLocation(project.location, project.location_other)}
+                    </span>
                   </div>
-                )}
-                {project.run_number && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Run Number</span>
-                    <span className="font-medium">{project.run_number}</span>
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">
+                      {project.owner.display_name}
+                    </span>
                   </div>
-                )}
-                {project.engagement_period && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Engagement Period</span>
-                    <span className="font-medium">{project.engagement_period}</span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
 
-          {project.pm_notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle>PM Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="whitespace-pre-wrap">{project.pm_notes}</p>
-              </CardContent>
-            </Card>
-          )}
+              {project.contacts && project.contacts.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Contacts</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {project.contacts.map((contact) => (
+                        <div
+                          key={contact.id}
+                          className="flex items-center justify-between rounded-md border p-3"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {contact.name}
+                              </span>
+                              {contact.is_primary && (
+                                <Badge variant="secondary">Primary</Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {contact.role && `${contact.role} • `}
+                              {contact.email}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Documents
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <DocumentUpload projectId={id!} />
-              <DocumentList
+              {(project.milestone_version ||
+                project.run_number ||
+                project.engagement_period) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Project Tracking</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {project.milestone_version && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Milestone/Version
+                        </span>
+                        <span className="font-medium">
+                          {project.milestone_version}
+                        </span>
+                      </div>
+                    )}
+                    {project.run_number && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Run Number
+                        </span>
+                        <span className="font-medium">
+                          {project.run_number}
+                        </span>
+                      </div>
+                    )}
+                    {project.engagement_period && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Engagement Period
+                        </span>
+                        <span className="font-medium">
+                          {project.engagement_period}
+                        </span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {project.pm_notes && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>PM Notes</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-wrap">{project.pm_notes}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Documents
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <DocumentUpload projectId={id!} />
+                  <DocumentList
+                    projectId={id!}
+                    page={docPage}
+                    pageSize={docPageSize}
+                    onPageChange={setDocPage}
+                    onPageSizeChange={setDocPageSize}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-6">
+              {/* Document Tag Suggestions - show above Tags card */}
+              <DocumentTagSuggestions
                 projectId={id!}
-                page={docPage}
-                pageSize={docPageSize}
-                onPageChange={setDocPage}
-                onPageSizeChange={setDocPageSize}
+                currentTagIds={project.tags?.map((t) => t.id) || []}
               />
-            </CardContent>
-          </Card>
-        </div>
 
-        <div className="space-y-6">
-          {/* Document Tag Suggestions - show above Tags card */}
-          <DocumentTagSuggestions
-            projectId={id!}
-            currentTagIds={project.tags?.map((t) => t.id) || []}
-          />
+              {/* Jira Links Section */}
+              <JiraLinksSection projectId={id!} />
 
-          {/* Jira Links Section */}
-          <JiraLinksSection projectId={id!} />
-
-          {project.tags && project.tags.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Tags</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {project.tags
-                    .slice()
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((tag) => (
-                      <Badge key={tag.id} variant="outline">
-                        {tag.name}
-                      </Badge>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Billing</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {project.billing_amount !== null && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Amount</span>
-                  <span className="font-medium">
-                    ${project.billing_amount.toLocaleString()}
-                  </span>
-                </div>
+              {project.tags && project.tags.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Tags</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {project.tags
+                        .slice()
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((tag) => (
+                          <Badge key={tag.id} variant="outline">
+                            {tag.name}
+                          </Badge>
+                        ))}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
-              {project.invoice_count !== null && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Invoices</span>
-                  <span className="font-medium">{project.invoice_count}</span>
-                </div>
-              )}
-              {project.billing_recipient && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Recipient</span>
-                  <span className="font-medium">
-                    {project.billing_recipient}
-                  </span>
-                </div>
-              )}
-              {project.billing_notes && (
-                <div className="mt-2 border-t pt-2">
-                  <span className="text-sm text-muted-foreground">Notes:</span>
-                  <p className="mt-1 text-sm">{project.billing_notes}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {(project.monday_url || project.monday_board_id || project.jira_url || project.gitlab_url) && (
-            <Card>
-              <CardHeader>
-                <CardTitle>External Links</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {project.monday_url && (
-                  <a
-                    href={project.monday_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-primary hover:underline"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Monday.com
-                  </a>
-                )}
-                {project.monday_board_id && mondayBoard && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <ExternalLink className="h-4 w-4" />
-                    <span>Linked Board: {mondayBoard.name}</span>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Billing</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {project.billing_amount !== null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Amount</span>
+                      <span className="font-medium">
+                        ${project.billing_amount.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {project.invoice_count !== null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Invoices</span>
+                      <span className="font-medium">
+                        {project.invoice_count}
+                      </span>
+                    </div>
+                  )}
+                  {project.billing_recipient && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Recipient</span>
+                      <span className="font-medium">
+                        {project.billing_recipient}
+                      </span>
+                    </div>
+                  )}
+                  {project.billing_notes && (
+                    <div className="mt-2 border-t pt-2">
+                      <span className="text-sm text-muted-foreground">
+                        Notes:
+                      </span>
+                      <p className="mt-1 text-sm">{project.billing_notes}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {(project.monday_url ||
+                project.monday_board_id ||
+                project.jira_url ||
+                project.gitlab_url) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>External Links</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {project.monday_url && (
+                      <a
+                        href={project.monday_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-primary hover:underline"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Monday.com
+                      </a>
+                    )}
+                    {project.monday_board_id && mondayBoard && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <ExternalLink className="h-4 w-4" />
+                        <span>Linked Board: {mondayBoard.name}</span>
+                      </div>
+                    )}
+                    {project.jira_url && (
+                      <a
+                        href={project.jira_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-primary hover:underline"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Jira
+                      </a>
+                    )}
+                    {project.gitlab_url && (
+                      <a
+                        href={project.gitlab_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-primary hover:underline"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        GitLab
+                      </a>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Metadata</CardTitle>
+                  <CardDescription>
+                    Creation and update information
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Created</span>
+                    <span>
+                      {format(new Date(project.created_at), "MMM d, yyyy")}
+                    </span>
                   </div>
-                )}
-                {project.jira_url && (
-                  <a
-                    href={project.jira_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-primary hover:underline"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Jira
-                  </a>
-                )}
-                {project.gitlab_url && (
-                  <a
-                    href={project.gitlab_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-primary hover:underline"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    GitLab
-                  </a>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Metadata</CardTitle>
-              <CardDescription>Creation and update information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Created</span>
-                <span>{format(new Date(project.created_at), "MMM d, yyyy")}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Created by</span>
-                <span>{project.created_by.display_name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Updated</span>
-                <span>{format(new Date(project.updated_at), "MMM d, yyyy")}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Updated by</span>
-                <span>{project.updated_by.display_name}</span>
-              </div>
-            </CardContent>
-          </Card>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Created by</span>
+                    <span>{project.created_by.display_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Updated</span>
+                    <span>
+                      {format(new Date(project.updated_at), "MMM d, yyyy")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Updated by</span>
+                    <span>{project.updated_by.display_name}</span>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </TabsContent>
@@ -467,6 +525,64 @@ export function ProjectDetailPage() {
               <AuditTimeline entityType="project" entityId={id!} />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="permissions">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Access Control
+                  </CardTitle>
+                  <CardDescription>
+                    Manage who can access this project
+                  </CardDescription>
+                </div>
+                <Button size="sm" onClick={() => setIsAddPermissionOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Permission
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Visibility Toggle */}
+              <div className="rounded-md border p-4">
+                <VisibilityToggle
+                  projectId={id!}
+                  visibility={project.visibility}
+                />
+              </div>
+
+              {/* Permission List */}
+              <PermissionList
+                permissions={permissionsData?.items ?? []}
+                isLoading={isLoadingPermissions}
+                onEdit={setEditingPermission}
+                onDelete={setDeletingPermission}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Permission Dialogs */}
+          <AddPermissionDialog
+            isOpen={isAddPermissionOpen}
+            onClose={() => setIsAddPermissionOpen(false)}
+            projectId={id!}
+          />
+          <EditPermissionDialog
+            isOpen={!!editingPermission}
+            onClose={() => setEditingPermission(null)}
+            projectId={id!}
+            permission={editingPermission}
+          />
+          <DeletePermissionDialog
+            isOpen={!!deletingPermission}
+            onClose={() => setDeletingPermission(null)}
+            projectId={id!}
+            permission={deletingPermission}
+          />
         </TabsContent>
       </Tabs>
     </div>

@@ -3,7 +3,14 @@
  */
 
 import { useState } from "react";
-import { Settings, Tag as TagIcon, Trash2, Edit, Loader2, Merge } from "lucide-react";
+import {
+  Settings,
+  Tag as TagIcon,
+  Trash2,
+  Edit,
+  Loader2,
+  Merge,
+} from "lucide-react";
 import { AuditLogCard } from "@/components/admin/AuditLogCard";
 import { AutoResolutionCard } from "@/components/admin/AutoResolutionCard";
 import { ConflictCard } from "@/components/admin/ConflictCard";
@@ -11,8 +18,15 @@ import { DocumentQueueCard } from "@/components/admin/DocumentQueueCard";
 import { MondayConfigCard } from "@/components/admin/MondayConfigCard";
 import { SyncQueueCard } from "@/components/admin/SyncQueueCard";
 import { SynonymManagementCard } from "@/components/admin/SynonymManagementCard";
+import { TeamManagementCard } from "@/components/admin/TeamManagementCard";
 import { TokenManagementCard } from "@/components/admin/TokenManagementCard";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -89,7 +103,7 @@ export function AdminPage() {
   // Usage counts for tags
   const { data: popularTags } = usePopularTags(undefined, 500); // Get all tags with counts
   const { data: deletingTagUsage, isLoading: isLoadingUsage } = useTagUsage(
-    deletingTag?.id ?? null
+    deletingTag?.id ?? null,
   );
 
   // Check if user is admin (in real app, check user roles)
@@ -108,9 +122,12 @@ export function AdminPage() {
 
   // Get all tags as a flat array, sorted alphabetically by name
   const allTags = tags
-    ? [...tags.technology, ...tags.domain, ...tags.test_type, ...tags.freeform].sort(
-        (a, b) => a.name.localeCompare(b.name)
-      )
+    ? [
+        ...tags.technology,
+        ...tags.domain,
+        ...tags.test_type,
+        ...tags.freeform,
+      ].sort((a, b) => a.name.localeCompare(b.name))
     : [];
 
   // Create usage count map from popular tags data
@@ -126,7 +143,8 @@ export function AdminPage() {
     .filter((tag) => filterType === "all" || tag.type === filterType)
     .filter(
       (tag) =>
-        !searchQuery || tag.name.toLowerCase().includes(searchQuery.toLowerCase())
+        !searchQuery ||
+        tag.name.toLowerCase().includes(searchQuery.toLowerCase()),
     );
 
   const handleCreateTag = async () => {
@@ -317,6 +335,9 @@ export function AdminPage() {
       {/* Document Processing Queue Section */}
       <DocumentQueueCard />
 
+      {/* Team Management Section */}
+      <TeamManagementCard />
+
       {/* API Token Management Section */}
       <TokenManagementCard isAdminView />
 
@@ -344,7 +365,10 @@ export function AdminPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="tag-type">Type</Label>
-              <Select value={newTagType} onValueChange={(v) => setNewTagType(v as TagType)}>
+              <Select
+                value={newTagType}
+                onValueChange={(v) => setNewTagType(v as TagType)}
+              >
                 <SelectTrigger id="tag-type">
                   <SelectValue />
                 </SelectTrigger>
@@ -364,7 +388,9 @@ export function AdminPage() {
               onClick={handleCreateTag}
               disabled={!newTagName.trim() || createTag.isPending}
             >
-              {createTag.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {createTag.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               Create
             </Button>
           </DialogFooter>
@@ -372,7 +398,10 @@ export function AdminPage() {
       </Dialog>
 
       {/* Edit Tag Dialog */}
-      <Dialog open={!!editingTag} onOpenChange={(open) => !open && setEditingTag(null)}>
+      <Dialog
+        open={!!editingTag}
+        onOpenChange={(open) => !open && setEditingTag(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Tag</DialogTitle>
@@ -388,7 +417,10 @@ export function AdminPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-type">Type</Label>
-              <Select value={editType} onValueChange={(v) => setEditType(v as TagType)}>
+              <Select
+                value={editType}
+                onValueChange={(v) => setEditType(v as TagType)}
+              >
                 <SelectTrigger id="edit-type">
                   <SelectValue />
                 </SelectTrigger>
@@ -409,7 +441,9 @@ export function AdminPage() {
               onClick={handleEditTag}
               disabled={!editName.trim() || updateTag.isPending}
             >
-              {updateTag.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {updateTag.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               Save
             </Button>
           </DialogFooter>
@@ -417,7 +451,10 @@ export function AdminPage() {
       </Dialog>
 
       {/* Delete Tag Dialog */}
-      <Dialog open={!!deletingTag} onOpenChange={(open) => !open && setDeletingTag(null)}>
+      <Dialog
+        open={!!deletingTag}
+        onOpenChange={(open) => !open && setDeletingTag(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Tag</DialogTitle>
@@ -451,7 +488,9 @@ export function AdminPage() {
               onClick={handleDeleteTag}
               disabled={deleteTag.isPending || isLoadingUsage}
             >
-              {deleteTag.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {deleteTag.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               Delete
             </Button>
           </DialogFooter>
@@ -466,8 +505,8 @@ export function AdminPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
-              Merge one tag into another. All projects with the source tag will be
-              updated to use the target tag. The source tag will be deleted.
+              Merge one tag into another. All projects with the source tag will
+              be updated to use the target tag. The source tag will be deleted.
             </p>
             <div className="space-y-2">
               <Label>Source Tag (will be deleted)</Label>
@@ -515,7 +554,9 @@ export function AdminPage() {
                 mergeTags.isPending
               }
             >
-              {mergeTags.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mergeTags.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               Merge
             </Button>
           </DialogFooter>

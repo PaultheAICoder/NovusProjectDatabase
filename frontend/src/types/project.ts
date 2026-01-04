@@ -4,6 +4,7 @@
 
 import type { Contact } from "./contact";
 import type { Organization } from "./organization";
+import type { ProjectVisibility } from "./permission";
 import type { Tag } from "./tag";
 import type { User } from "./index";
 
@@ -26,6 +27,7 @@ export interface ProjectSummary {
   name: string;
   organization_name: string;
   status: ProjectStatus;
+  visibility: ProjectVisibility;
   start_date: string;
 }
 
@@ -36,6 +38,7 @@ export interface Project {
   owner: User;
   description: string;
   status: ProjectStatus;
+  visibility: ProjectVisibility;
   start_date: string;
   end_date: string | null;
   location: ProjectLocation;

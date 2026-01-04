@@ -20,6 +20,8 @@ import {
   Search,
   X,
   ArrowUpDown,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useExportProjects } from "@/hooks/useExport";
@@ -97,6 +99,17 @@ const columns = [
       );
     },
   }),
+  columnHelper.accessor("visibility", {
+    header: "Access",
+    cell: (info) => {
+      const visibility = info.getValue();
+      return visibility === "restricted" ? (
+        <EyeOff className="h-4 w-4 text-muted-foreground" />
+      ) : (
+        <Eye className="h-4 w-4 text-muted-foreground" />
+      );
+    },
+  }),
   columnHelper.accessor("start_date", {
     header: "Start Date",
     cell: (info) => format(new Date(info.getValue()), "MMM d, yyyy"),
@@ -121,8 +134,11 @@ export function ProjectsPage() {
   const initialTagIds = searchParams.getAll("tag_ids");
   const initialPage = parseInt(searchParams.get("page") ?? "1", 10);
   const initialPageSize = parseInt(searchParams.get("page_size") ?? "20", 10);
-  const initialSortBy = (searchParams.get("sort_by") as "name" | "start_date" | "updated_at") ?? "updated_at";
-  const initialSortOrder = (searchParams.get("sort_order") as "asc" | "desc") ?? "desc";
+  const initialSortBy =
+    (searchParams.get("sort_by") as "name" | "start_date" | "updated_at") ??
+    "updated_at";
+  const initialSortOrder =
+    (searchParams.get("sort_order") as "asc" | "desc") ?? "desc";
 
   // Default active statuses (excludes cancelled)
   const defaultActiveStatuses: ProjectStatus[] = [
@@ -137,15 +153,17 @@ export function ProjectsPage() {
   const [query, setQuery] = useState(initialQuery);
   // Use URL status if provided, otherwise default to active statuses (exclude cancelled)
   const [statusFilter, setStatusFilter] = useState<ProjectStatus[]>(
-    initialStatus.length > 0 ? initialStatus : defaultActiveStatuses
+    initialStatus.length > 0 ? initialStatus : defaultActiveStatuses,
   );
   const [organizationId, setOrganizationId] = useState<string | undefined>(
-    initialOrgId
+    initialOrgId,
   );
   const [tagIds, setTagIds] = useState<string[]>(initialTagIds);
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
-  const [sortBy, setSortBy] = useState<"name" | "start_date" | "updated_at">(initialSortBy);
+  const [sortBy, setSortBy] = useState<"name" | "start_date" | "updated_at">(
+    initialSortBy,
+  );
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">(initialSortOrder);
 
   const { exportProjects, isExporting } = useExportProjects();
@@ -179,7 +197,17 @@ export function ProjectsPage() {
     if (page > 1) params.set("page", String(page));
     if (pageSize !== 20) params.set("page_size", String(pageSize));
     setSearchParams(params);
-  }, [query, statusFilter, organizationId, tagIds, sortBy, sortOrder, page, pageSize, setSearchParams]);
+  }, [
+    query,
+    statusFilter,
+    organizationId,
+    tagIds,
+    sortBy,
+    sortOrder,
+    page,
+    pageSize,
+    setSearchParams,
+  ]);
 
   useEffect(() => {
     updateURL();
@@ -371,7 +399,7 @@ export function ProjectsPage() {
                       ? null
                       : flexRender(
                           header.column.columnDef.header,
-                          header.getContext()
+                          header.getContext(),
                         )}
                   </TableHead>
                 ))}
@@ -387,7 +415,9 @@ export function ProjectsPage() {
                 >
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="text-muted-foreground">Loading projects...</span>
+                    <span className="text-muted-foreground">
+                      Loading projects...
+                    </span>
                   </div>
                 </TableCell>
               </TableRow>
@@ -407,7 +437,7 @@ export function ProjectsPage() {
                     <TableCell key={cell.id}>
                       {flexRender(
                         cell.column.columnDef.cell,
-                        cell.getContext()
+                        cell.getContext(),
                       )}
                     </TableCell>
                   ))}
