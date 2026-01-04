@@ -444,3 +444,51 @@ async def handle_document_processing(job: Job, db: AsyncSession) -> dict | None:
         "status": document.processing_status,
         "text_length": len(document.extracted_text) if document.extracted_text else 0,
     }
+
+
+@register_job_handler(JobType.TEAM_SYNC)
+async def handle_team_sync(job: Job, db: AsyncSession) -> dict | None:
+    """Sync all team memberships from Azure AD.
+
+    This handler syncs all teams' Azure AD group membership
+    to the local TeamMember cache.
+
+    Args:
+        job: The job being processed
+        db: Database session (not used - service creates its own)
+
+    Returns:
+        Dict with sync results
+    """
+    from app.services.team_sync_service import TeamSyncService
+
+    logger.info(
+        "team_sync_job_started",
+        job_id=str(job.id),
+    )
+
+    sync_service = TeamSyncService()
+
+    if not sync_service.is_configured():
+        logger.warning(
+            "team_sync_job_skipped",
+            job_id=str(job.id),
+            reason="Azure AD not configured",
+        )
+        return {
+            "status": "skipped",
+            "reason": "Azure AD not configured",
+            "teams_synced": 0,
+        }
+
+    result = await sync_service.sync_all_teams()
+
+    logger.info(
+        "team_sync_job_completed",
+        job_id=str(job.id),
+        teams_synced=result.get("teams_succeeded", 0),
+        total_added=result.get("total_members_added", 0),
+        total_removed=result.get("total_members_removed", 0),
+    )
+
+    return result

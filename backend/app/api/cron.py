@@ -649,6 +649,95 @@ async def process_jira_refresh_endpoint(
         )
 
 
+class TeamSyncCronResult(BaseModel):
+    """Response schema for team sync cron endpoint."""
+
+    status: str
+    teams_processed: int
+    teams_succeeded: int
+    teams_failed: int
+    total_members_added: int
+    total_members_removed: int
+    errors: list[str]
+    timestamp: str
+
+
+@router.get("/team-sync", response_model=TeamSyncCronResult)
+async def process_team_sync_endpoint(
+    authorization: str | None = Header(None),
+) -> TeamSyncCronResult:
+    """Sync all team memberships from Azure AD.
+
+    This endpoint should be called by an external cron job every 15 minutes.
+    Protected by CRON_SECRET bearer token.
+
+    Processing flow:
+    1. Verify CRON_SECRET bearer token
+    2. Fetch all teams
+    3. For each team:
+       - Fetch current members from Azure AD Graph API
+       - Compare with cached TeamMember records
+       - Add new members, remove departed members
+       - Update synced_at timestamps
+    4. Return summary
+
+    Requires Azure AD App Registration with GroupMember.Read.All permission.
+    """
+    # Verify cron secret
+    if not verify_cron_secret(authorization):
+        logger.warning("cron_team_sync_unauthorized")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing CRON_SECRET",
+        )
+
+    logger.info("cron_team_sync_triggered")
+
+    try:
+        from app.services.team_sync_service import TeamSyncService
+
+        sync_service = TeamSyncService()
+
+        if not sync_service.is_configured():
+            logger.info("cron_team_sync_not_configured")
+            return TeamSyncCronResult(
+                status="skipped",
+                teams_processed=0,
+                teams_succeeded=0,
+                teams_failed=0,
+                total_members_added=0,
+                total_members_removed=0,
+                errors=["Azure AD not configured for team sync"],
+                timestamp=datetime.now(UTC).isoformat(),
+            )
+
+        result = await sync_service.sync_all_teams()
+
+        return TeamSyncCronResult(
+            status=result.get("status", "success"),
+            teams_processed=result.get("teams_processed", 0),
+            teams_succeeded=result.get("teams_succeeded", 0),
+            teams_failed=result.get("teams_failed", 0),
+            total_members_added=result.get("total_members_added", 0),
+            total_members_removed=result.get("total_members_removed", 0),
+            errors=result.get("errors", []),
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+
+    except Exception as e:
+        logger.exception("cron_team_sync_error", error=str(e))
+        return TeamSyncCronResult(
+            status="error",
+            teams_processed=0,
+            teams_succeeded=0,
+            teams_failed=0,
+            total_members_added=0,
+            total_members_removed=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+
+
 @router.get("/jobs", response_model=JobQueueProcessResult)
 async def process_jobs_endpoint(
     authorization: str | None = Header(None),

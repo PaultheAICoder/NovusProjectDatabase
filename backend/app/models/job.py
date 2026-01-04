@@ -31,6 +31,7 @@ class JobType(str, Enum):
     JIRA_REFRESH = "jira_refresh"
     BULK_IMPORT = "bulk_import"
     AUDIT_CLEANUP = "audit_cleanup"
+    TEAM_SYNC = "team_sync"
 
 
 class Job(Base):
