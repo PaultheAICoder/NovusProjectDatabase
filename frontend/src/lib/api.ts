@@ -20,36 +20,6 @@ export interface ApiErrorContext {
 }
 
 /**
- * Custom error class for API errors.
- */
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public data?: unknown,
-    public context?: ApiErrorContext
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-
-  /**
-   * Get a detailed error message for debugging.
-   */
-  getDebugInfo(): string {
-    const parts = [`Status: ${this.status}`, `Message: ${this.message}`];
-    if (this.context?.url) parts.push(`URL: ${this.context.url}`);
-    if (this.context?.method) parts.push(`Method: ${this.context.method}`);
-    if (this.context?.contentType)
-      parts.push(`Content-Type: ${this.context.contentType}`);
-    if (this.context?.responseText) {
-      parts.push(`Response Preview: ${this.context.responseText}`);
-    }
-    return parts.join("\n");
-  }
-}
-
-/**
  * Detect if content type indicates HTML.
  */
 function isHtmlContentType(contentType: string | null): boolean {
@@ -74,11 +44,131 @@ function truncateText(text: string, maxLength: number = 500): string {
 }
 
 /**
+ * Sensitive query parameter names that should be redacted in logs.
+ */
+const SENSITIVE_PARAMS = [
+  "token",
+  "key",
+  "secret",
+  "password",
+  "api_key",
+  "apikey",
+  "authorization",
+  "bearer",
+  "access_token",
+  "refresh_token",
+  "client_secret",
+  "credential",
+];
+
+/**
+ * Sanitize URL by redacting sensitive query parameters.
+ * @internal - Exported for testing only
+ */
+export function sanitizeUrl(url: string): string {
+  try {
+    // Handle relative URLs by adding a dummy origin
+    const isRelative = url.startsWith("/");
+    const fullUrl = isRelative ? `http://localhost${url}` : url;
+
+    const parsed = new URL(fullUrl);
+
+    SENSITIVE_PARAMS.forEach((param) => {
+      // Check both exact match and case-insensitive
+      parsed.searchParams.forEach((_, key) => {
+        if (key.toLowerCase() === param.toLowerCase()) {
+          parsed.searchParams.set(key, "[REDACTED]");
+        }
+      });
+    });
+
+    // Return the sanitized URL, stripping dummy origin if we added it
+    if (isRelative) {
+      return parsed.pathname + parsed.search + parsed.hash;
+    }
+    return parsed.toString();
+  } catch {
+    // If URL parsing fails, return a safe version
+    return "[Invalid URL]";
+  }
+}
+
+/**
+ * Patterns to redact in response previews.
+ */
+const SENSITIVE_PATTERNS: RegExp[] = [
+  // API keys and tokens (various formats) - matches "key": "value" patterns
+  /("?(?:api[_-]?key|token|secret|password|authorization|bearer|access[_-]?token|refresh[_-]?token|client[_-]?secret|credential)"?\s*[:=]\s*)"[^"]+"/gi,
+  // Bearer tokens in text
+  /Bearer\s+[A-Za-z0-9\-_]+\.?[A-Za-z0-9\-_]*\.?[A-Za-z0-9\-_]*/gi,
+];
+
+/**
+ * Sanitize response text by truncating and redacting sensitive patterns.
+ * @internal - Exported for testing only
+ */
+export function sanitizeResponsePreview(
+  text: string,
+  maxLength: number = 500,
+): string {
+  if (!text) return text;
+
+  let sanitized = text;
+
+  // Redact sensitive patterns
+  SENSITIVE_PATTERNS.forEach((pattern) => {
+    sanitized = sanitized.replace(pattern, (_match, prefix) => {
+      // If we captured a prefix (for key-value patterns), preserve it
+      if (prefix) {
+        return `${prefix}"[REDACTED]"`;
+      }
+      return "[REDACTED]";
+    });
+  });
+
+  // Truncate after sanitization
+  return truncateText(sanitized, maxLength);
+}
+
+/**
+ * Custom error class for API errors.
+ */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public data?: unknown,
+    public context?: ApiErrorContext,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+
+  /**
+   * Get a detailed error message for debugging.
+   * URL and response text are sanitized to prevent leaking sensitive data.
+   */
+  getDebugInfo(): string {
+    const parts = [`Status: ${this.status}`, `Message: ${this.message}`];
+    if (this.context?.url) parts.push(`URL: ${sanitizeUrl(this.context.url)}`);
+    if (this.context?.method) parts.push(`Method: ${this.context.method}`);
+    if (this.context?.contentType)
+      parts.push(`Content-Type: ${this.context.contentType}`);
+    if (this.context?.responseText) {
+      parts.push(
+        `Response Preview: ${sanitizeResponsePreview(this.context.responseText)}`,
+      );
+    }
+    return parts.join("\n");
+  }
+}
+
+/**
  * Handle API response and throw on error.
  */
 async function handleResponse<T>(
   response: Response,
-  requestContext?: { url: string; method: string }
+  requestContext?: { url: string; method: string },
 ): Promise<T> {
   if (!response.ok) {
     const contentType = response.headers.get("Content-Type");
@@ -136,10 +226,12 @@ async function handleResponse<T>(
       console.error("[API Error]", {
         status: response.status,
         statusText: response.statusText,
-        url: requestContext?.url || response.url,
+        url: sanitizeUrl(requestContext?.url || response.url),
         method: requestContext?.method,
         contentType,
-        responsePreview: rawText ? truncateText(rawText, 1000) : undefined,
+        responsePreview: rawText
+          ? sanitizeResponsePreview(rawText, 1000)
+          : undefined,
       });
     }
 
@@ -258,7 +350,7 @@ export const api = {
   async uploadWithProgress<T>(
     endpoint: string,
     formData: FormData,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
   ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
 
@@ -267,7 +359,9 @@ export const api = {
 
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable && onProgress) {
-          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          const percentComplete = Math.round(
+            (event.loaded / event.total) * 100,
+          );
           onProgress(percentComplete);
         }
       });
@@ -338,9 +432,11 @@ export const api = {
       if (import.meta.env.DEV) {
         console.error("[API Download Error]", {
           status: response.status,
-          url,
+          url: sanitizeUrl(url),
           contentType,
-          responsePreview: rawText ? truncateText(rawText, 1000) : undefined,
+          responsePreview: rawText
+            ? sanitizeResponsePreview(rawText, 1000)
+            : undefined,
         });
       }
 
@@ -348,7 +444,7 @@ export const api = {
         response.status,
         `Download failed: HTTP ${response.status}: ${response.statusText}`,
         undefined,
-        context
+        context,
       );
     }
 
@@ -373,7 +469,11 @@ export const queryClient = new QueryClient({
       staleTime: 1000 * 60, // 1 minute
       retry: (failureCount, error) => {
         // Don't retry on 4xx errors
-        if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        if (
+          error instanceof ApiError &&
+          error.status >= 400 &&
+          error.status < 500
+        ) {
           return false;
         }
         return failureCount < 3;
