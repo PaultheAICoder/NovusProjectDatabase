@@ -24,6 +24,7 @@ from app.schemas.organization import (
 )
 from app.services.audit_service import AuditService
 from app.services.cache_service import get_org_cache, invalidate_org_cache
+from app.services.permission_service import PermissionService
 from app.services.sync_service import sync_organization_to_monday
 
 logger = get_logger(__name__)
@@ -176,6 +177,15 @@ async def get_organization(
             detail="Organization not found",
         )
 
+    # ACL filtering - only show projects the user can access
+    permission_service = PermissionService(db)
+    accessible_ids = await permission_service.get_accessible_project_ids(current_user)
+
+    # Filter projects by access (empty set = admin, include all)
+    accessible_projects = org.projects
+    if accessible_ids:  # Non-empty means regular user with specific access
+        accessible_projects = [p for p in org.projects if p.id in accessible_ids]
+
     # Build project summaries
     projects = [
         ProjectSummaryForOrg(
@@ -185,7 +195,7 @@ async def get_organization(
             start_date=p.start_date,
             end_date=p.end_date,
         )
-        for p in org.projects
+        for p in accessible_projects
     ]
 
     # Build contact summaries

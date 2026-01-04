@@ -477,8 +477,8 @@ class TestGraphScopes:
 
     def test_graph_default_scope_format(self):
         """GRAPH_DEFAULT_SCOPE is properly formatted."""
-        assert GRAPH_DEFAULT_SCOPE == ["https://graph.microsoft.com/.default"]
+        assert ["https://graph.microsoft.com/.default"] == GRAPH_DEFAULT_SCOPE
 
     def test_graph_files_scope_format(self):
         """GRAPH_FILES_SCOPE is properly formatted."""
-        assert GRAPH_FILES_SCOPE == ["https://graph.microsoft.com/Files.ReadWrite.All"]
+        assert ["https://graph.microsoft.com/Files.ReadWrite.All"] == GRAPH_FILES_SCOPE

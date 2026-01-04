@@ -26,6 +26,7 @@ from app.schemas.contact import (
     ProjectSummaryForContact,
 )
 from app.services.audit_service import AuditService
+from app.services.permission_service import PermissionService
 from app.services.sync_service import sync_contact_to_monday
 
 settings = get_settings()
@@ -164,7 +165,20 @@ async def get_contact(
             detail="Contact not found",
         )
 
-    # Build project summaries from project_contacts
+    # ACL filtering - only show projects the user can access
+    permission_service = PermissionService(db)
+    accessible_ids = await permission_service.get_accessible_project_ids(current_user)
+
+    # Filter project_contacts by access (empty set = admin, include all)
+    filtered_project_contacts = contact.project_contacts
+    if accessible_ids:  # Non-empty means regular user with specific access
+        filtered_project_contacts = [
+            pc
+            for pc in contact.project_contacts
+            if pc.project is not None and pc.project.id in accessible_ids
+        ]
+
+    # Build project summaries from filtered project_contacts
     projects = [
         ProjectSummaryForContact(
             id=pc.project.id,
@@ -177,7 +191,7 @@ async def get_contact(
             end_date=pc.project.end_date,
             is_primary=pc.is_primary,
         )
-        for pc in contact.project_contacts
+        for pc in filtered_project_contacts
         if pc.project is not None
     ]
 
