@@ -232,6 +232,20 @@ class Settings(BaseSettings):
             ):
                 errors.append("AZURE_AD_CLIENT_SECRET is required in production")
 
+            # Check for localhost in CORS origins
+            if any("localhost" in origin.lower() for origin in self.cors_origins):
+                errors.append(
+                    "CORS_ORIGINS contains localhost - use production domain(s)"
+                )
+
+            # Check for in-memory rate limit storage (doesn't work across workers)
+            if self.rate_limit_enabled and self.rate_limit_storage_uri == "memory://":
+                errors.append(
+                    "RATE_LIMIT_STORAGE_URI is 'memory://' - use Redis "
+                    "(e.g., 'redis://localhost:6379') for rate limiting to work "
+                    "across multiple workers"
+                )
+
             if errors:
                 raise ValueError(
                     "Production configuration errors:\n"

@@ -139,6 +139,95 @@ class TestConfigSecurity:
                 break
 
 
+class TestProductionUnsafeDefaultsValidation:
+    """Tests for production-unsafe defaults validation (CORS localhost, memory rate limiting)."""
+
+    def test_production_rejects_localhost_cors_origins(self):
+        """Production environment rejects localhost in CORS origins."""
+        env = {
+            "ENVIRONMENT": "production",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "AZURE_AD_TENANT_ID": "test-tenant",
+            "AZURE_AD_CLIENT_ID": "test-client",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+            "CORS_ORIGINS": '["http://localhost:6700"]',
+        }
+        with (
+            patch.dict(os.environ, env, clear=True),
+            pytest.raises(ValueError, match="CORS_ORIGINS contains localhost"),
+        ):
+            Settings(_env_file=None)
+
+    def test_production_allows_non_localhost_cors_origins(self):
+        """Production environment allows non-localhost CORS origins."""
+        env = {
+            "ENVIRONMENT": "production",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "AZURE_AD_TENANT_ID": "test-tenant",
+            "AZURE_AD_CLIENT_ID": "test-client",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+            "CORS_ORIGINS": '["https://app.novuslabs.com"]',
+            "RATE_LIMIT_STORAGE_URI": "redis://localhost:6379",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.cors_origins == ["https://app.novuslabs.com"]
+
+    def test_production_rejects_memory_rate_limit_storage(self):
+        """Production environment rejects in-memory rate limit storage."""
+        env = {
+            "ENVIRONMENT": "production",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "AZURE_AD_TENANT_ID": "test-tenant",
+            "AZURE_AD_CLIENT_ID": "test-client",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+            "CORS_ORIGINS": '["https://app.novuslabs.com"]',
+            "RATE_LIMIT_STORAGE_URI": "memory://",
+        }
+        with (
+            patch.dict(os.environ, env, clear=True),
+            pytest.raises(ValueError, match="RATE_LIMIT_STORAGE_URI is 'memory://'"),
+        ):
+            Settings(_env_file=None)
+
+    def test_production_allows_redis_rate_limit_storage(self):
+        """Production environment allows Redis rate limit storage."""
+        env = {
+            "ENVIRONMENT": "production",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "AZURE_AD_TENANT_ID": "test-tenant",
+            "AZURE_AD_CLIENT_ID": "test-client",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+            "CORS_ORIGINS": '["https://app.novuslabs.com"]',
+            "RATE_LIMIT_STORAGE_URI": "redis://localhost:6379",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.rate_limit_storage_uri == "redis://localhost:6379"
+
+    def test_production_allows_memory_when_rate_limit_disabled(self):
+        """Production allows memory storage when rate limiting is disabled."""
+        env = {
+            "ENVIRONMENT": "production",
+            "DATABASE_URL": "postgresql+asyncpg://user:pass@host/db",
+            "SECRET_KEY": "a" * 32,
+            "AZURE_AD_TENANT_ID": "test-tenant",
+            "AZURE_AD_CLIENT_ID": "test-client",
+            "AZURE_AD_CLIENT_SECRET": "test-secret",
+            "CORS_ORIGINS": '["https://app.novuslabs.com"]',
+            "RATE_LIMIT_ENABLED": "false",
+            "RATE_LIMIT_STORAGE_URI": "memory://",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.rate_limit_enabled is False
+            assert settings.rate_limit_storage_uri == "memory://"
+
+
 class TestE2ETestModeConfigSecurity:
     """Tests for E2E test mode configuration security validation."""
 
@@ -151,6 +240,8 @@ class TestE2ETestModeConfigSecurity:
             "AZURE_AD_TENANT_ID": "test-tenant",
             "AZURE_AD_CLIENT_ID": "test-client",
             "AZURE_AD_CLIENT_SECRET": "test-secret",
+            "CORS_ORIGINS": '["https://app.novuslabs.com"]',
+            "RATE_LIMIT_STORAGE_URI": "redis://localhost:6379",
             "E2E_TEST_MODE": "true",
         }
         with (
