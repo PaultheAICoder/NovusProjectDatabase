@@ -20,6 +20,7 @@ from app.api.deps import (
     ProjectOwner,
     ProjectViewer,
 )
+from app.core.field_whitelists import PROJECT_SORT_COLUMNS, PROJECT_UPDATE_FIELDS
 from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter
 from app.models import (
@@ -145,7 +146,13 @@ async def list_projects(
     )
     total = await db.scalar(count_query) or 0
 
-    # Apply sorting
+    # Apply sorting with whitelist validation
+    if sort_by not in PROJECT_SORT_COLUMNS:
+        # Should never happen due to Query enum validation, but defense-in-depth
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid sort column: {sort_by}",
+        )
     sort_column = getattr(Project, sort_by)
     if sort_order == "desc":
         sort_column = sort_column.desc()
@@ -495,6 +502,14 @@ async def update_project(
         exclude={"contact_ids", "primary_contact_id", "tag_ids"},
     )
     for field, value in update_data.items():
+        # Defense-in-depth: validate field is in allowed list
+        if field not in PROJECT_UPDATE_FIELDS:
+            logger.warning(
+                "skipping_invalid_project_update_field",
+                field=field,
+                project_id=str(project_id),
+            )
+            continue
         setattr(project, field, value)
 
     # Clear location_other if location is not "other"

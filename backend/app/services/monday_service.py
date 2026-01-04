@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.field_whitelists import CONTACT_SYNC_FIELDS, ORGANIZATION_SYNC_FIELDS
 from app.core.logging import get_logger
 from app.models.contact import Contact
 from app.models.monday_sync import (
@@ -1237,6 +1238,26 @@ class MondayService:
                     )
                     if column_id in column_mapping:
                         npd_field = column_mapping[column_id]
+
+                        # Defense-in-depth: validate mapped field is in whitelist
+                        allowed_fields = (
+                            CONTACT_SYNC_FIELDS
+                            if board_type == "contacts"
+                            else ORGANIZATION_SYNC_FIELDS
+                        )
+
+                        if npd_field not in allowed_fields:
+                            logger.warning(
+                                "mapped_field_not_in_whitelist",
+                                column_id=column_id,
+                                npd_field=npd_field,
+                                board_type=board_type,
+                            )
+                            return {
+                                "action": "skipped",
+                                "reason": f"field_not_allowed:{npd_field}",
+                            }
+
                         if hasattr(record, npd_field):
                             setattr(record, npd_field, parsed_value)
 
@@ -1287,6 +1308,23 @@ class MondayService:
         # Map column_id to NPD field and update
         if column_id in column_mapping:
             npd_field = column_mapping[column_id]
+
+            # Defense-in-depth: validate mapped field is in whitelist
+            allowed_fields = (
+                CONTACT_SYNC_FIELDS
+                if board_type == "contacts"
+                else ORGANIZATION_SYNC_FIELDS
+            )
+
+            if npd_field not in allowed_fields:
+                logger.warning(
+                    "mapped_field_not_in_whitelist",
+                    column_id=column_id,
+                    npd_field=npd_field,
+                    board_type=board_type,
+                )
+                return {"action": "skipped", "reason": f"field_not_allowed:{npd_field}"}
+
             if hasattr(record, npd_field):
                 setattr(record, npd_field, parsed_value)
             else:

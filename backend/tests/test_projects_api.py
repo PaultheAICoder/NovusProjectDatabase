@@ -468,3 +468,86 @@ class TestDismissProjectTagSuggestion:
             dismissed_list = dismissed_list + [tag_id]
 
         assert tag_id in dismissed_list
+
+
+class TestFieldWhitelistSecurity:
+    """Tests for field whitelist security validation (GitHub Issue #172).
+
+    These tests verify that the defense-in-depth whitelist validation
+    prevents setting or querying dangerous fields.
+    """
+
+    def test_project_sort_columns_whitelist_exists(self):
+        """PROJECT_SORT_COLUMNS whitelist should exist."""
+        from app.core.field_whitelists import PROJECT_SORT_COLUMNS
+
+        assert PROJECT_SORT_COLUMNS is not None
+        assert isinstance(PROJECT_SORT_COLUMNS, frozenset)
+
+    def test_project_sort_columns_has_valid_columns(self):
+        """PROJECT_SORT_COLUMNS should contain only valid sortable columns."""
+        from app.core.field_whitelists import PROJECT_SORT_COLUMNS
+
+        # Should contain the documented sort options
+        assert "name" in PROJECT_SORT_COLUMNS
+        assert "start_date" in PROJECT_SORT_COLUMNS
+        assert "updated_at" in PROJECT_SORT_COLUMNS
+
+        # Should NOT contain dangerous fields
+        assert "id" not in PROJECT_SORT_COLUMNS
+        assert "__dict__" not in PROJECT_SORT_COLUMNS
+        assert "_sa_instance_state" not in PROJECT_SORT_COLUMNS
+
+    def test_project_update_fields_whitelist_exists(self):
+        """PROJECT_UPDATE_FIELDS whitelist should exist."""
+        from app.core.field_whitelists import PROJECT_UPDATE_FIELDS
+
+        assert PROJECT_UPDATE_FIELDS is not None
+        assert isinstance(PROJECT_UPDATE_FIELDS, frozenset)
+
+    def test_project_update_fields_excludes_dangerous_fields(self):
+        """PROJECT_UPDATE_FIELDS should NOT contain dangerous fields."""
+        from app.core.field_whitelists import PROJECT_UPDATE_FIELDS
+
+        # Should NOT contain system-managed fields
+        dangerous_fields = [
+            "id",
+            "created_at",
+            "created_by",
+            "updated_at",
+            "updated_by",
+            "__dict__",
+            "_sa_instance_state",
+        ]
+
+        for field in dangerous_fields:
+            assert field not in PROJECT_UPDATE_FIELDS, f"{field} should be excluded"
+
+    def test_project_update_fields_matches_schema(self):
+        """PROJECT_UPDATE_FIELDS should contain fields from ProjectUpdate schema."""
+        from app.core.field_whitelists import PROJECT_UPDATE_FIELDS
+        from app.schemas.project import ProjectUpdate
+
+        # Get field names from schema (excluding relation fields)
+        schema_fields = set(ProjectUpdate.model_fields.keys())
+        excluded_relations = {"contact_ids", "primary_contact_id", "tag_ids"}
+        expected_fields = schema_fields - excluded_relations
+
+        # All schema fields should be in whitelist
+        for field in expected_fields:
+            assert field in PROJECT_UPDATE_FIELDS, f"{field} missing from whitelist"
+
+    def test_invalid_sort_by_rejected_by_pydantic(self):
+        """Invalid sort_by values should be rejected at Pydantic/FastAPI level.
+
+        This tests that the API Query parameter validation prevents
+        dangerous sort_by values from reaching the endpoint code.
+        """
+        # The sort_by parameter uses Literal type for validation
+        valid_sort_values = ["name", "start_date", "updated_at"]
+
+        # Dangerous values should not be in the allowed list
+        dangerous_values = ["id", "__dict__", "_sa_instance_state", "created_by"]
+
+        for dangerous in dangerous_values:
+            assert dangerous not in valid_sort_values

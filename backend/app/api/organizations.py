@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
 from app.config import get_settings
+from app.core.field_whitelists import ORGANIZATION_SYNC_FIELDS
 from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Organization
@@ -264,6 +265,14 @@ async def update_organization(
 
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        # Defense-in-depth: validate field is in allowed list
+        if field not in ORGANIZATION_SYNC_FIELDS:
+            logger.warning(
+                "skipping_invalid_organization_update_field",
+                field=field,
+                organization_id=str(organization_id),
+            )
+            continue
         setattr(org, field, value)
 
     try:

@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.field_whitelists import CONTACT_SYNC_FIELDS, ORGANIZATION_SYNC_FIELDS
 from app.core.logging import get_logger
 from app.models.contact import Contact
 from app.models.monday_sync import RecordSyncStatus, SyncConflict
@@ -208,9 +209,26 @@ class ConflictService:
             entity_id=str(entity.id),
         )
 
+        # Determine allowed fields based on entity type
+        allowed_fields = (
+            CONTACT_SYNC_FIELDS
+            if conflict.entity_type == "contact"
+            else ORGANIZATION_SYNC_FIELDS
+        )
+
         # Apply Monday.com data to NPD entity
         monday_data = conflict.monday_data
         for field in conflict.conflict_fields:
+            # Validate field is in whitelist before setting
+            if field not in allowed_fields:
+                logger.warning(
+                    "skipping_invalid_conflict_field",
+                    field=field,
+                    entity_type=conflict.entity_type,
+                    entity_id=str(entity.id),
+                )
+                continue
+
             if field in monday_data and hasattr(entity, field):
                 value = monday_data[field]
                 # Handle nested values (e.g., {"text": "value"})
@@ -246,8 +264,25 @@ class ConflictService:
 
         monday_data = conflict.monday_data
 
+        # Determine allowed fields based on entity type
+        allowed_fields = (
+            CONTACT_SYNC_FIELDS
+            if conflict.entity_type == "contact"
+            else ORGANIZATION_SYNC_FIELDS
+        )
+
         for field, source in merge_selections.items():
             if field not in conflict.conflict_fields:
+                continue
+
+            # Validate field is in whitelist before setting
+            if field not in allowed_fields:
+                logger.warning(
+                    "skipping_invalid_merge_field",
+                    field=field,
+                    entity_type=conflict.entity_type,
+                    entity_id=str(entity.id),
+                )
                 continue
 
             if source == "monday" and field in monday_data:

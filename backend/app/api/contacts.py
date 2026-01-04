@@ -9,6 +9,8 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
 from app.config import get_settings
+from app.core.field_whitelists import CONTACT_SYNC_FIELDS
+from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter
 from app.models import Contact, Organization
 from app.models.audit import AuditLog
@@ -27,6 +29,7 @@ from app.services.audit_service import AuditService
 from app.services.sync_service import sync_contact_to_monday
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
@@ -228,6 +231,14 @@ async def update_contact(
 
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        # Defense-in-depth: validate field is in allowed list
+        if field not in CONTACT_SYNC_FIELDS:
+            logger.warning(
+                "skipping_invalid_contact_update_field",
+                field=field,
+                contact_id=str(contact_id),
+            )
+            continue
         setattr(contact, field, value)
 
     try:

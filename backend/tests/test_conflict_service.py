@@ -595,3 +595,133 @@ class TestBulkResolve:
         assert len(results) == 2
         assert results[0]["success"] is False
         assert results[1]["success"] is True
+
+
+class TestFieldWhitelistValidation:
+    """Tests for field whitelist security validation."""
+
+    @pytest.mark.asyncio
+    async def test_apply_keep_monday_skips_invalid_field(self):
+        """Test that _apply_keep_monday skips fields not in whitelist."""
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = uuid4()
+        mock_conflict.entity_type = "contact"
+        # Include both valid and invalid fields
+        mock_conflict.monday_data = {
+            "email": "test@example.com",
+            "id": "malicious-id",  # Dangerous - should be skipped
+            "__dict__": {},  # Dangerous - should be skipped
+            "created_at": "2024-01-01",  # System field - should be skipped
+        }
+        mock_conflict.conflict_fields = ["email", "id", "__dict__", "created_at"]
+
+        mock_contact = MagicMock()
+        mock_contact.id = uuid4()
+        mock_contact.email = "old@example.com"
+
+        mock_db = AsyncMock()
+
+        service = ConflictService(mock_db)
+        await service._apply_keep_monday(mock_conflict, mock_contact)
+
+        # Valid email field should be updated
+        assert mock_contact.email == "test@example.com"
+
+        # Verify setattr was NOT called for dangerous fields
+        # The id attribute should remain as the MagicMock's uuid4, not "malicious-id"
+        assert mock_contact.id != "malicious-id"
+
+    @pytest.mark.asyncio
+    async def test_apply_merge_skips_invalid_field(self):
+        """Test that _apply_merge skips fields not in whitelist."""
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = uuid4()
+        mock_conflict.entity_type = "organization"
+        mock_conflict.monday_data = {
+            "name": "New Org Name",
+            "id": "malicious-id",  # Should be skipped
+            "_sa_instance_state": {},  # SQLAlchemy internal - should be skipped
+        }
+        mock_conflict.conflict_fields = ["name", "id", "_sa_instance_state"]
+
+        mock_org = MagicMock()
+        mock_org.id = uuid4()
+        mock_org.name = "Old Org Name"
+
+        mock_db = AsyncMock()
+
+        service = ConflictService(mock_db)
+        with patch("app.services.sync_service.sync_organization_to_monday"):
+            await service._apply_merge(
+                mock_conflict,
+                mock_org,
+                merge_selections={
+                    "name": "monday",
+                    "id": "monday",  # Attacker trying to change ID
+                    "_sa_instance_state": "monday",
+                },
+            )
+
+        # Valid name field should be updated
+        assert mock_org.name == "New Org Name"
+
+        # Dangerous fields should NOT have been set
+        assert mock_org.id != "malicious-id"
+
+    @pytest.mark.asyncio
+    async def test_valid_contact_fields_still_work(self):
+        """Test that valid fields in whitelist are applied correctly."""
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = uuid4()
+        mock_conflict.entity_type = "contact"
+        mock_conflict.monday_data = {
+            "email": "new@example.com",
+            "phone": "555-1234",
+            "notes": "Updated notes",
+        }
+        mock_conflict.conflict_fields = ["email", "phone", "notes"]
+
+        mock_contact = MagicMock()
+        mock_contact.id = uuid4()
+        mock_contact.email = "old@example.com"
+        mock_contact.phone = "555-0000"
+        mock_contact.notes = "Old notes"
+
+        mock_db = AsyncMock()
+
+        service = ConflictService(mock_db)
+        await service._apply_keep_monday(mock_conflict, mock_contact)
+
+        # All valid fields should be updated
+        assert mock_contact.email == "new@example.com"
+        assert mock_contact.phone == "555-1234"
+        assert mock_contact.notes == "Updated notes"
+
+    @pytest.mark.asyncio
+    async def test_valid_organization_fields_still_work(self):
+        """Test that valid organization fields in whitelist are applied."""
+        mock_conflict = MagicMock(spec=SyncConflict)
+        mock_conflict.id = uuid4()
+        mock_conflict.entity_type = "organization"
+        mock_conflict.monday_data = {
+            "name": "Acme Corp",
+            "notes": "Important client",
+            "address_city": "New York",
+        }
+        mock_conflict.conflict_fields = ["name", "notes", "address_city"]
+
+        mock_org = MagicMock()
+        mock_org.id = uuid4()
+        mock_org.name = "Old Name"
+        mock_org.notes = "Old notes"
+        mock_org.address_city = "Boston"
+
+        mock_db = AsyncMock()
+
+        service = ConflictService(mock_db)
+        await service._apply_keep_monday(mock_conflict, mock_org)
+
+        # All valid fields should be updated
+        assert mock_org.name == "Acme Corp"
+        assert mock_org.notes == "Important client"
+        assert mock_org.address_city == "New York"
