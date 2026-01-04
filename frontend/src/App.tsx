@@ -4,52 +4,66 @@
 
 import { lazy, Suspense } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useSearchParams,
+} from "react-router-dom";
+import { ErrorBoundary } from "react-error-boundary";
 import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { queryClient } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { Header, Sidebar, Footer } from "@/components/layout";
+import { PageErrorFallback, logError } from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/toaster";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 // Lazy load page components for code splitting
 const DashboardPage = lazy(() =>
-  import("@/pages/DashboardPage").then((m) => ({ default: m.DashboardPage }))
+  import("@/pages/DashboardPage").then((m) => ({ default: m.DashboardPage })),
 );
 const ProjectsPage = lazy(() =>
-  import("@/pages/ProjectsPage").then((m) => ({ default: m.ProjectsPage }))
+  import("@/pages/ProjectsPage").then((m) => ({ default: m.ProjectsPage })),
 );
 const ProjectDetailPage = lazy(() =>
-  import("@/pages/ProjectDetailPage").then((m) => ({ default: m.ProjectDetailPage }))
+  import("@/pages/ProjectDetailPage").then((m) => ({
+    default: m.ProjectDetailPage,
+  })),
 );
 const ProjectFormPage = lazy(() =>
-  import("@/pages/ProjectFormPage").then((m) => ({ default: m.ProjectFormPage }))
+  import("@/pages/ProjectFormPage").then((m) => ({
+    default: m.ProjectFormPage,
+  })),
 );
 const SearchPage = lazy(() =>
-  import("@/pages/SearchPage").then((m) => ({ default: m.SearchPage }))
+  import("@/pages/SearchPage").then((m) => ({ default: m.SearchPage })),
 );
 const AdminPage = lazy(() =>
-  import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage }))
+  import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })),
 );
 const ImportPage = lazy(() =>
-  import("@/pages/ImportPage").then((m) => ({ default: m.ImportPage }))
+  import("@/pages/ImportPage").then((m) => ({ default: m.ImportPage })),
 );
 const OrganizationsPage = lazy(() =>
-  import("@/pages/OrganizationsPage").then((m) => ({ default: m.OrganizationsPage }))
+  import("@/pages/OrganizationsPage").then((m) => ({
+    default: m.OrganizationsPage,
+  })),
 );
 const OrganizationDetailPage = lazy(() =>
   import("@/pages/OrganizationDetailPage").then((m) => ({
     default: m.OrganizationDetailPage,
-  }))
+  })),
 );
 const ContactsPage = lazy(() =>
-  import("@/pages/ContactsPage").then((m) => ({ default: m.ContactsPage }))
+  import("@/pages/ContactsPage").then((m) => ({ default: m.ContactsPage })),
 );
 const ContactDetailPage = lazy(() =>
   import("@/pages/ContactDetailPage").then((m) => ({
     default: m.ContactDetailPage,
-  }))
+  })),
 );
 
 /**
@@ -97,6 +111,25 @@ function MainLayout({ children }: { children: React.ReactNode }) {
       </div>
       <Footer />
     </div>
+  );
+}
+
+/**
+ * Route wrapper with error boundary for isolated error handling.
+ * Errors in one route don't crash other routes.
+ */
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary
+      FallbackComponent={PageErrorFallback}
+      onError={logError}
+      onReset={() => {
+        // Navigation will trigger re-render
+        window.location.reload();
+      }}
+    >
+      {children}
+    </ErrorBoundary>
   );
 }
 
@@ -156,7 +189,8 @@ const errorConfigs: Record<string, ErrorMessageConfig> = {
   },
   domain_not_allowed: {
     title: "Access Denied",
-    description: "Your email domain is not authorized to access this application.",
+    description:
+      "Your email domain is not authorized to access this application.",
     tip: "Only users with approved company email addresses can sign in.",
     showRetry: false,
     showContactSupport: true,
@@ -178,7 +212,7 @@ function LoginPage() {
   const [searchParams] = useSearchParams();
   const error = searchParams.get("error");
 
-  const errorConfig = error ? (errorConfigs[error] || defaultErrorConfig) : null;
+  const errorConfig = error ? errorConfigs[error] || defaultErrorConfig : null;
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -191,7 +225,10 @@ function LoginPage() {
           <h1 className="text-2xl font-bold">Novus Project Database</h1>
           <p className="mt-2 text-muted-foreground">Sign in to continue</p>
           {errorConfig && (
-            <Alert variant="destructive" className="mt-4 max-w-md mx-auto text-left">
+            <Alert
+              variant="destructive"
+              className="mx-auto mt-4 max-w-md text-left"
+            >
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>{errorConfig.title}</AlertTitle>
               <AlertDescription>
@@ -278,9 +315,11 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <Suspense fallback={<PageLoader />}>
-                <ProjectDetailPage />
-              </Suspense>
+              <RouteErrorBoundary>
+                <Suspense fallback={<PageLoader />}>
+                  <ProjectDetailPage />
+                </Suspense>
+              </RouteErrorBoundary>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -374,9 +413,11 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <Suspense fallback={<PageLoader />}>
-                <AdminPage />
-              </Suspense>
+              <RouteErrorBoundary>
+                <Suspense fallback={<PageLoader />}>
+                  <AdminPage />
+                </Suspense>
+              </RouteErrorBoundary>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -392,12 +433,21 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <AppRoutes />
-          <Toaster />
-        </AuthProvider>
-      </BrowserRouter>
+      <ErrorBoundary
+        FallbackComponent={PageErrorFallback}
+        onError={logError}
+        onReset={() => {
+          // Clear any cached state that might have caused the error
+          queryClient.clear();
+        }}
+      >
+        <BrowserRouter>
+          <AuthProvider>
+            <AppRoutes />
+            <Toaster />
+          </AuthProvider>
+        </BrowserRouter>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }
