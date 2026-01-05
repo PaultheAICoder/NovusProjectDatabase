@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -719,7 +720,17 @@ async def get_monday_boards(
                 for b in boards
             ]
         )
-    except Exception as e:
+    except MondayRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Monday.com API rate limit exceeded. Please try again later.",
+        )
+    except MondayAPIError as e:
+        logger.error(
+            "monday_boards_fetch_failed",
+            error=str(e),
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to fetch Monday boards: {str(e)}",
@@ -782,9 +793,20 @@ async def trigger_monday_sync(
 
         return MondaySyncLogResponse.model_validate(sync_log)
 
-    except Exception as e:
+    except MondayRateLimitError:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Monday.com API rate limit exceeded. Please try again later.",
+        )
+    except MondayAPIError as e:
+        logger.error(
+            "monday_sync_failed",
+            error=str(e),
+            sync_type=data.sync_type.value,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Sync failed: {str(e)}",
         )
     finally:
@@ -1857,8 +1879,26 @@ async def check_sharepoint_health(
     except SharePointError as e:
         result["auth_status"] = "error"
         result["error"] = str(e)[:200]
+        logger.warning(
+            "sharepoint_health_check_failed",
+            error=str(e),
+            exc_info=True,
+        )
+    except httpx.HTTPError as e:
+        result["auth_status"] = "error"
+        result["error"] = f"Network error: {str(e)[:200]}"
+        logger.warning(
+            "sharepoint_health_check_network_error",
+            error=str(e),
+            exc_info=True,
+        )
     except Exception as e:
         result["auth_status"] = "error"
         result["error"] = f"Unexpected error: {str(e)[:200]}"
+        logger.warning(
+            "sharepoint_health_check_unexpected_error",
+            error=str(e),
+            exc_info=True,
+        )
 
     return result

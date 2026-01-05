@@ -26,6 +26,7 @@ from app.config import get_settings
 from app.core.file_utils import read_file_with_spooling
 from app.core.logging import get_logger
 from app.core.rate_limit import crud_limit, limiter, upload_limit
+from app.core.sharepoint.exceptions import SharePointError
 from app.core.storage import StorageService
 from app.models.document import Document
 from app.models.document_queue import DocumentQueueOperation
@@ -59,6 +60,7 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.ms-excel",
     "text/plain",
     "text/csv",
+    "application/msword",  # Legacy Word 97-2003 format
 }
 
 
@@ -502,13 +504,35 @@ async def delete_document(
     storage = StorageService()
     try:
         await storage.delete(document.file_path)
-    except Exception as e:
-        logger.debug(
-            "document_file_deletion_skipped",
+    except SharePointError as e:
+        # SharePoint deletion failed (not 404, which is handled silently)
+        logger.warning(
+            "document_file_deletion_failed",
             document_id=str(document_id),
             file_path=document.file_path,
-            reason="File may already be deleted",
             error=str(e),
+            storage_type="sharepoint",
+            exc_info=True,
+        )
+    except OSError as e:
+        # Local filesystem deletion failed
+        logger.warning(
+            "document_file_deletion_failed",
+            document_id=str(document_id),
+            file_path=document.file_path,
+            error=str(e),
+            storage_type="local",
+            exc_info=True,
+        )
+    except Exception as e:
+        # Unexpected error - log but continue with database deletion
+        logger.warning(
+            "document_file_deletion_failed",
+            document_id=str(document_id),
+            file_path=document.file_path,
+            reason="Unexpected error during deletion",
+            error=str(e),
+            exc_info=True,
         )
 
     # Delete from database (cascade will delete chunks)

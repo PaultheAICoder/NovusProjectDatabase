@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.api.deps import DbSession
 from app.config import get_settings
+from app.core.exceptions import GraphAPIError
 from app.core.logging import get_logger
 from app.models.feedback import FeedbackStatus
 from app.schemas.document import DocumentQueueProcessResult
@@ -28,7 +29,12 @@ from app.services import (
     process_document_queue,
     process_sync_queue,
 )
-from app.services.jira_service import refresh_all_jira_statuses
+from app.services.jira_service import (
+    JiraAPIError,
+    JiraRateLimitError,
+    refresh_all_jira_statuses,
+)
+from app.services.monday_service import MondayAPIError
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -350,8 +356,12 @@ async def monitor_emails(
                                 )
                             },
                         )
-                except Exception as e:
-                    logger.warning("github_comment_failed", error=str(e))
+                except httpx.HTTPError as e:
+                    logger.warning(
+                        "github_comment_failed",
+                        error=str(e),
+                        exc_info=True,
+                    )
 
                 results.verified += 1
                 logger.info("email_monitor_verified", issue_number=issue_number)
@@ -449,8 +459,12 @@ This follow-up was automatically created when the user replied to the resolution
                                 )
                             },
                         )
-                except Exception as e:
-                    logger.warning("github_comment_failed", error=str(e))
+                except httpx.HTTPError as e:
+                    logger.warning(
+                        "github_comment_failed",
+                        error=str(e),
+                        exc_info=True,
+                    )
 
                 results.changes_requested += 1
                 logger.info(
@@ -459,9 +473,33 @@ This follow-up was automatically created when the user replied to the resolution
                     follow_up_number=follow_up_number,
                 )
 
+        except httpx.HTTPError as e:
+            error_msg = f"HTTP error processing email: {str(e)}"
+            logger.error(
+                "email_monitor_processing_error",
+                error=str(e),
+                error_type="http",
+                exc_info=True,
+            )
+            results.errors.append(error_msg)
+        except ValueError as e:
+            error_msg = f"Data error processing email: {str(e)}"
+            logger.error(
+                "email_monitor_processing_error",
+                error=str(e),
+                error_type="data",
+                exc_info=True,
+            )
+            results.errors.append(error_msg)
         except Exception as e:
-            error_msg = f"Error processing email: {str(e)}"
-            logger.error("email_monitor_processing_error", error=str(e))
+            # Catch-all for unexpected errors - should rarely hit this
+            error_msg = f"Unexpected error processing email: {str(e)}"
+            logger.error(
+                "email_monitor_processing_error",
+                error=str(e),
+                error_type="unexpected",
+                exc_info=True,
+            )
             results.errors.append(error_msg)
 
     # Update last check time if processing was successful
@@ -523,8 +561,30 @@ async def process_sync_queue_endpoint(
     try:
         result = await process_sync_queue()
         return SyncQueueProcessResult(**result)
+    except MondayAPIError as e:
+        logger.error(
+            "cron_sync_queue_error",
+            error=str(e),
+            error_type="monday_api",
+            exc_info=True,
+        )
+        return SyncQueueProcessResult(
+            status="error",
+            items_processed=0,
+            items_succeeded=0,
+            items_failed=0,
+            items_requeued=0,
+            items_max_retries=0,
+            errors=[f"Monday API error: {str(e)}"],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
     except Exception as e:
-        logger.exception("cron_sync_queue_error", error=str(e))
+        logger.error(
+            "cron_sync_queue_error",
+            error=str(e),
+            error_type="unexpected",
+            exc_info=True,
+        )
         return SyncQueueProcessResult(
             status="error",
             items_processed=0,
@@ -580,8 +640,29 @@ async def process_document_queue_endpoint(
     try:
         result = await process_document_queue()
         return DocumentQueueProcessResult(**result)
+    except ValueError as e:
+        # Document/file not found errors from queue processor
+        logger.error(
+            "cron_document_queue_error",
+            error=str(e),
+            error_type="document_not_found",
+            exc_info=True,
+        )
+        return DocumentQueueProcessResult(
+            status="error",
+            items_processed=0,
+            items_succeeded=0,
+            items_failed=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
     except Exception as e:
-        logger.exception("cron_document_queue_error", error=str(e))
+        logger.error(
+            "cron_document_queue_error",
+            error=str(e),
+            error_type="unexpected",
+            exc_info=True,
+        )
         return DocumentQueueProcessResult(
             status="error",
             items_processed=0,
@@ -635,8 +716,48 @@ async def process_jira_refresh_endpoint(
     try:
         result = await refresh_all_jira_statuses()
         return JiraRefreshResult(**result)
+    except JiraRateLimitError as e:
+        logger.error(
+            "cron_jira_refresh_error",
+            error=str(e),
+            error_type="rate_limit",
+            retry_after=e.retry_after_seconds,
+            exc_info=True,
+        )
+        return JiraRefreshResult(
+            status="error",
+            total_links=0,
+            stale_links=0,
+            refreshed=0,
+            failed=0,
+            skipped=0,
+            errors=[f"Rate limited: {str(e)}"],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+    except JiraAPIError as e:
+        logger.error(
+            "cron_jira_refresh_error",
+            error=str(e),
+            error_type="jira_api",
+            exc_info=True,
+        )
+        return JiraRefreshResult(
+            status="error",
+            total_links=0,
+            stale_links=0,
+            refreshed=0,
+            failed=0,
+            skipped=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
     except Exception as e:
-        logger.exception("cron_jira_refresh_error", error=str(e))
+        logger.error(
+            "cron_jira_refresh_error",
+            error=str(e),
+            error_type="unexpected",
+            exc_info=True,
+        )
         return JiraRefreshResult(
             status="error",
             total_links=0,
@@ -724,8 +845,30 @@ async def process_team_sync_endpoint(
             timestamp=datetime.now(UTC).isoformat(),
         )
 
+    except GraphAPIError as e:
+        logger.error(
+            "cron_team_sync_error",
+            error=str(e),
+            error_type="graph_api",
+            exc_info=True,
+        )
+        return TeamSyncCronResult(
+            status="error",
+            teams_processed=0,
+            teams_succeeded=0,
+            teams_failed=0,
+            total_members_added=0,
+            total_members_removed=0,
+            errors=[f"Graph API error: {str(e)}"],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
     except Exception as e:
-        logger.exception("cron_team_sync_error", error=str(e))
+        logger.error(
+            "cron_team_sync_error",
+            error=str(e),
+            error_type="unexpected",
+            exc_info=True,
+        )
         return TeamSyncCronResult(
             status="error",
             teams_processed=0,
@@ -798,8 +941,32 @@ async def process_jobs_endpoint(
         return JobQueueProcessResult(**result)
     except HTTPException:
         raise
+    except ValueError as e:
+        # Job handler errors
+        logger.error(
+            "cron_jobs_error",
+            error=str(e),
+            error_type="handler",
+            exc_info=True,
+        )
+        return JobQueueProcessResult(
+            status="error",
+            jobs_processed=0,
+            jobs_succeeded=0,
+            jobs_failed=0,
+            jobs_requeued=0,
+            jobs_max_retries=0,
+            jobs_recovered=0,
+            errors=[str(e)],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
     except Exception as e:
-        logger.exception("cron_jobs_error", error=str(e))
+        logger.error(
+            "cron_jobs_error",
+            error=str(e),
+            error_type="unexpected",
+            exc_info=True,
+        )
         return JobQueueProcessResult(
             status="error",
             jobs_processed=0,

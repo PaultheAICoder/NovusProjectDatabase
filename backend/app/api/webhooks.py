@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 import jwt
+import pydantic
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from app.api.deps import DbSession
@@ -22,7 +23,7 @@ from app.schemas.monday import (
     MondayWebhookPayload,
 )
 from app.services import FeedbackService, GraphEmailService
-from app.services.monday_service import MondayService
+from app.services.monday_service import MondayAPIError, MondayService
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -157,7 +158,12 @@ async def handle_github_webhook(
     # Parse JSON payload
     try:
         payload = await request.json()
-    except Exception:
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "github_webhook_invalid_json",
+            error=str(e),
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON payload",
@@ -291,8 +297,12 @@ async def handle_github_webhook(
                                     "body": f"Notification sent to submitter ({submitter['email']}) requesting verification.\nTracking: Feedback #{str(feedback.id)[:8]}"
                                 },
                             )
-                    except Exception as e:
-                        logger.warning("github_comment_failed", error=str(e))
+                    except httpx.HTTPError as e:
+                        logger.warning(
+                            "github_comment_failed",
+                            error=str(e),
+                            exc_info=True,
+                        )
             else:
                 logger.warning(
                     "notification_email_failed",
@@ -413,10 +423,11 @@ async def handle_monday_webhook(
     # Parse and validate webhook payload
     try:
         webhook_payload = MondayWebhookPayload(**payload)
-    except Exception as e:
+    except pydantic.ValidationError as e:
         logger.warning(
             "monday_webhook_invalid_payload",
             error=str(e),
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -502,12 +513,13 @@ async def handle_monday_webhook(
                     "reason": f"unhandled_event_type:{event_type}",
                 }
 
-        except Exception as e:
-            logger.exception(
+        except MondayAPIError as e:
+            logger.error(
                 "monday_webhook_sync_failed",
                 event_type=event_type,
                 monday_item_id=event.pulseId,
                 error=str(e),
+                exc_info=True,
             )
             result["sync_result"] = {"action": "error", "message": str(e)}
         finally:
