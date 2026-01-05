@@ -8,6 +8,8 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
+import redis.exceptions
+
 from app.config import get_settings
 from app.core.logging import get_logger
 
@@ -258,12 +260,24 @@ class FallbackCache:
                 result = await self._redis_cache.get(key)
                 if result is not None:
                     return result
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "cache_fallback_triggered",
                     prefix=self._prefix,
                     operation="get",
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                self._using_fallback = True
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "cache_connection_error",
+                    prefix=self._prefix,
+                    operation="get",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 self._using_fallback = True
 
@@ -276,12 +290,24 @@ class FallbackCache:
         if self._redis_cache and not self._using_fallback:
             try:
                 await self._redis_cache.set(key, value, ttl)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "cache_fallback_triggered",
                     prefix=self._prefix,
                     operation="set",
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                self._using_fallback = True
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "cache_connection_error",
+                    prefix=self._prefix,
+                    operation="set",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 self._using_fallback = True
 
@@ -293,11 +319,22 @@ class FallbackCache:
         if self._redis_cache and not self._using_fallback:
             try:
                 redis_deleted = await self._redis_cache.delete(key)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "cache_delete_error",
                     prefix=self._prefix,
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "cache_connection_error",
+                    prefix=self._prefix,
+                    operation="delete",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
 
         return memory_deleted or redis_deleted
@@ -310,11 +347,22 @@ class FallbackCache:
             try:
                 redis_count = await self._redis_cache.invalidate_prefix(prefix)
                 return redis_count
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "cache_invalidate_error",
                     prefix=prefix,
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "cache_connection_error",
+                    prefix=prefix,
+                    operation="invalidate",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
 
         return memory_count

@@ -3,6 +3,8 @@
 import hashlib
 import json
 
+import redis.exceptions
+
 from app.config import get_settings
 from app.core.logging import get_logger
 
@@ -201,11 +203,22 @@ class FallbackSearchCache:
                 result = await self._redis_cache.get(cache_key)
                 if result is not None:
                     return result
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "search_cache_fallback_triggered",
                     operation="get",
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                self._using_fallback = True
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "search_cache_connection_error",
+                    operation="get",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 self._using_fallback = True
 
@@ -218,11 +231,22 @@ class FallbackSearchCache:
         if self._redis_cache and not self._using_fallback:
             try:
                 await self._redis_cache.set(cache_key, results)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "search_cache_fallback_triggered",
                     operation="set",
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                self._using_fallback = True
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "search_cache_connection_error",
+                    operation="set",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 self._using_fallback = True
 
@@ -234,10 +258,20 @@ class FallbackSearchCache:
             try:
                 redis_count = await self._redis_cache.invalidate_all()
                 return redis_count
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "search_cache_invalidate_error",
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "search_cache_connection_error",
+                    operation="invalidate",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
 
         return memory_count

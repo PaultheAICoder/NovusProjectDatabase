@@ -5,6 +5,7 @@ import time
 from typing import Protocol
 
 import httpx
+import redis.exceptions
 
 from app.config import get_settings
 from app.core.logging import get_logger
@@ -192,7 +193,7 @@ class FallbackEmbeddingCache:
             client = await self._redis_cache._get_client()
             await client.ping()
             return True
-        except Exception:
+        except (redis.exceptions.RedisError, ConnectionError, TimeoutError):
             return False
 
     async def get(self, text: str) -> list[float] | None:
@@ -203,11 +204,22 @@ class FallbackEmbeddingCache:
                 if result is not None:
                     return result
                 # Cache miss in Redis - also check memory (for fallback entries)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "redis_cache_fallback_triggered",
                     operation="get",
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                self._using_fallback = True
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "redis_cache_connection_error",
+                    operation="get",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 self._using_fallback = True
 
@@ -222,11 +234,22 @@ class FallbackEmbeddingCache:
         if self._redis_cache and not self._using_fallback:
             try:
                 await self._redis_cache.set(text, embedding)
-            except Exception as e:
+            except redis.exceptions.RedisError as e:
                 logger.warning(
                     "redis_cache_fallback_triggered",
                     operation="set",
                     error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                self._using_fallback = True
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(
+                    "redis_cache_connection_error",
+                    operation="set",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 self._using_fallback = True
 

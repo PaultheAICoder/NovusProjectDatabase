@@ -325,14 +325,17 @@ class TestFallbackCache:
     @pytest.mark.asyncio
     async def test_fallback_to_memory_on_error(self):
         """Should fallback to memory on Redis error."""
+        from redis.exceptions import RedisError
+
         cache = FallbackCache(
             redis_url="redis://localhost:6379/0",
             prefix="test:",
         )
 
-        mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(side_effect=Exception("Redis down"))
-        cache._redis_cache._client = mock_redis
+        # Mock the redis cache's get method directly to trigger fallback in FallbackCache
+        mock_redis_cache = AsyncMock()
+        mock_redis_cache.get = AsyncMock(side_effect=RedisError("Redis down"))
+        cache._redis_cache = mock_redis_cache
 
         # Pre-populate memory cache
         await cache._memory_cache.set("key1", {"data": 1})
