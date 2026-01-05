@@ -172,7 +172,10 @@ class ClamAVConnectionPool:
             writer.close()
             await writer.wait_closed()
         except Exception:
-            pass  # Ignore errors during close
+            # Intentionally swallowing ALL exceptions during connection close.
+            # Connection may already be closed or in error state - cleanup
+            # must not fail.
+            pass
 
     async def close(self) -> None:
         """Close all connections in the pool."""
@@ -261,10 +264,23 @@ class AntivirusService:
 
         try:
             return await self._scan_with_clamd(content, filename)
-        except Exception as e:
+        except (TimeoutError, ConnectionError, OSError) as e:
+            # Socket/network errors from ClamAV daemon communication
             logger.exception(
                 "antivirus_scan_error",
                 filename=filename,
+                error=str(e),
+            )
+            return ScanResponse(
+                result=ScanResult.ERROR,
+                message=f"Scan error: {str(e)}",
+            )
+        except Exception as e:
+            # Unexpected errors - log with type for debugging
+            logger.exception(
+                "antivirus_scan_unexpected_error",
+                filename=filename,
+                error_type=type(e).__name__,
                 error=str(e),
             )
             return ScanResponse(
@@ -374,7 +390,9 @@ class AntivirusService:
             return self._parse_scan_response(response_str, filename)
 
         except Exception:
-            # On error, discard the connection (may be in bad state)
+            # Intentionally catching ALL exceptions to mark connection for discard.
+            # Connection may be in bad state - MUST discard before pool return.
+            # Exception is re-raised after cleanup flag is set.
             discard_connection = True
             raise
         finally:
@@ -492,10 +510,23 @@ class AntivirusService:
 
         try:
             return await self._scan_file_with_clamd(file, filename)
-        except Exception as e:
+        except (TimeoutError, ConnectionError, OSError) as e:
+            # Socket/network errors from ClamAV daemon communication
             logger.exception(
                 "antivirus_scan_error",
                 filename=filename,
+                error=str(e),
+            )
+            return ScanResponse(
+                result=ScanResult.ERROR,
+                message=f"Scan error: {str(e)}",
+            )
+        except Exception as e:
+            # Unexpected errors - log with type for debugging
+            logger.exception(
+                "antivirus_scan_unexpected_error",
+                filename=filename,
+                error_type=type(e).__name__,
                 error=str(e),
             )
             return ScanResponse(
@@ -604,7 +635,9 @@ class AntivirusService:
             return self._parse_scan_response(response_str, filename)
 
         except Exception:
-            # On error, discard the connection (may be in bad state)
+            # Intentionally catching ALL exceptions to mark connection for discard.
+            # Connection may be in bad state - MUST discard before pool return.
+            # Exception is re-raised after cleanup flag is set.
             discard_connection = True
             raise
         finally:
@@ -633,6 +666,7 @@ class AntivirusService:
                 try:
                     reader, writer = await pool.acquire()
                 except Exception:
+                    # Health check - return False on any connection pool error
                     return False
             else:
                 reader, writer = await asyncio.wait_for(
@@ -646,9 +680,11 @@ class AntivirusService:
                 response = await asyncio.wait_for(reader.read(32), timeout=5)
                 return b"PONG" in response
             except Exception:
+                # Health check protocol error - mark connection for discard
                 discard_connection = True
                 return False
         except Exception:
+            # Health check - return False on any connection error
             return False
         finally:
             if writer is not None:

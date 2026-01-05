@@ -326,7 +326,8 @@ class GraphClient:
             SharePointPermissionError,
         ):
             raise
-        except Exception as e:
+        except httpx.RequestError as e:
+            # Network/connection errors during upload
             logger.error(
                 "graph_upload_small_error",
                 drive_id=drive_id,
@@ -335,6 +336,19 @@ class GraphClient:
             )
             raise SharePointUploadError(
                 f"Failed to upload {filename}: {e}",
+                filename=filename,
+            ) from e
+        except Exception as e:
+            # Unexpected errors - wrap in SharePointUploadError with context
+            logger.error(
+                "graph_upload_small_unexpected_error",
+                drive_id=drive_id,
+                filename=filename,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            raise SharePointUploadError(
+                f"Unexpected error uploading {filename}: {e}",
                 filename=filename,
             ) from e
 
@@ -397,7 +411,8 @@ class GraphClient:
 
         except (SharePointError, SharePointUploadError):
             raise
-        except Exception as e:
+        except httpx.RequestError as e:
+            # Network/connection errors during session creation
             logger.error(
                 "graph_upload_session_error",
                 drive_id=drive_id,
@@ -406,6 +421,19 @@ class GraphClient:
             )
             raise SharePointUploadError(
                 f"Failed to create upload session for {filename}: {e}",
+                filename=filename,
+            ) from e
+        except Exception as e:
+            # Unexpected errors - wrap in SharePointUploadError with context
+            logger.error(
+                "graph_upload_session_unexpected_error",
+                drive_id=drive_id,
+                filename=filename,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            raise SharePointUploadError(
+                f"Unexpected error creating upload session for {filename}: {e}",
                 filename=filename,
             ) from e
 

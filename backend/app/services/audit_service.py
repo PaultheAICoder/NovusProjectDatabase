@@ -256,8 +256,10 @@ class AuditService:
                 ):
                     continue
                 result[key] = value
-            except Exception:
-                # Skip any attributes that can't be accessed
+            except (AttributeError, TypeError, ValueError):
+                # Skip attributes that can't be accessed or serialized.
+                # Some entity attributes may be lazy-loaded relationships,
+                # computed properties, or non-serializable types.
                 continue
 
         return result

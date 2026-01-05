@@ -223,7 +223,9 @@ async def get_user_from_bearer_token(
         )
         return None
     except Exception as e:
-        # Catch any unexpected errors gracefully
+        # Auth MUST fail gracefully - return None, don't raise.
+        # Broad catch intentional: Azure AD scheme can raise various exceptions
+        # and any auth failure should not crash the request.
         logger.debug(
             "bearer_token_unexpected_error",
             error_type=type(e).__name__,
@@ -283,6 +285,10 @@ async def get_user_from_api_token(
 
         return user
     except Exception as e:
+        # Auth MUST fail gracefully - return None, don't raise.
+        # Broad catch intentional: TokenService.validate_token can raise
+        # various exceptions and any token validation failure should not
+        # crash the request.
         logger.debug(
             "api_token_unexpected_error",
             error_type=type(e).__name__,

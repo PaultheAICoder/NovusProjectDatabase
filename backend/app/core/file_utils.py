@@ -128,5 +128,7 @@ async def read_file_with_spooling(
     except HTTPException:
         raise
     except Exception:
+        # Intentionally catching ALL exceptions to ensure spooled temp file
+        # cleanup before re-raising. Resource cleanup MUST be guaranteed.
         spooled.close()
         raise

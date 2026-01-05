@@ -50,6 +50,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
         except Exception:
+            # Intentionally catching ALL exceptions to ensure database rollback
+            # before re-raising. This is a critical safety pattern that MUST NOT
+            # be changed to specific exceptions.
             await session.rollback()
             raise
         finally:

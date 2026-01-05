@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.core.sharepoint import SharePointStorageAdapter
+from app.core.sharepoint.exceptions import SharePointError
 from app.core.storage import LocalStorageBackend
 from app.models.document import Document
 
@@ -184,11 +185,28 @@ class MigrationService:
                 old_path=document.file_path,
                 error=f"File not found: {document.file_path}",
             )
-        except Exception as e:
+        except SharePointError as e:
+            # SharePoint upload/storage errors
             logger.error(
-                "migration_error",
+                "migration_sharepoint_error",
                 document_id=str(document.id),
                 file_path=document.file_path,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return MigrationResult(
+                document_id=document.id,
+                success=False,
+                old_path=document.file_path,
+                error=f"SharePoint error: {str(e)}",
+            )
+        except Exception as e:
+            # Unexpected migration errors
+            logger.error(
+                "migration_unexpected_error",
+                document_id=str(document.id),
+                file_path=document.file_path,
+                error_type=type(e).__name__,
                 error=str(e),
             )
             return MigrationResult(

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -383,10 +384,27 @@ class ConflictService:
                             "error": "Conflict not found",
                         }
                     )
-            except Exception as e:
+            except (SQLAlchemyError, ValueError) as e:
+                # Database errors or validation errors during bulk resolution
                 logger.error(
                     "bulk_resolve_conflict_failed",
                     conflict_id=str(conflict_id),
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
+                results.append(
+                    {
+                        "conflict_id": conflict_id,
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
+            except Exception as e:
+                # Unexpected errors - log type for debugging
+                logger.error(
+                    "bulk_resolve_conflict_unexpected_error",
+                    conflict_id=str(conflict_id),
+                    error_type=type(e).__name__,
                     error=str(e),
                 )
                 results.append(
