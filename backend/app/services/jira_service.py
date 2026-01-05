@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.exceptions import ExternalServiceError
 from app.core.logging import get_logger
 from app.schemas.jira import (
     JiraConnectionStatus,
@@ -29,7 +30,7 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
-class JiraAPIError(Exception):
+class JiraAPIError(ExternalServiceError):
     """Base exception for Jira API errors."""
 
     pass

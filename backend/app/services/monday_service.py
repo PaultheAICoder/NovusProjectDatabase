@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.exceptions import ExternalServiceError
 from app.core.field_whitelists import CONTACT_SYNC_FIELDS, ORGANIZATION_SYNC_FIELDS
 from app.core.logging import get_logger
 from app.models.contact import Contact
@@ -31,7 +32,7 @@ settings = get_settings()
 MONDAY_API_URL = "https://api.monday.com/v2"
 
 
-class MondayAPIError(Exception):
+class MondayAPIError(ExternalServiceError):
     """Base exception for Monday.com API errors."""
 
     pass
