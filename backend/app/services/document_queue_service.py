@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -626,7 +627,7 @@ async def process_document_queue() -> dict:
                                 else:
                                     results["items_max_retries"] += 1
                             await error_db.commit()
-                    except Exception as inner_e:
+                    except SQLAlchemyError as inner_e:
                         logger.exception(
                             "document_queue_failed_to_mark_error",
                             queue_id=str(item.id),

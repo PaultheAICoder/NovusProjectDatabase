@@ -8,6 +8,7 @@ by the DocumentQueueService during queue processing.
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -112,7 +113,7 @@ async def process_document_background(document_id: UUID) -> None:
                         document.processing_status = "failed"
                         document.processing_error = str(e)[:500]
                         await error_db.commit()
-            except Exception as inner_e:
+            except SQLAlchemyError as inner_e:
                 logger.exception(
                     "failed_to_update_error_status",
                     document_id=str(document_id),

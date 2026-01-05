@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.models.monday_sync import RecordSyncStatus, SyncDirection
+from app.services.monday_service import MondayAPIError
 
 
 class TestSyncContactToMonday:
@@ -341,9 +342,9 @@ class TestSyncContactToMonday:
 
         mock_session_maker.side_effect = [mock_context, mock_context2, mock_context3]
 
-        # Mock MondayService to raise an exception
+        # Mock MondayService to raise MondayAPIError
         mock_service = AsyncMock()
-        mock_service.create_item.side_effect = Exception("API Error")
+        mock_service.create_item.side_effect = MondayAPIError("API Error")
         mock_service.close = AsyncMock()
         mock_monday_service_class.return_value = mock_service
 
@@ -645,7 +646,7 @@ class TestSyncOrganizationToMonday:
         mock_session_maker.side_effect = [mock_context, mock_context2, mock_context3]
 
         mock_service = AsyncMock()
-        mock_service.create_item.side_effect = Exception("API Error")
+        mock_service.create_item.side_effect = MondayAPIError("API Error")
         mock_service.close = AsyncMock()
         mock_monday_service_class.return_value = mock_service
 

@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -476,7 +477,7 @@ async def process_sync_queue() -> dict:
                                     fresh_item, error_str
                                 )
                             await error_db.commit()
-                    except Exception as inner_e:
+                    except SQLAlchemyError as inner_e:
                         logger.exception(
                             "sync_queue_failed_to_mark_error",
                             queue_id=str(item.id),

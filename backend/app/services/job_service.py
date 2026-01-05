@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -704,7 +705,7 @@ async def process_job_queue(job_type: JobType | None = None) -> dict:
                                 else:
                                     results["jobs_max_retries"] += 1
                             await error_db.commit()
-                    except Exception as inner_e:
+                    except SQLAlchemyError as inner_e:
                         logger.exception(
                             "job_failed_to_mark_error",
                             job_id=str(job.id),

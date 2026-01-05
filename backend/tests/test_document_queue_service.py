@@ -355,6 +355,8 @@ class TestProcessDocumentQueue:
         mock_queue_item.id = queue_item_id
         mock_queue_item.document_id = document_id
         mock_queue_item.status = DocumentQueueStatus.PENDING
+        mock_queue_item.attempts = 1
+        mock_queue_item.max_attempts = 5
 
         # Setup main session with pending items
         mock_main_db = AsyncMock()

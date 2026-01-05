@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.core.logging import get_logger
@@ -21,7 +22,11 @@ from app.models.monday_sync import (
     SyncQueueOperation,
 )
 from app.models.organization import Organization
-from app.services.monday_service import MondayColumnFormatter, MondayService
+from app.services.monday_service import (
+    MondayAPIError,
+    MondayColumnFormatter,
+    MondayService,
+)
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -213,7 +218,7 @@ async def sync_contact_to_monday(contact_id: UUID) -> None:
                     monday_id=contact.monday_id,
                 )
 
-            except Exception as api_error:
+            except MondayAPIError as api_error:
                 # API call failed - enqueue for retry
                 await db.rollback()
                 error_msg = str(api_error)
@@ -250,7 +255,7 @@ async def sync_contact_to_monday(contact_id: UUID) -> None:
                         "sync_contact_queued_for_retry",
                         contact_id=str(contact_id),
                     )
-                except Exception as queue_error:
+                except SQLAlchemyError as queue_error:
                     logger.exception(
                         "failed_to_queue_contact_sync",
                         contact_id=str(contact_id),
@@ -267,7 +272,7 @@ async def sync_contact_to_monday(contact_id: UUID) -> None:
                         if contact:
                             contact.sync_status = RecordSyncStatus.PENDING
                             await error_db.commit()
-                except Exception as inner_error:
+                except SQLAlchemyError as inner_error:
                     logger.exception(
                         "failed_to_update_contact_sync_status",
                         contact_id=str(contact_id),
@@ -395,7 +400,7 @@ async def sync_organization_to_monday(organization_id: UUID) -> None:
                     monday_id=org.monday_id,
                 )
 
-            except Exception as api_error:
+            except MondayAPIError as api_error:
                 # API call failed - enqueue for retry
                 await db.rollback()
                 error_msg = str(api_error)
@@ -432,7 +437,7 @@ async def sync_organization_to_monday(organization_id: UUID) -> None:
                         "sync_organization_queued_for_retry",
                         organization_id=str(organization_id),
                     )
-                except Exception as queue_error:
+                except SQLAlchemyError as queue_error:
                     logger.exception(
                         "failed_to_queue_organization_sync",
                         organization_id=str(organization_id),
@@ -451,7 +456,7 @@ async def sync_organization_to_monday(organization_id: UUID) -> None:
                         if org:
                             org.sync_status = RecordSyncStatus.PENDING
                             await error_db.commit()
-                except Exception as inner_error:
+                except SQLAlchemyError as inner_error:
                     logger.exception(
                         "failed_to_update_organization_sync_status",
                         organization_id=str(organization_id),

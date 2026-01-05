@@ -6,6 +6,7 @@ Handlers are registered using the @register_job_handler decorator.
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import EmbeddingServiceError  # noqa: F401
 from app.core.logging import get_logger
 from app.models.job import Job, JobType
 from app.services.job_service import register_job_handler
