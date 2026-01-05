@@ -123,12 +123,37 @@ Guidelines:
                 truncated=truncated,
             )
 
-        except httpx.HTTPError as e:
-            logger.warning("summarization_llm_error", error=str(e))
-            return self._create_fallback_result(projects, f"LLM unavailable: {e}")
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "summarization_llm_http_error",
+                status_code=e.response.status_code,
+                error=str(e),
+                exc_info=True,
+            )
+            return self._create_fallback_result(
+                projects, f"LLM error: {e.response.status_code}"
+            )
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "summarization_llm_timeout",
+                error=str(e),
+                exc_info=True,
+            )
+            return self._create_fallback_result(projects, "LLM timeout")
+        except httpx.RequestError as e:
+            logger.warning(
+                "summarization_llm_connection_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
+            return self._create_fallback_result(projects, f"LLM connection error: {e}")
         except Exception as e:
             logger.error(
-                "summarization_error", error=str(e), error_type=type(e).__name__
+                "summarization_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
             )
             return self._create_fallback_result(projects, str(e))
 

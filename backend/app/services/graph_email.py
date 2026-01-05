@@ -24,6 +24,7 @@ from msgraph.generated.models.body_type import BodyType
 from msgraph.generated.models.email_address import EmailAddress
 from msgraph.generated.models.item_body import ItemBody
 from msgraph.generated.models.message import Message
+from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from msgraph.generated.models.recipient import Recipient
 from msgraph.generated.users.item.send_mail.send_mail_post_request_body import (
     SendMailPostRequestBody,
@@ -172,11 +173,25 @@ class GraphEmailService:
             logger.info("graph_emails_fetched", count=len(emails))
             return emails
 
-        except Exception as e:
+        except ODataError as e:
+            error_code = getattr(e.error, "code", None) if e.error else None
+            status_code = getattr(e, "response_status_code", None)
+            error_message = str(e.error.message) if e.error else str(e)
             logger.error(
                 "graph_email_fetch_failed",
+                status_code=status_code,
+                error_code=error_code,
+                error=error_message,
+                exc_info=True,
+            )
+            return []
+        except Exception as e:
+            # Catch-all for unexpected errors (network, auth, etc.)
+            logger.error(
+                "graph_email_fetch_unexpected_error",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=True,
             )
             return []
 
@@ -232,12 +247,27 @@ class GraphEmailService:
             )
             return True
 
-        except Exception as e:
+        except ODataError as e:
+            error_code = getattr(e.error, "code", None) if e.error else None
+            status_code = getattr(e, "response_status_code", None)
+            error_message = str(e.error.message) if e.error else str(e)
             logger.error(
                 "graph_email_send_failed",
+                status_code=status_code,
+                error_code=error_code,
+                error=error_message,
+                to=recipients,
+                exc_info=True,
+            )
+            return False
+        except Exception as e:
+            # Catch-all for unexpected errors (network, auth, etc.)
+            logger.error(
+                "graph_email_send_unexpected_error",
                 error=str(e),
                 error_type=type(e).__name__,
                 to=recipients,
+                exc_info=True,
             )
             return False
 
@@ -264,11 +294,27 @@ class GraphEmailService:
             logger.info("graph_email_connection_test", result="success")
             return True
 
-        except Exception as e:
+        except ODataError as e:
+            error_code = getattr(e.error, "code", None) if e.error else None
+            status_code = getattr(e, "response_status_code", None)
+            error_message = str(e.error.message) if e.error else str(e)
             logger.error(
                 "graph_email_connection_test",
                 result="failed",
+                status_code=status_code,
+                error_code=error_code,
+                error=error_message,
+                exc_info=True,
+            )
+            return False
+        except Exception as e:
+            # Catch-all for unexpected errors (network, auth, etc.)
+            logger.error(
+                "graph_email_connection_test_unexpected_error",
+                result="failed",
                 error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
             )
             return False
 

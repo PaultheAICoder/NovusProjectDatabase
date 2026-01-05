@@ -98,6 +98,7 @@ Only extract what is explicitly mentioned. Do not infer."""
                 query=query[:50],
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=True,
             )
             return self._create_fallback_response(query, str(e))
 

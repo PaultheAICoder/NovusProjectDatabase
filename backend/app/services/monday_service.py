@@ -780,8 +780,34 @@ class MondayService:
             sync_log.items_updated = items_updated
             sync_log.items_skipped = items_skipped
 
+        except MondayRateLimitError as e:
+            logger.error(
+                "monday_org_sync_rate_limited",
+                error=str(e),
+                retry_after=e.retry_after_seconds,
+                exc_info=True,
+            )
+            sync_log.status = MondaySyncStatus.FAILED
+            sync_log.completed_at = datetime.now(UTC)
+            sync_log.error_message = f"Rate limited: {e}"
+            raise
+        except MondayAPIError as e:
+            logger.error(
+                "monday_org_sync_api_error",
+                error=str(e),
+                exc_info=True,
+            )
+            sync_log.status = MondaySyncStatus.FAILED
+            sync_log.completed_at = datetime.now(UTC)
+            sync_log.error_message = str(e)
+            raise
         except Exception as e:
-            logger.error("monday_org_sync_failed", error=str(e))
+            logger.error(
+                "monday_org_sync_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             sync_log.status = MondaySyncStatus.FAILED
             sync_log.completed_at = datetime.now(UTC)
             sync_log.error_message = str(e)
@@ -880,8 +906,34 @@ class MondayService:
             sync_log.items_updated = items_updated
             sync_log.items_skipped = items_skipped
 
+        except MondayRateLimitError as e:
+            logger.error(
+                "monday_contact_sync_rate_limited",
+                error=str(e),
+                retry_after=e.retry_after_seconds,
+                exc_info=True,
+            )
+            sync_log.status = MondaySyncStatus.FAILED
+            sync_log.completed_at = datetime.now(UTC)
+            sync_log.error_message = f"Rate limited: {e}"
+            raise
+        except MondayAPIError as e:
+            logger.error(
+                "monday_contact_sync_api_error",
+                error=str(e),
+                exc_info=True,
+            )
+            sync_log.status = MondaySyncStatus.FAILED
+            sync_log.completed_at = datetime.now(UTC)
+            sync_log.error_message = str(e)
+            raise
         except Exception as e:
-            logger.error("monday_contact_sync_failed", error=str(e))
+            logger.error(
+                "monday_contact_sync_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             sync_log.status = MondaySyncStatus.FAILED
             sync_log.completed_at = datetime.now(UTC)
             sync_log.error_message = str(e)

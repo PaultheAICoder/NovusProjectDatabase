@@ -553,6 +553,23 @@ async def refresh_all_jira_statuses() -> dict:
                     results["skipped"] += 1
 
             await db.commit()
+    except JiraRateLimitError as e:
+        results["status"] = "error"
+        results["errors"].append(f"Rate limited: {e}")
+        logger.error(
+            "jira_refresh_rate_limited",
+            error=str(e),
+            retry_after=e.retry_after_seconds,
+            exc_info=True,
+        )
+    except JiraAPIError as e:
+        results["status"] = "error"
+        results["errors"].append(str(e))
+        logger.error(
+            "jira_refresh_api_error",
+            error=str(e),
+            exc_info=True,
+        )
     except Exception as e:
         results["status"] = "error"
         results["errors"].append(str(e))

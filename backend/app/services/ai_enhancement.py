@@ -149,6 +149,7 @@ class AIEnhancementService:
                 "clarifying_questions_error",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=True,
             )
             return ClarifyingQuestionsResult(
                 questions=fallback_questions,
@@ -206,22 +207,55 @@ class AIEnhancementService:
                 )
                 if result.success:
                     return result
+            except TimeoutError as e:
+                logger.warning(
+                    "claude_code_timeout",
+                    error=str(e),
+                    falling_back_to="api",
+                    exc_info=True,
+                )
+            except RuntimeError as e:
+                logger.warning(
+                    "claude_code_process_error",
+                    error=str(e),
+                    falling_back_to="api",
+                    exc_info=True,
+                )
             except Exception as e:
                 logger.warning(
                     "claude_code_failed",
                     error=str(e),
+                    error_type=type(e).__name__,
                     falling_back_to="api",
+                    exc_info=True,
                 )
 
         # Fall back to API
         if self.settings.is_ai_configured:
             try:
                 return await self._enhance_with_api(feedback_type, description, answers)
-            except Exception as e:
+            except httpx.HTTPStatusError as e:
                 logger.warning(
-                    "enhance_api_failed",
+                    "enhance_api_http_error",
+                    status_code=e.response.status_code,
                     error=str(e),
                     falling_back_to="simple_format",
+                    exc_info=True,
+                )
+            except httpx.TimeoutException as e:
+                logger.warning(
+                    "enhance_api_timeout",
+                    error=str(e),
+                    falling_back_to="simple_format",
+                    exc_info=True,
+                )
+            except httpx.RequestError as e:
+                logger.warning(
+                    "enhance_api_connection_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    falling_back_to="simple_format",
+                    exc_info=True,
                 )
 
         # Final fallback to simple formatting
