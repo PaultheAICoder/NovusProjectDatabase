@@ -30,6 +30,11 @@ class DocumentResponse(DocumentBase):
     suggested_tag_ids: list[UUID] | None = None
     dismissed_tag_ids: list[UUID] | None = None
     created_at: datetime
+    # OCR metadata
+    ocr_processed: bool = False
+    ocr_confidence: float | None = None
+    ocr_processed_at: datetime | None = None
+    ocr_error: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -59,6 +64,10 @@ class DocumentStatusResponse(BaseModel):
     id: UUID
     processing_status: str
     processing_error: str | None = None
+    # OCR metadata for status polling
+    ocr_processed: bool = False
+    ocr_confidence: float | None = None
+    ocr_error: str | None = None
 
     model_config = {"from_attributes": True}
 

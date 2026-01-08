@@ -111,6 +111,15 @@ class Settings(BaseSettings):
     tika_url: str = "http://localhost:9998"
     tika_timeout: int = 60  # seconds - longer timeout for large files
 
+    # OCR (Optical Character Recognition)
+    ocr_enabled: bool = False  # Feature flag - disabled by default
+    ocr_language: str = "eng"  # Tesseract language pack
+    ocr_dpi: int = 300  # Resolution for page rendering
+    ocr_timeout_seconds: int = 60  # Per-page timeout
+    ocr_max_pages: int = 200  # Maximum pages to OCR
+    ocr_confidence_threshold: float = 0.3  # Below this, mark as low quality
+    ocr_preprocess_enabled: bool = True  # Image enhancement before OCR
+
     # Logging
     log_level: str = "INFO"
 
@@ -342,6 +351,11 @@ class Settings(BaseSettings):
     def is_tika_configured(self) -> bool:
         """Check if Tika is enabled and configured."""
         return self.tika_enabled
+
+    @property
+    def is_ocr_configured(self) -> bool:
+        """Check if OCR is enabled."""
+        return self.ocr_enabled
 
 
 @lru_cache

@@ -21,6 +21,11 @@ export interface Document {
   suggested_tag_ids: string[] | null;
   dismissed_tag_ids: string[] | null;
   created_at: string;
+  // OCR metadata
+  ocr_processed: boolean;
+  ocr_confidence: number | null;
+  ocr_processed_at: string | null;
+  ocr_error: string | null;
 }
 
 export interface DocumentDetail extends Document {

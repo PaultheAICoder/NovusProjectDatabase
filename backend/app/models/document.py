@@ -7,8 +7,10 @@ from uuid import UUID
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Computed,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -92,6 +94,25 @@ class Document(Base):
         ARRAY(PGUUID(as_uuid=True)),
         nullable=True,
         default=None,
+    )
+
+    # OCR metadata
+    ocr_processed: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    ocr_confidence: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    ocr_processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    ocr_error: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
     )
 
     # Full-text search vector (generated column)
