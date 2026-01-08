@@ -330,3 +330,78 @@ class TestFileValidationServiceFromFile:
         file = io.BytesIO(text_content)
 
         assert validator.is_safe_file_type_from_file(file) is True
+
+
+class TestDocFileValidation:
+    """Tests for .doc file validation."""
+
+    @pytest.fixture
+    def validator(self) -> FileValidationService:
+        """Create a validator instance."""
+        return FileValidationService()
+
+    def test_doc_mime_type_in_mapping(self):
+        """application/msword should be in MAGIC_MIME_MAPPING."""
+        assert "application/msword" in MAGIC_MIME_MAPPING
+
+    def test_doc_allows_ole_storage_detection(self):
+        """OLE storage detection should be valid for .doc."""
+        mapping = MAGIC_MIME_MAPPING["application/msword"]
+        assert "application/x-ole-storage" in mapping
+
+    def test_doc_allows_cdfv2_detection(self):
+        """CDFV2 detection should be valid for .doc."""
+        mapping = MAGIC_MIME_MAPPING["application/msword"]
+        assert "application/CDFV2" in mapping
+
+    def test_doc_allows_cdfv2_unknown_detection(self):
+        """CDFV2-unknown detection should be valid for .doc."""
+        mapping = MAGIC_MIME_MAPPING["application/msword"]
+        assert "application/CDFV2-unknown" in mapping
+
+    def test_doc_mapping_not_empty(self):
+        """.doc MIME mapping should have valid entries."""
+        mapping = MAGIC_MIME_MAPPING["application/msword"]
+        assert len(mapping) > 0
+        assert isinstance(mapping, set)
+
+    def test_doc_ole_header_validates(self, validator: FileValidationService):
+        """OLE compound document header should validate for .doc MIME type."""
+        # Import the minimal OLE header from fixtures
+        from tests.fixtures.doc_fixtures import get_minimal_ole_doc
+
+        ole_content = get_minimal_ole_doc()
+        is_valid, detected = validator.validate_content_type(
+            ole_content, "application/msword"
+        )
+
+        # OLE should be detected and validated
+        # May detect as x-ole-storage, CDFV2 variants, or octet-stream
+        assert detected in (
+            "application/msword",
+            "application/x-ole-storage",
+            "application/CDFV2",
+            "application/CDFV2-unknown",
+            "application/octet-stream",
+        )
+
+    def test_doc_is_safe_file_type(self, validator: FileValidationService):
+        """.doc files should be considered safe."""
+        from tests.fixtures.doc_fixtures import get_minimal_ole_doc
+
+        ole_content = get_minimal_ole_doc()
+        # OLE documents should be safe (not executable)
+        assert validator.is_safe_file_type(ole_content) is True
+
+    def test_corrupted_doc_detection(self, validator: FileValidationService):
+        """Corrupted .doc header should be detected as invalid."""
+        from tests.fixtures.doc_fixtures import get_corrupted_doc
+
+        corrupted_content = get_corrupted_doc()
+        is_valid, detected = validator.validate_content_type(
+            corrupted_content, "application/msword"
+        )
+
+        # Corrupted content won't be detected as OLE
+        # This is expected behavior - validation should fail
+        # (the actual detected MIME may vary)

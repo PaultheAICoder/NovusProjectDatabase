@@ -303,3 +303,148 @@ class TestDocumentProcessorTikaClientLazy:
 
         # Should return the injected client
         assert processor.tika_client is mock_client
+
+
+class TestDocumentProcessorErrorPropagation:
+    """Tests for error propagation in DocumentProcessor."""
+
+    @pytest.fixture
+    def mock_tika_client(self) -> MagicMock:
+        """Create a mock TikaClient."""
+        mock = MagicMock(spec=TikaClient)
+        mock.extract_text = AsyncMock()
+        return mock
+
+    @pytest.fixture
+    def processor(self, mock_tika_client: MagicMock) -> DocumentProcessor:
+        """Create a DocumentProcessor with mocked TikaClient."""
+        return DocumentProcessor(tika_client=mock_tika_client)
+
+    @pytest.mark.asyncio
+    async def test_extract_text_propagates_tika_unavailable_error(
+        self, processor: DocumentProcessor, mock_tika_client: MagicMock
+    ):
+        """TikaUnavailableError should propagate through extract_text."""
+        mock_tika_client.extract_text.return_value = ExtractionResponse(
+            result=ExtractionResult.SKIPPED,
+            message="Tika extraction is disabled",
+        )
+
+        with pytest.raises(TikaUnavailableError) as exc_info:
+            await processor.extract_text(
+                b"test content",
+                "application/msword",
+                "test.doc",
+            )
+
+        assert "disabled" in exc_info.value.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_extract_text_propagates_tika_timeout_error(
+        self, processor: DocumentProcessor, mock_tika_client: MagicMock
+    ):
+        """TikaTimeoutError should propagate through extract_text."""
+        mock_tika_client.extract_text.return_value = ExtractionResponse(
+            result=ExtractionResult.ERROR,
+            message="Extraction timed out after 60s",
+        )
+
+        with pytest.raises(TikaTimeoutError) as exc_info:
+            await processor.extract_text(
+                b"test content",
+                "application/msword",
+                "test.doc",
+            )
+
+        assert "timed out" in exc_info.value.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_extract_text_propagates_corrupted_file_error(
+        self, processor: DocumentProcessor, mock_tika_client: MagicMock
+    ):
+        """TikaCorruptedFileError should propagate through extract_text."""
+        mock_tika_client.extract_text.return_value = ExtractionResponse(
+            result=ExtractionResult.ERROR,
+            message="Tika returned error: 422",
+        )
+
+        with pytest.raises(TikaCorruptedFileError) as exc_info:
+            await processor.extract_text(
+                b"corrupted content",
+                "application/msword",
+                "corrupted.doc",
+            )
+
+        assert "corrupted" in exc_info.value.message.lower()
+
+
+class TestDocumentProcessorEmptyContent:
+    """Tests for empty and edge case content handling."""
+
+    @pytest.fixture
+    def mock_tika_client(self) -> MagicMock:
+        """Create a mock TikaClient."""
+        mock = MagicMock(spec=TikaClient)
+        mock.extract_text = AsyncMock()
+        return mock
+
+    @pytest.fixture
+    def processor(self, mock_tika_client: MagicMock) -> DocumentProcessor:
+        """Create a DocumentProcessor with mocked TikaClient."""
+        return DocumentProcessor(tika_client=mock_tika_client)
+
+    @pytest.mark.asyncio
+    async def test_extract_empty_doc_returns_empty_string(
+        self, processor: DocumentProcessor, mock_tika_client: MagicMock
+    ):
+        """Empty .doc file should return empty string if extraction succeeds."""
+        mock_tika_client.extract_text.return_value = ExtractionResponse(
+            result=ExtractionResult.SUCCESS,
+            text="",
+        )
+
+        result = await processor.extract_text(
+            b"",  # Empty content
+            "application/msword",
+            "empty.doc",
+        )
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_extract_doc_returns_none_as_empty_string(
+        self, processor: DocumentProcessor, mock_tika_client: MagicMock
+    ):
+        """None text result should be returned as empty string."""
+        mock_tika_client.extract_text.return_value = ExtractionResponse(
+            result=ExtractionResult.SUCCESS,
+            text=None,
+        )
+
+        result = await processor.extract_text(
+            b"test content",
+            "application/msword",
+            "test.doc",
+        )
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_extract_very_large_content_succeeds(
+        self, processor: DocumentProcessor, mock_tika_client: MagicMock
+    ):
+        """Very large content should be handled (with mock, no real extraction)."""
+        large_text = "x" * 1000000  # 1 million characters
+        mock_tika_client.extract_text.return_value = ExtractionResponse(
+            result=ExtractionResult.SUCCESS,
+            text=large_text,
+        )
+
+        result = await processor.extract_text(
+            b"large content",
+            "application/msword",
+            "large.doc",
+        )
+
+        assert len(result) == 1000000
+        assert result == large_text

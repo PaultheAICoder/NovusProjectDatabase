@@ -1,3 +1,11 @@
+# Integration Tests
+
+## Overview
+
+This directory contains integration tests that require external services. These tests are automatically skipped if the required services are not configured.
+
+---
+
 # SharePoint Integration Tests
 
 ## Purpose
@@ -114,3 +122,143 @@ Verify Azure AD app permissions include:
 
 ### Rate Limiting
 If you see 429 errors, SharePoint may be throttling requests. Wait a few minutes before retrying.
+
+---
+
+# Tika Integration Tests (DOC File Extraction)
+
+## Purpose
+
+These tests verify Apache Tika integration for extracting text from legacy .doc files (Word 97-2003 format). The tests cover:
+
+- Tika server connectivity and health checks
+- .doc file text extraction
+- Error handling for corrupted files
+- Timeout handling
+
+## Prerequisites
+
+1. Apache Tika server running (via Docker or standalone)
+2. Environment variables configured
+
+## Required Environment Variables
+
+```bash
+export TIKA_ENABLED=true
+export TIKA_URL=http://localhost:6706  # Or your Tika server URL
+export TIKA_TIMEOUT=60  # Timeout in seconds
+```
+
+## Starting the Tika Container
+
+Using Docker Compose (recommended):
+
+```bash
+cd /home/pbrown/Novus-db
+docker compose up tika -d
+```
+
+Or standalone Docker:
+
+```bash
+docker run -d -p 9998:9998 apache/tika:latest
+```
+
+## Running Tika Integration Tests
+
+```bash
+# Set environment
+export TIKA_ENABLED=true
+export TIKA_URL=http://localhost:6706
+
+# Run tests
+pytest tests/integration/test_doc_extraction.py -v
+
+# Run with verbose output
+pytest tests/integration/test_doc_extraction.py -v -s
+```
+
+## Test Categories
+
+### TestTikaConnection
+- Health check verification
+- Basic extraction response validation
+
+### TestDocExtraction
+- Minimal OLE document extraction
+- Corrupted file handling
+- Empty file handling
+- MIME type mismatch handling
+
+### TestDocExtractionTimeout
+- Timeout behavior testing (marked as `slow`)
+
+### TestDocUploadFlow
+- MIME type acceptance verification
+- File type mapping
+- Full processor flow with mock
+
+### TestTikaClientConfiguration
+- Configuration validation
+
+## Skipping Tests
+
+```bash
+# Skip all integration tests
+pytest tests/ -m "not integration"
+
+# Skip slow tests (includes timeout tests)
+pytest tests/integration/ -m "not slow"
+
+# Run only Tika tests
+pytest tests/integration/test_doc_extraction.py -v
+```
+
+## Test Fixtures
+
+The tests use fixtures from `tests/fixtures/doc_fixtures.py`:
+
+- `get_minimal_ole_doc()` - Minimal valid OLE header for MIME detection
+- `get_corrupted_doc()` - Truncated/invalid OLE data
+- `get_text_file_claiming_doc_mime()` - Plain text (MIME mismatch testing)
+- `get_empty_file()` - Empty content
+- `get_random_binary()` - Random binary data
+
+Note: These are minimal fixtures for testing error handling and MIME detection. For full text extraction tests with real .doc content, you need actual Word 97-2003 documents.
+
+## Troubleshooting
+
+### Tests Skip Unexpectedly
+
+Check that Tika is configured:
+
+```bash
+python -c "from app.config import get_settings; print(get_settings().is_tika_configured)"
+```
+
+### Connection Errors
+
+Verify Tika container is running:
+
+```bash
+docker ps | grep tika
+curl http://localhost:6706/tika  # Should return "Hello from Tika..."
+```
+
+### Timeout Issues
+
+The default timeout is 60 seconds. For very large files, you may need to increase `TIKA_TIMEOUT`.
+
+---
+
+# Document ACL Integration Tests
+
+## Purpose
+
+These tests verify document-level access control integration with the permission system.
+
+## Running
+
+```bash
+pytest tests/integration/test_document_acl.py -v
+```
