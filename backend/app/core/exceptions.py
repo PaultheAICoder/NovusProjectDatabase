@@ -17,6 +17,9 @@ Exception Hierarchy:
     |   +-- EmbeddingServiceError
     |   +-- DocumentProcessingError
     |   +-- AntivirusScanError
+    |   +-- OCRError
+    |       +-- OCRTimeoutError
+    |       +-- OCRUnavailableError
     +-- CacheError (caching failures)
     |   +-- RedisCacheError
     +-- ConfigurationError (missing/invalid configuration)
@@ -193,5 +196,39 @@ class RedisCacheError(CacheError):
     - Command execution failures
     - Serialization errors
     """
+
+    pass
+
+
+class OCRError(DataProcessingError):
+    """Base exception for OCR processing failures.
+
+    Use for errors during OCR text extraction such as:
+    - Tesseract unavailable
+    - Page processing timeouts
+    - Image rendering failures
+    - Low confidence extraction
+    """
+
+    def __init__(
+        self,
+        message: str,
+        filename: str = "unknown",
+        page_number: int | None = None,
+    ):
+        super().__init__(message)
+        self.message = message
+        self.filename = filename
+        self.page_number = page_number
+
+
+class OCRTimeoutError(OCRError):
+    """Raised when OCR processing times out."""
+
+    pass
+
+
+class OCRUnavailableError(OCRError):
+    """Raised when Tesseract OCR is not available."""
 
     pass

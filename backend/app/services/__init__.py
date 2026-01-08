@@ -19,6 +19,7 @@ from .feedback_service import FeedbackService
 from .graph_email import GraphEmailService
 from .migration_service import MigrationProgress, MigrationResult, MigrationService
 from .nl_query_parser import NLQueryParser
+from .ocr_service import OCRConfig, OCRQuality, OCRResult, OCRService
 from .permission_service import PermissionService
 from .search_service import SearchService
 from .sync_queue_service import SyncQueueService, process_sync_queue
@@ -38,6 +39,10 @@ __all__ = [
     "MigrationResult",
     "MigrationService",
     "NLQueryParser",
+    "OCRConfig",
+    "OCRQuality",
+    "OCRResult",
+    "OCRService",
     "ParseAction",
     "ParseConfidence",
     "ParseResult",
