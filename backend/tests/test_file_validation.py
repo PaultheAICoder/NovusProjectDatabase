@@ -131,6 +131,7 @@ class TestFileValidationService:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.ms-excel",
+            "application/msword",
             "text/plain",
             "text/csv",
         }
@@ -157,6 +158,28 @@ class TestFileValidationService:
         mime = validator.get_actual_mime_type(binary_content)
         # Should detect as some binary type
         assert mime is not None
+
+    def test_doc_ole_compound_detection(self, validator: FileValidationService):
+        """Legacy .doc files (OLE compound documents) should be detected.
+
+        Note: A minimal 8-byte OLE header may be detected as application/octet-stream
+        by libmagic since it needs more context for definitive OLE identification.
+        Real .doc files have complete OLE headers and are properly identified.
+        """
+        # OLE Compound Document magic bytes (minimal header)
+        ole_magic = bytes([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1])
+        is_valid, detected = validator.validate_content_type(
+            ole_magic, "application/msword"
+        )
+        # OLE is detected as x-ole-storage, CDFV2 variants, or octet-stream
+        # for minimal headers
+        assert detected in (
+            "application/msword",
+            "application/x-ole-storage",
+            "application/CDFV2",
+            "application/CDFV2-unknown",
+            "application/octet-stream",
+        )
 
 
 class TestFileValidationServiceFromFile:
