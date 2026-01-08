@@ -11,7 +11,7 @@ Novus Project Database (NPD) — internal web application for project management
 ### Backend (Python 3.11+)
 - **Framework**: FastAPI with SQLAlchemy, Pydantic, Alembic
 - **Database**: PostgreSQL 15+ with pgvector extension
-- **Document Processing**: pdfplumber, python-docx, pandas
+- **Document Processing**: pdfplumber, python-docx, pandas, Apache Tika (for .doc)
 - **RAG/Embeddings**: Ollama (nomic-embed-text)
 - **Auth**: Azure AD SSO via fastapi-azure-auth
 
@@ -152,8 +152,36 @@ See `specs/002-sharepoint-integration/` for detailed documentation:
 - [migration-runbook.md](specs/002-sharepoint-integration/migration-runbook.md) - Production migration steps
 - [rollback.md](specs/002-sharepoint-integration/rollback.md) - Rollback procedures
 
+## Legacy DOC Support (Optional)
+
+Apache Tika enables text extraction from legacy Microsoft Word .doc files (Word 97-2003 format).
+
+### Configuration
+
+```bash
+# Enable Tika in .env
+TIKA_ENABLED=true
+TIKA_URL=http://tika:9998   # Default in docker-compose
+TIKA_TIMEOUT=60              # Seconds for extraction timeout
+```
+
+### Docker Setup
+
+Tika is included in docker-compose.yml and starts automatically. No additional setup required.
+
+```bash
+# Verify Tika is running
+curl http://localhost:6706/tika
+```
+
+See `specs/004-legacy-doc-support/` for detailed documentation:
+- [configuration.md](specs/004-legacy-doc-support/configuration.md) - All environment variables
+- [operations.md](specs/004-legacy-doc-support/operations.md) - Monitoring and troubleshooting
+- [rollback.md](specs/004-legacy-doc-support/rollback.md) - Rollback procedures
+
 ## Recent Changes
 
+- 004-legacy-doc-support: Legacy .doc file extraction via Apache Tika (2026-01-07)
 - 002-sharepoint-integration: SharePoint storage backend implemented (2026-01-02)
 - 001-npd-v1-core: Initial implementation plan created (2025-12-01)
 
